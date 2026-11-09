@@ -1,0 +1,17 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "broken-image",
+        "value": "*",
+        "files": [
+          "src/tischlein/templates/rezepte.html"
+        ],
+        "createdAt": "2026-11-09T22:56:18.952Z",
+        "reason": "Claude: img src is bound at runtime via Alpine :src (photoUrl), not empty"
+      }
+    ]
+  }
+}

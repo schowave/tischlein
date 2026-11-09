@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import functools
 import json
 import sqlite3
+import threading
 from collections.abc import Iterable
 from datetime import date, datetime
 from pathlib import Path
@@ -52,9 +54,21 @@ CREATE TABLE IF NOT EXISTS feedback (
 """
 
 
+def _locked(method):
+    """Serialise access: the web server calls the store from several threads at once."""
+
+    @functools.wraps(method)
+    def wrapper(self, *args, **kwargs):
+        with self._lock:
+            return method(self, *args, **kwargs)
+
+    return wrapper
+
+
 class Store:
     def __init__(self, path: Path | str):
         self.path = str(path)
+        self._lock = threading.RLock()
         if str(path) != ":memory:":
             Path(path).parent.mkdir(parents=True, exist_ok=True)
         self.db = sqlite3.connect(path, check_same_thread=False)
@@ -64,6 +78,7 @@ class Store:
 
     # Recipes ---------------------------------------------------------------
 
+    @_locked
     def replace_recipes(self, recipes: Iterable[Recipe]) -> int:
         """Replace the recipe catalogue with a fresh Paprika import."""
         now = datetime.now().isoformat(timespec="seconds")
@@ -76,6 +91,7 @@ class Store:
             self.db.executemany("INSERT INTO recipes VALUES (?, ?, ?, ?, ?, ?, ?)", rows)
         return len(rows)
 
+    @_locked
     def recipes(self) -> list[Recipe]:
         rows = self.db.execute("SELECT * FROM recipes ORDER BY name").fetchall()
         return [
@@ -83,6 +99,7 @@ class Store:
             for r in rows
         ]
 
+    @_locked
     def upsert_recipe(self, r: Recipe, raw_hash: str, raw: dict) -> None:
         """Replace one recipe (and its raw Paprika data) after an edit."""
         now = datetime.now().isoformat(timespec="seconds")
@@ -98,17 +115,21 @@ class Store:
                 (r.uid, raw_hash, json.dumps(raw, ensure_ascii=False)),
             )
 
+    @_locked
     def delete_recipe(self, uid: str) -> None:
         with self.db:
             self.db.execute("DELETE FROM recipes WHERE uid = ?", (uid,))
 
+    @_locked
     def recipe(self, uid: str) -> Recipe | None:
         return next((r for r in self.recipes() if r.uid == uid), None)
 
+    @_locked
     def raw_recipe(self, uid: str) -> tuple[str, dict] | None:
         row = self.db.execute("SELECT hash, data FROM paprika_cache WHERE uid = ?", (uid,)).fetchone()
         return (row[0], json.loads(row[1])) if row else None
 
+    @_locked
     def set_raw_recipe(self, uid: str, raw_hash: str, raw: dict) -> None:
         with self.db:
             self.db.execute(
@@ -117,10 +138,12 @@ class Store:
                 (uid, raw_hash, json.dumps(raw, ensure_ascii=False)),
             )
 
+    @_locked
     def paprika_cache(self) -> dict[str, tuple[str, dict]]:
         rows = self.db.execute("SELECT uid, hash, data FROM paprika_cache").fetchall()
         return {uid: (h, json.loads(data)) for uid, h, data in rows}
 
+    @_locked
     def replace_paprika_cache(self, cache: dict[str, tuple[str, dict]]) -> None:
         with self.db:
             self.db.execute("DELETE FROM paprika_cache")
@@ -129,18 +152,21 @@ class Store:
                 [(uid, h, json.dumps(data, ensure_ascii=False)) for uid, (h, data) in cache.items()],
             )
 
+    @_locked
     def set_meta(self, key: str, value: str) -> None:
         with self.db:
             self.db.execute(
                 "INSERT INTO meta VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", (key, value)
             )
 
+    @_locked
     def meta(self, key: str) -> str | None:
         row = self.db.execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()
         return row[0] if row else None
 
     # Plans -----------------------------------------------------------------
 
+    @_locked
     def save_plan(self, plan: WeekPlan) -> None:
         ws = plan.week_start.isoformat()
         now = datetime.now().isoformat(timespec="seconds")
@@ -156,6 +182,7 @@ class Store:
                 [(ws, m.day.isoformat(), m.recipe_uid, m.name, m.theme, int(m.is_new), m.reason) for m in plan.meals],
             )
 
+    @_locked
     def plan(self, week_start: date) -> WeekPlan | None:
         row = self.db.execute("SELECT status FROM plans WHERE week_start = ?", (week_start.isoformat(),)).fetchone()
         if row is None:
@@ -165,10 +192,12 @@ class Store:
         ).fetchall()
         return WeekPlan(week_start, row["status"], [self._meal(m) for m in meals])
 
+    @_locked
     def approved_plans(self) -> list[WeekPlan]:
         rows = self.db.execute("SELECT week_start FROM plans WHERE status = 'freigegeben' ORDER BY week_start")
         return [p for (ws,) in rows.fetchall() if (p := self.plan(date.fromisoformat(ws)))]
 
+    @_locked
     def last_cooked(self, before: date) -> dict[str, date]:
         """Most recent day each recipe appeared in an approved plan before `before`."""
         rows = self.db.execute(
@@ -186,6 +215,7 @@ class Store:
 
     # Feedback --------------------------------------------------------------
 
+    @_locked
     def set_feedback(self, recipe_uid: str, verdict: Verdict) -> None:
         with self.db:
             self.db.execute(
@@ -194,5 +224,6 @@ class Store:
                 (recipe_uid, verdict, datetime.now().isoformat(timespec="seconds")),
             )
 
+    @_locked
     def feedback(self) -> dict[str, Verdict]:
         return dict(self.db.execute("SELECT recipe_uid, verdict FROM feedback").fetchall())

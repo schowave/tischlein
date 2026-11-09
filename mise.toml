@@ -51,3 +51,8 @@ run = "docker build --build-arg MISE_VERSION=$(sed -n 's/^min_version = \"\\(.*\
 [tasks."docker:run"]
 description = "Gebautes Image lokal starten, Daten in ./data"
 run = "docker run --rm -p 8080:8080 -v \"$PWD/data:/data\" --env-file .env tischlein:latest"
+
+[tasks."vendor:alpine"]
+description = "Alpine.js für die Rezepte-Seite ablegen (Version und npm-Prüfsumme hier pinnen)"
+env = { ALPINE_VERSION = "3.17.5", ALPINE_INTEGRITY = "sha512-XewMqRC6zjy8iaUPn86dxjvooAsNai3hUtQbdn0A5H2w7Jt10xHGZ1SczN5+Dvp3UKkuSEt9moy/UaUWOwKdnQ==" }
+run = "./scripts/vendor-alpine.sh"

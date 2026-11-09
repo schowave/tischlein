@@ -32,3 +32,28 @@ def test_feedback_upserts():
     s.set_feedback("a", "ok")
     s.set_feedback("a", "nein")
     assert s.feedback() == {"a": "nein"}
+
+
+def test_store_is_safe_under_concurrent_reads(tmp_path):
+    import threading
+
+    s = Store(tmp_path / "t.db")
+    s.replace_recipes([Recipe(f"u{i}", f"R{i}") for i in range(50)])
+    for i in range(50):
+        s.set_raw_recipe(f"u{i}", "h", {"uid": f"u{i}", "n": i})
+    errors = []
+
+    def worker():
+        try:
+            for i in range(50):
+                assert s.raw_recipe(f"u{i}")[1]["n"] == i
+                assert len(s.recipes()) == 50
+        except Exception as e:  # noqa: BLE001 - collect anything for the assertion below
+            errors.append(e)
+
+    threads = [threading.Thread(target=worker) for _ in range(8)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert errors == []

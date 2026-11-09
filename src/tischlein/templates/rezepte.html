@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Rezepte · Tischlein{% endblock %}
 {% block content %}
+<div x-data="recipes" @keydown.escape.window="phone && selectedUid && select(null)">
 <section class="title">
   <div>
     <h1>Rezepte</h1>
@@ -9,7 +10,10 @@
   {% if v.data.canWrite %}
   <div class="title-actions">
     <span class="stamp">Abgeglichen {{ (v.last_sync or 'noch nie').split(' – ')[0] }}</span>
-    <form class="inline" method="post" action="/sync" data-sync><input type="hidden" name="zurueck" value="/rezepte"><button class="btn">Mit Paprika abgleichen</button></form>
+    <form class="inline" method="post" action="/sync" x-data="{ busy: false }" @submit="busy = true">
+      <input type="hidden" name="zurueck" value="/rezepte">
+      <button class="btn" :disabled="busy" x-text="busy ? 'Gleicht ab …' : 'Mit Paprika abgleichen'">Mit Paprika abgleichen</button>
+    </form>
   </div>
   {% else %}
   <a class="btn" href="/einstellungen">Paprika verbinden</a>
@@ -21,38 +25,138 @@
     <label class="search">
       <span class="sr-only">Rezept suchen</span>
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14"/></svg>
-      <input class="field" id="q" type="search" placeholder="Rezept suchen" autocomplete="off">
+      <input class="field" type="search" placeholder="Rezept suchen" autocomplete="off" x-model="q">
     </label>
     <div class="seg" role="group" aria-label="Umfang">
-      <button type="button" data-scope="main" aria-pressed="true">Hauptspeisen</button>
-      <button type="button" data-scope="all" aria-pressed="false">Alle</button>
+      <button type="button" :aria-pressed="scope === 'main'" @click="scope = 'main'">Hauptspeisen</button>
+      <button type="button" :aria-pressed="scope === 'all'" @click="scope = 'all'">Alle</button>
     </div>
-    <button type="button" class="chip kid" id="only-open" aria-pressed="false">Noch nicht Kinder-OK</button>
+    <button type="button" class="chip kid" :aria-pressed="onlyOpen" @click="onlyOpen = !onlyOpen">Noch nicht Kinder-OK</button>
   </div>
-  <div class="chips scroll" id="theme-chips" role="group" aria-label="Thema"></div>
+  <div class="chips scroll" role="group" aria-label="Thema">
+    <button type="button" class="chip" :aria-pressed="theme === null" @click="theme = null">Alle Themen <span class="n num" x-text="base.length"></span></button>
+    <template x-for="t in themes" :key="t">
+      <button type="button" class="chip" :aria-pressed="theme === t" @click="theme = theme === t ? null : t">
+        <span x-text="t"></span> <span class="n num" x-text="countTheme(t)"></span>
+      </button>
+    </template>
+    <button type="button" class="chip" :aria-pressed="theme === '__none'" @click="theme = theme === '__none' ? null : '__none'">Ohne Thema <span class="n num" x-text="countNoTheme()"></span></button>
+  </div>
 </div>
 
 <div class="grid">
   <section class="panel s8" aria-labelledby="list-h">
     <div class="panel-head">
       <h2 id="list-h">Gerichte</h2>
-      <span class="chip-count num" id="result-count">0</span>
+      <span class="chip-count num" x-text="visible.length"></span>
     </div>
     <div class="list-head" aria-hidden="true"><span>Rezept und Kategorien</span><span>Kinder-OK</span></div>
-    <div class="rlist" id="list" role="listbox" aria-label="Rezepte"></div>
-    <p class="list-foot" id="list-foot"></p>
+    <div class="rlist" role="listbox" aria-label="Rezepte">
+      <template x-for="r in visible" :key="r.uid">
+        <div class="ritem" role="option" tabindex="0" :data-uid="r.uid" :aria-selected="selectedUid === r.uid"
+             @click="select(r.uid)" @keydown.enter.prevent="select(r.uid)" @keydown.space.prevent="select(r.uid)">
+          <template x-if="r.bild"><img class="thumb" :src="photoUrl(r)" alt="" loading="lazy" decoding="async" width="48" height="48" @error="r.bild = false"></template>
+          <template x-if="!r.bild"><span class="thumb ph" aria-hidden="true" x-text="initial(r)"></span></template>
+          <div>
+            <div class="nm" x-text="r.name"></div>
+            <div class="tg">
+              <template x-for="(t, i) in r.themen" :key="t"><span><span x-show="i" x-text="' · '"></span><span class="th" x-text="t"></span></span></template><span x-text="otherTags(r)"></span>
+            </div>
+          </div>
+          <div class="sw-cell">
+            <button type="button" role="switch" class="switch" :aria-checked="r.kinder_ok" :aria-label="'Kinder-OK: ' + r.name"
+                    :data-busy="status[r.uid]?.kind === 'busy'" :disabled="!canWrite || (r.kinder_ok && !r.kinder_tag)"
+                    :title="r.kinder_ok && !r.kinder_tag ? 'Kinder-OK durch Rückmeldung im Wochenplan' : null"
+                    @click.stop="toggleTag(r, kidTag, !r.kinder_tag)"></button>
+          </div>
+        </div>
+      </template>
+    </div>
+    <p class="list-foot" x-text="listFoot"></p>
   </section>
-  <div class="s4 detail-wrap" id="detail-wrap">
-    <section class="panel detail" id="detail" aria-live="polite">
-      <p class="detail-empty">Wähl ein Rezept, um seine Kategorien zu bearbeiten. Kinder-OK schaltest du direkt in der Liste.</p>
+
+  <div class="s4 detail-wrap" :class="{ open: phone && selected }">
+    <section class="panel detail" aria-live="polite">
+      <template x-if="!selected">
+        <div class="overview">
+          <h2>Kinder-OK pro Thema</h2>
+          <p class="detail-empty">Jedes Thema braucht <span x-text="need"></span> Kinder-OK-Gerichte, damit sich nichts zu oft wiederholt. Wähl ein Rezept, um seine Kategorien zu bearbeiten.</p>
+          <div class="supply">
+            <template x-for="row in supply" :key="row.t">
+              <button type="button" :aria-pressed="theme === row.t" @click="theme = row.t; onlyOpen = true; scope = 'all'"
+                      :aria-label="`${row.t}: ${row.kid} von ${need} Kinder-OK, ${row.n} Rezepte. Liste filtern`">
+                <span class="name" x-text="row.t"></span>
+                <span class="ratio num" :class="{ ok: row.kid >= need }"><b x-text="row.kid"></b> von <span x-text="need"></span></span>
+                <span class="slots" aria-hidden="true">
+                  <template x-for="i in need" :key="i"><span class="slot" :class="{ on: i <= row.kid }"></span></template>
+                  <span class="of num" x-text="row.n + ' Rezepte'"></span>
+                </span>
+              </button>
+            </template>
+          </div>
+        </div>
+      </template>
+
+      <template x-if="selected">
+        <div>
+          <button type="button" class="btn btn-ghost detail-back" @click="select(null)">← Zurück zur Liste</button>
+          <template x-if="selected.bild"><img class="photo" :src="photoUrl(selected)" :alt="'Foto: ' + selected.name" width="640" height="400" @error="selected.bild = false"></template>
+          <h2 x-text="selected.name"></h2>
+          <p class="sub" x-text="facts(selected)"></p>
+
+          <div class="ingredients" x-data="{ d: null }" x-effect="d = details[selected.uid]">
+            <h3>Zutaten <span class="n num" x-show="d?.zutaten?.length" x-text="d && ingredientCount(d)"></span></h3>
+            <p class="muted" x-show="!d || d.loading">Zutaten werden geladen …</p>
+            <p class="muted" x-show="d?.error">Zutaten konnten nicht geladen werden. <button type="button" class="linkish" @click="loadDetails(selected.uid, true)">Nochmal versuchen</button></p>
+            <p class="muted" x-show="d && !d.loading && !d.error && !d.zutaten.length">Keine Zutaten in Paprika hinterlegt.</p>
+            <ul x-show="d?.zutaten?.length">
+              <template x-for="(z, i) in shownIngredients(d)" :key="i"><li :class="{ kopf: z.kopf }" x-text="z.text"></li></template>
+            </ul>
+            <button type="button" class="btn btn-ghost btn-sm more" x-show="d?.zutaten?.length > 10" :aria-expanded="!!expanded[selected.uid]"
+                    @click="expanded[selected.uid] = !expanded[selected.uid]"
+                    x-text="expanded[selected.uid] ? 'Weniger anzeigen' : `Alle ${d && ingredientCount(d)} Zutaten anzeigen`"></button>
+          </div>
+
+          <template x-for="g in detailGroups" :key="g.name">
+            <div class="group" role="group" :aria-label="g.name" x-show="g.tags.length">
+              <h3 x-text="g.name"></h3>
+              <div class="chips">
+                <template x-for="t in g.tags" :key="t">
+                  <button type="button" class="chip" :class="{ kid: same(t, kidTag) }" :aria-pressed="hasTag(selected, t)" :disabled="!canWrite"
+                          @click="toggleTag(selected, t, !hasTag(selected, t))">
+                    <svg x-show="hasTag(selected, t)" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 6.5 5 9l4.5-6" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
+                    <span x-text="t"></span>
+                  </button>
+                </template>
+              </div>
+            </div>
+          </template>
+
+          <form class="field-row new-tag" @submit.prevent="addNewTag()">
+            <input class="field" type="text" placeholder="Neue Kategorie" aria-label="Neue Kategorie anlegen" maxlength="40" x-model="newTag">
+            <button class="btn" :disabled="!canWrite">Anlegen</button>
+          </form>
+          <p class="status" :class="{ err: status[selected.uid]?.kind === 'err' }" role="status">
+            <span x-text="status[selected.uid]?.text || ''"></span>
+            <template x-if="status[selected.uid]?.retry"><button type="button" @click="status[selected.uid].retry()">Nochmal versuchen</button></template>
+          </p>
+          <div class="sub-actions" x-show="canWrite">
+            <button type="button" class="btn btn-ghost btn-sm danger" @click="trash(selected)">In den Papierkorb</button>
+          </div>
+        </div>
+      </template>
     </section>
   </div>
 </div>
+
+<div class="toast" role="status" aria-live="polite" x-show="toast.visible" x-cloak>
+  <span x-text="toast.text"></span>
+  <template x-if="toast.action"><button type="button" class="linkish" @click="toast.action.run()" x-text="toast.action.label"></button></template>
+</div>
+</div>
 <script type="application/json" id="data">{{ v.data | tojson }}</script>
 {% endblock %}
-{% block scripts %}<script src="/static/rezepte.js" defer></script>
-<script>
-  document.querySelector("[data-sync]")?.addEventListener("submit", (e) => {
-    const b = e.target.querySelector("button"); b.disabled = true; b.textContent = "Gleicht ab …";
-  });
-</script>{% endblock %}
+{% block scripts %}
+<script src="/static/rezepte.js" defer></script>
+<script src="/static/vendor/alpine-3.17.5.min.js" defer></script>
+{% endblock %}

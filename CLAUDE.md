@@ -71,7 +71,9 @@ src/tischlein/
                Einstellungen (Paprika-Login, Kalender), Tags schreiben, Bild-Cache
   tagging.py   Kategorie-Differenzen nach Paprika schreiben (CSV-Befehl und Oberfläche)
   views.py     View-Modelle für die Templates (Woche, Rezepte, Einstellungen)
-  templates/   base, woche, rezepte, einstellungen (Jinja); static/ CSS und rezepte.js
+  templates/   base, woche, rezepte, einstellungen (Jinja, serverseitig gerendert)
+  static/      tischlein.css; rezepte.js = Alpine-Komponente der Rezepte-Seite (Markup im Template);
+               vendor/alpine-<version>.min.js, nur über `mise run vendor:alpine` aktualisieren
   planner.py   reine Funktion plan_week(...) – deterministisch über übergebenen Random
   store.py     SQLite (stdlib sqlite3), einzige Stelle mit SQL
   ics.py       ICS-Feed erzeugen (ohne Fremdbibliothek, floating local time)
@@ -80,6 +82,9 @@ src/tischlein/
 ```
 
 Regeln für den Code:
+- Frontend ohne Build-Schritt: Jinja für alles, Alpine.js nur wo Zustand im Browser nötig ist
+  (Rezepte-Seite). Kein CDN; Version und npm-Prüfsumme stehen im Task `vendor:alpine`.
+- `Store` ist threadsicher (eine Sperre um jede Methode), weil der Server parallel anfragt.
 - `planner.py` und `paprika.py` bleiben frei von Datenbank und HTTP, damit sie direkt testbar sind.
 - Neue Planungsregeln immer zuerst als Test in `tests/test_planner.py`.
 - Bezeichner im Code englisch, Texte in UI, Kalender und Konfiguration deutsch.

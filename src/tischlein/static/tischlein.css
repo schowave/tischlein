@@ -371,3 +371,5 @@ details[open] summary { color: var(--text); }
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; }
 }
+
+[x-cloak] { display: none !important; }
