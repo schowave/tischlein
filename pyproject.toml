@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Familien-Essensplan: rotiert bewährte Mittagessen aus Paprika, plant Neu-Slots, liefert ICS-Kalender."
 readme = "README.md"
 authors = [
-    { name = "David Schowalter", email = "david.schowalter@iteratec.com" }
+    { name = "David Schowalter", email = "schowalter.david@gmail.com" }
 ]
 requires-python = ">=3.15,<3.16"
 dependencies = [
