@@ -13,4 +13,4 @@ command -v curl >/dev/null || { apt-get update && apt-get install -y curl; }
 systemctl daemon-reload
 systemctl enable --now tischlein-update.timer
 systemctl start tischlein-update.service
-systemctl --no-pager status tischlein-update.service | tail -5
+systemctl --no-pager status tischlein-update.service | tail -5 || true  # oneshot meldet danach "inactive" (Code 3)
