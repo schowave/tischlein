@@ -180,7 +180,9 @@ class Store:
 
     @staticmethod
     def _meal(m: sqlite3.Row) -> Meal:
-        return Meal(date.fromisoformat(m["day"]), m["recipe_uid"], m["name"], m["theme"], bool(m["is_new"]), m["reason"])
+        return Meal(
+            date.fromisoformat(m["day"]), m["recipe_uid"], m["name"], m["theme"], bool(m["is_new"]), m["reason"]
+        )
 
     # Feedback --------------------------------------------------------------
 

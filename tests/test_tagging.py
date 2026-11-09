@@ -14,13 +14,31 @@ class WritablePaprika:
     """Fake Paprika that records writes and serves state back."""
 
     def __init__(self, ignore_category_create=False):
-        self.cats = [{"uid": "C-HS", "name": "Hauptspeisen", "order_flag": 3, "parent_uid": None},
-                     {"uid": "C-BEI", "name": "Beilage", "order_flag": 5, "parent_uid": None}]
+        self.cats = [
+            {"uid": "C-HS", "name": "Hauptspeisen", "order_flag": 3, "parent_uid": None},
+            {"uid": "C-BEI", "name": "Beilage", "order_flag": 5, "parent_uid": None},
+        ]
         self.recipes = {
-            "R1": {"uid": "R1", "name": "Bowl", "categories": ["C-HS", "C-USER"], "hash": "x",
-                   "photo": "", "photo_hash": "", "photo_large": None, "photo_url": "http://p", "notes": "n"},
-            "R2": {"uid": "R2", "name": "Püree", "categories": ["C-HS"], "hash": "y",
-                   "photo": "a.jpg", "photo_hash": "h", "photo_large": None},
+            "R1": {
+                "uid": "R1",
+                "name": "Bowl",
+                "categories": ["C-HS", "C-USER"],
+                "hash": "x",
+                "photo": "",
+                "photo_hash": "",
+                "photo_large": None,
+                "photo_url": "http://p",
+                "notes": "n",
+            },
+            "R2": {
+                "uid": "R2",
+                "name": "Püree",
+                "categories": ["C-HS"],
+                "hash": "y",
+                "photo": "a.jpg",
+                "photo_hash": "h",
+                "photo_large": None,
+            },
         }
         self.ignore_category_create = ignore_category_create
         self.posts: list[tuple[str, object]] = []
@@ -41,7 +59,10 @@ class WritablePaprika:
             return 200, json.dumps({"result": {"token": "T"}}).encode()
         assert headers["Authorization"] == "Bearer T" and path.startswith("v2/sync/")
         path = path.removeprefix("v2/sync/")
-        ok = lambda x: (200, json.dumps({"result": x}).encode())
+
+        def ok(x):
+            return 200, json.dumps({"result": x}).encode()
+
         if method == "GET":
             if path == "categories/":
                 return ok(self.cats)
@@ -82,7 +103,7 @@ def test_dry_run_writes_nothing():
 def test_execute_creates_category_applies_delta_and_notifies(tmp_path):
     fake = WritablePaprika()
     backup = tmp_path / "b.jsonl"
-    r = apply_changes(client(fake), CHANGES, execute=True, backup=backup, log=lambda _: None, delay=0)
+    apply_changes(client(fake), CHANGES, execute=True, backup=backup, log=lambda _: None, delay=0)
 
     new_cat = next(c for c in fake.cats if c["name"] == "Hähnchen")
     assert new_cat["uid"] == new_cat["uid"].upper() and new_cat["order_flag"] == 6
@@ -90,12 +111,16 @@ def test_execute_creates_category_applies_delta_and_notifies(tmp_path):
     assert bowl["categories"] == ["C-HS", "C-USER", new_cat["uid"]]  # unknown user category kept
     assert bowl["notes"] == "n" and "photo_url" not in bowl
     assert bowl["photo"] is None and bowl["photo_hash"] is None
-    expected = hashlib.sha256(json.dumps({k: v for k, v in bowl.items() if k != "hash"}, sort_keys=True).encode()).hexdigest().upper()
+    expected = (
+        hashlib.sha256(json.dumps({k: v for k, v in bowl.items() if k != "hash"}, sort_keys=True).encode())
+        .hexdigest()
+        .upper()
+    )
     assert bowl["hash"] == expected
     assert fake.recipes["R2"]["categories"] == ["C-BEI"]
     assert fake.recipes["R2"]["photo"] == "a.jpg"
     assert [p for p, _ in fake.posts][-1] == "notify/"
-    assert [json.loads(l)["uid"] for l in backup.read_text().splitlines()] == ["R1", "R2"]
+    assert [json.loads(line)["uid"] for line in backup.read_text().splitlines()] == ["R1", "R2"]
 
     # second run is a no-op
     fake.posts.clear()

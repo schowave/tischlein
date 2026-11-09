@@ -1,12 +1,12 @@
 import json
 
 import pytest
+from test_tagging import WritablePaprika, client
 
 from tischlein.config import DayRule, PlanConfig
 from tischlein.paprika_sync import PaprikaError
 from tischlein.service import Tischlein
 from tischlein.store import Store
-from test_tagging import WritablePaprika, client
 
 
 @pytest.fixture
@@ -57,11 +57,22 @@ def test_theme_supply_counts_kid_ok_against_rotation_need(svc):
 
 
 def test_recipe_details_parse_ingredients(svc):
-    svc.store.set_raw_recipe("R1", "x", {"uid": "R1", "ingredients": "**Sauce**\n200 g Sahne\n\n=====\nTeig:\n2 **Eier**", "servings": "4 ", "total_time": "45 Min."})
+    svc.store.set_raw_recipe(
+        "R1",
+        "x",
+        {
+            "uid": "R1",
+            "ingredients": "**Sauce**\n200 g Sahne\n\n=====\nTeig:\n2 **Eier**",
+            "servings": "4 ",
+            "total_time": "45 Min.",
+        },
+    )
     d = svc.recipe_details("R1")
     assert d["zutaten"] == [
-        {"text": "Sauce", "kopf": True}, {"text": "200 g Sahne", "kopf": False},
-        {"text": "Teig", "kopf": True}, {"text": "2 Eier", "kopf": False},
+        {"text": "Sauce", "kopf": True},
+        {"text": "200 g Sahne", "kopf": False},
+        {"text": "Teig", "kopf": True},
+        {"text": "2 Eier", "kopf": False},
     ]
     assert d["portionen"] == "4" and d["zeit"] == "45 Min." and d["bild"] is False
     with pytest.raises(KeyError):

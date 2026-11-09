@@ -57,9 +57,7 @@ def _weekday(value: str) -> int:
 def parse_config(data: dict) -> PlanConfig:
     plan = data.get("plan", {})
     default = PlanConfig()
-    days = tuple(
-        DayRule(_weekday(d["tag"]), d["thema"]) for d in data.get("tage", [])
-    ) or default.days
+    days = tuple(DayRule(_weekday(d["tag"]), d["thema"]) for d in data.get("tage", [])) or default.days
     new_slot = plan.get("neu_slot", "do")
     hour, minute = (int(x) for x in plan.get("mittag_uhrzeit", "12:00").split(":"))
     return PlanConfig(

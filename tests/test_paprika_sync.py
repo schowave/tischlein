@@ -59,11 +59,13 @@ def client(fake):
 
 
 def test_full_sync_maps_category_uids_and_skips_trash():
-    fake = FakePaprika({
-        "R1": recipe("R1", "h1", ["c-fisch", "c-kids", "c-unknown", "c-old"]),
-        "R2": recipe("R2", "h2", in_trash=True),
-        "R3": recipe("R3", "h3", deleted=True),
-    })
+    fake = FakePaprika(
+        {
+            "R1": recipe("R1", "h1", ["c-fisch", "c-kids", "c-unknown", "c-old"]),
+            "R2": recipe("R2", "h2", in_trash=True),
+            "R3": recipe("R3", "h3", deleted=True),
+        }
+    )
     result = client(fake).sync({})
 
     assert fake.login_body == {"email": ["a@b.de"], "password": ["geheim"]}

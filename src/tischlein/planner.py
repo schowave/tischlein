@@ -86,10 +86,14 @@ def plan_day(
         reason = f"Kein {cfg.kid_tag}-Rezept zum Thema {rule.theme}"
     recipe, pick_reason = _pick(pool, day, taken, last_cooked, cfg.cooldown_weeks, rng)
     if recipe is None:
-        return Meal(day, None, f"Freie Wahl ({rule.theme})", rule.theme,
-                    reason=f"Kein Rezept mit Kategorie „{rule.theme}“ gefunden")
-    return Meal(day, recipe.uid, recipe.name, rule.theme,
-                reason="; ".join(x for x in (reason, pick_reason) if x))
+        return Meal(
+            day,
+            None,
+            f"Freie Wahl ({rule.theme})",
+            rule.theme,
+            reason=f"Kein Rezept mit Kategorie „{rule.theme}“ gefunden",
+        )
+    return Meal(day, recipe.uid, recipe.name, rule.theme, reason="; ".join(x for x in (reason, pick_reason) if x))
 
 
 def plan_week(

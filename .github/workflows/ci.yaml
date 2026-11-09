@@ -1,0 +1,56 @@
+name: CI
+
+# Dieselben mise-Tasks wie lokal: Werkzeuge aus mise.toml/mise.lock, Abhängigkeiten aus uv.lock.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Lint und Tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: mise-Version aus mise.toml lesen
+        id: pins
+        run: |
+          mise=$(sed -n 's/^min_version = "\(.*\)".*/\1/p' mise.toml)
+          test -n "$mise"
+          echo "mise=$mise" >> "$GITHUB_OUTPUT"
+      - uses: jdx/mise-action@v2
+        with:
+          version: ${{ steps.pins.outputs.mise }}
+          install: true
+          cache: true
+        env:
+          MISE_LOCKED: "1"
+      - run: mise run setup
+      - run: mise run check
+
+  docker:
+    name: Docker-Image bauen
+    runs-on: ubuntu-24.04
+    needs: check
+    steps:
+      - uses: actions/checkout@v4
+      - name: mise-Version aus mise.toml lesen
+        id: pins
+        run: |
+          mise=$(sed -n 's/^min_version = "\(.*\)".*/\1/p' mise.toml)
+          test -n "$mise"
+          echo "mise=$mise" >> "$GITHUB_OUTPUT"
+      - uses: jdx/mise-action@v2
+        with:
+          version: ${{ steps.pins.outputs.mise }}
+          install: false
+      - run: mise run docker:build
+      - name: Rauchtest des Images
+        run: |
+          docker run -d --name smoke -p 8080:8080 tischlein:latest
+          for i in $(seq 1 30); do curl -sf localhost:8080/healthz && exit 0; sleep 1; done
+          docker logs smoke; exit 1

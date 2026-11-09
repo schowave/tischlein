@@ -16,10 +16,10 @@ import gzip
 import hashlib
 import json
 import time
-import uuid
 import urllib.error
 import urllib.parse
 import urllib.request
+import uuid
 from base64 import b64encode
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
@@ -98,11 +98,16 @@ class PaprikaClient:
     def login(self) -> None:
         basic = b64encode(f"{self._email}:{self._password}".encode()).decode()
         body = urllib.parse.urlencode({"email": self._email, "password": self._password}).encode()
-        status, raw = self._transport("POST", f"{self._base}/v1/account/login/", {
-            "User-Agent": self._user_agent,
-            "Authorization": f"Basic {basic}",
-            "Content-Type": "application/x-www-form-urlencoded",
-        }, body)
+        status, raw = self._transport(
+            "POST",
+            f"{self._base}/v1/account/login/",
+            {
+                "User-Agent": self._user_agent,
+                "Authorization": f"Basic {basic}",
+                "Content-Type": "application/x-www-form-urlencoded",
+            },
+            body,
+        )
         if status in (401, 403):
             raise PaprikaError("Paprika-Anmeldung fehlgeschlagen: E-Mail oder Passwort falsch")
         if status != 200:
@@ -130,10 +135,14 @@ class PaprikaClient:
         if payload is not None:
             boundary = uuid.uuid4().hex
             body = (
-                f"--{boundary}\r\n"
-                'Content-Disposition: form-data; name="data"; filename="data"\r\n'
-                "Content-Type: application/octet-stream\r\n\r\n"
-            ).encode() + gzip.compress(json.dumps(payload).encode()) + f"\r\n--{boundary}--\r\n".encode()
+                (
+                    f"--{boundary}\r\n"
+                    'Content-Disposition: form-data; name="data"; filename="data"\r\n'
+                    "Content-Type: application/octet-stream\r\n\r\n"
+                ).encode()
+                + gzip.compress(json.dumps(payload).encode())
+                + f"\r\n--{boundary}--\r\n".encode()
+            )
             headers["Content-Type"] = f"multipart/form-data; boundary={boundary}"
         status, raw = self._transport("POST", f"{self._base}/v2/{path}", headers, body)
         return self._check(path, status, raw)
@@ -144,9 +153,10 @@ class PaprikaClient:
     def create_category(self, name: str, order_flag: int = 0) -> str:
         """Create a category. Undocumented: modelled on the recipe/meal endpoints."""
         uid = str(uuid.uuid4()).upper()
-        self._post("sync/categories/", [
-            {"uid": uid, "name": name, "parent_uid": None, "order_flag": order_flag, "deleted": False}
-        ])
+        self._post(
+            "sync/categories/",
+            [{"uid": uid, "name": name, "parent_uid": None, "order_flag": order_flag, "deleted": False}],
+        )
         return uid
 
     def update_recipe(self, data: dict) -> None:
@@ -165,15 +175,19 @@ class PaprikaClient:
     def _get(self, path: str):
         if self._token is None:
             self.login()
-        status, raw = self._transport("GET", f"{self._base}/v2/{path}", {
-            "User-Agent": self._user_agent,
-            "Authorization": f"Bearer {self._token}",
-        }, None)
+        status, raw = self._transport(
+            "GET",
+            f"{self._base}/v2/{path}",
+            {
+                "User-Agent": self._user_agent,
+                "Authorization": f"Bearer {self._token}",
+            },
+            None,
+        )
         return self._check(path, status, raw)
 
     def categories(self) -> dict[str, str]:
-        return {c["uid"]: c["name"] for c in self.categories_raw()
-                if not c.get("deleted") and c.get("name")}
+        return {c["uid"]: c["name"] for c in self.categories_raw() if not c.get("deleted") and c.get("name")}
 
     def recipe_index(self) -> dict[str, str]:
         return {r["uid"]: r.get("hash", "") for r in self._get("sync/recipes/")}
@@ -202,5 +216,10 @@ class PaprikaClient:
             if not c.data.get("in_trash") and not c.data.get("deleted")
         ]
         removed = len(set(cache) - set(new_cache))
-        return SyncResult(sorted(recipes, key=lambda r: r.name), new_cache, fetched, removed,
-                          sorted(set(names.values()), key=str.casefold))
+        return SyncResult(
+            sorted(recipes, key=lambda r: r.name),
+            new_cache,
+            fetched,
+            removed,
+            sorted(set(names.values()), key=str.casefold),
+        )

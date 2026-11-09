@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from .config import PlanConfig
 from .models import WeekPlan
@@ -26,9 +26,10 @@ def _fold(line: str) -> list[str]:
     return [out[0]] + [" " + part for part in out[1:]]
 
 
-def render(plans: Iterable[WeekPlan], config: PlanConfig, now: datetime | None = None,
-           name: str = "Tischlein Mittagessen") -> str:
-    stamp = (now or datetime.now(timezone.utc)).strftime("%Y%m%dT%H%M%SZ")
+def render(
+    plans: Iterable[WeekPlan], config: PlanConfig, now: datetime | None = None, name: str = "Tischlein Mittagessen"
+) -> str:
+    stamp = (now or datetime.now(UTC)).strftime("%Y%m%dT%H%M%SZ")
     lines = [
         "BEGIN:VCALENDAR",
         "VERSION:2.0",

@@ -9,13 +9,19 @@ landen im Kalender.
 
 ## Befehle
 
+Werkzeuge (Python, uv, ruff) und Abläufe verwaltet mise (`mise.toml`, `mise.lock`), CI und
+Docker-Build nutzen dieselben Tasks. Befehle immer über mise ausführen.
+
 ```bash
-uv run pytest                                    # alle Tests
+mise run setup                                   # frischer Klon -> lauffähig
+mise run check                                   # ruff + Tests, wie im CI
+mise run serve                                   # Web + API auf :8080 (liest .env)
+mise run docker:build                            # Image bauen (mise auch im Image)
 uv run tischlein sync                            # Rezepte aus der Paprika-Cloud abgleichen
 uv run tischlein import Rezepte.paprikarecipes   # alternativ: Paprika-Export einlesen
 uv run tischlein plan --woche naechste           # Plan erzeugen (Entwurf)
 uv run tischlein serve                           # Web + API auf :8080
-docker compose up -d --build                     # Container, Daten in ./data
+docker compose up -d                             # Container aus mise run docker:build, Daten in ./data
 ```
 
 Konfiguration: `tischlein.toml` (Wochenschema, Tags, Cooldown). Pfad über `TISCHLEIN_CONFIG`,

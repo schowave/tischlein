@@ -1,4 +1,4 @@
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 
 from tischlein.config import PlanConfig
 from tischlein.ics import render
@@ -6,10 +6,14 @@ from tischlein.models import Meal, WeekPlan
 
 
 def test_renders_events_with_escaping_and_crlf():
-    plan = WeekPlan(date(2026, 11, 16), "freigegeben", [
-        Meal(date(2026, 11, 19), "x", "Shakshuka, scharf; mit Brot", "Eier/Quark", True, "Hinweis"),
-    ])
-    out = render([plan], PlanConfig(), now=datetime(2026, 11, 9, tzinfo=timezone.utc))
+    plan = WeekPlan(
+        date(2026, 11, 16),
+        "freigegeben",
+        [
+            Meal(date(2026, 11, 19), "x", "Shakshuka, scharf; mit Brot", "Eier/Quark", True, "Hinweis"),
+        ],
+    )
+    out = render([plan], PlanConfig(), now=datetime(2026, 11, 9, tzinfo=UTC))
 
     assert out.startswith("BEGIN:VCALENDAR\r\n") and out.endswith("END:VCALENDAR\r\n")
     assert "DTSTART:20261119T120000\r\n" in out

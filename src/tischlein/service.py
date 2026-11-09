@@ -3,26 +3,26 @@
 from __future__ import annotations
 
 import json
+import os
 import random
+import secrets
 import threading
 import time
 import urllib.request
 from collections.abc import Callable
 from dataclasses import replace
-import os
-import secrets
 from datetime import date, datetime, timedelta
 from datetime import time as dtime
 from pathlib import Path
 
 from . import ics
 from .config import PlanConfig
-from .paprika_sync import CachedRecipe, PaprikaClient, PaprikaError
 from .models import Recipe, Verdict, WeekPlan
 from .paprika import recipe_from_json
-from .tagging import Change, apply_changes
+from .paprika_sync import CachedRecipe, PaprikaClient, PaprikaError
 from .planner import plan_week, week_start_of
 from .store import Store
+from .tagging import Change, apply_changes
 
 
 def _download(url: str) -> bytes:
@@ -33,7 +33,7 @@ def _download(url: str) -> bytes:
         return resp.read()
 
 
-def from_env() -> "Tischlein":
+def from_env() -> Tischlein:
     """Build the service from environment variables (shared by web app and CLI)."""
     from .config import load_config
     from .paprika_sync import DEFAULT_USER_AGENT
@@ -41,7 +41,8 @@ def from_env() -> "Tischlein":
     email, password = os.environ.get("PAPRIKA_EMAIL", ""), os.environ.get("PAPRIKA_PASSWORD", "")
     paprika = (
         PaprikaClient(email, password, user_agent=os.environ.get("PAPRIKA_USER_AGENT", DEFAULT_USER_AGENT))
-        if email and password else None
+        if email and password
+        else None
     )
     return Tischlein(
         Store(os.environ.get("TISCHLEIN_DB", "data/tischlein.db")),
@@ -128,7 +129,7 @@ class Tischlein:
             hour, minute = (int(x) for x in uhrzeit.split(":"))
             dtime(hour, minute)
         except (ValueError, TypeError):
-            raise ValueError("Uhrzeit bitte als HH:MM angeben, z. B. 12:15.")
+            raise ValueError("Uhrzeit bitte als HH:MM angeben, z. B. 12:15.") from None
         if not 10 <= minuten <= 240:
             raise ValueError("Die Dauer muss zwischen 10 und 240 Minuten liegen.")
         self.store.set_meta("kalender_name", name)
@@ -167,8 +168,12 @@ class Tischlein:
         backup = self.backup_dir / "paprika-backup-oberflaeche.jsonl" if self.backup_dir else None
         with self._paprika_lock:
             report = apply_changes(
-                self.paprika, [Change(uid, current.name, tuple(add), tuple(remove))],
-                execute=True, backup=backup, log=lambda _: None, delay=0,
+                self.paprika,
+                [Change(uid, current.name, tuple(add), tuple(remove))],
+                execute=True,
+                backup=backup,
+                log=lambda _: None,
+                delay=0,
             )
             if report.missing:
                 raise KeyError(f"„{current.name}“ gibt es in Paprika nicht mehr")
@@ -193,7 +198,8 @@ class Tischlein:
             if not text or set(text) <= set("=-*_ "):
                 continue
             heading = (text.startswith("**") and text.rstrip(":").endswith("**")) or (
-                text.endswith(":") and len(text) < 40)
+                text.endswith(":") and len(text) < 40
+            )
             lines.append({"text": text.strip("*: ").strip() if heading else text.replace("**", ""), "kopf": heading})
         return {
             "uid": uid,
@@ -282,8 +288,15 @@ class Tischlein:
         for theme in self.config.themes:
             themed = [r for r in recipes if r.has_tag(theme) and feedback.get(r.uid) != "nein"]
             kid = [r for r in themed if r.has_tag(self.config.kid_tag) or feedback.get(r.uid) == "ok"]
-            out.append({"thema": theme, "rezepte": len(themed), "kinder_ok": len(kid), "bedarf": need,
-                        "hat_tag": theme.casefold() in day_themes})
+            out.append(
+                {
+                    "thema": theme,
+                    "rezepte": len(themed),
+                    "kinder_ok": len(kid),
+                    "bedarf": need,
+                    "hat_tag": theme.casefold() in day_themes,
+                }
+            )
         return out
 
     def sync_paprika(self) -> str:
@@ -356,7 +369,8 @@ class Tischlein:
         if current.recipe_uid:
             plan.meals = [
                 replace(current, reason="Keine Alternative zum Thema vorhanden")
-                if m.day == day and m.recipe_uid is None else m
+                if m.day == day and m.recipe_uid is None
+                else m
                 for m in plan.meals
             ]
         self.store.save_plan(plan)
@@ -380,12 +394,14 @@ class Tischlein:
     def _notify(self, plan: WeekPlan) -> None:
         if not self.webhook_url:
             return
-        body = json.dumps({
-            "titel": "Mahlzeit",
-            "nachricht": f"Plan für die Woche ab {plan.week_start:%d.%m.} ist da",
-            "woche": plan.week_start.isoformat(),
-            "gerichte": [m.name for m in plan.meals],
-        }).encode()
+        body = json.dumps(
+            {
+                "titel": "Mahlzeit",
+                "nachricht": f"Plan für die Woche ab {plan.week_start:%d.%m.} ist da",
+                "woche": plan.week_start.isoformat(),
+                "gerichte": [m.name for m in plan.meals],
+            }
+        ).encode()
         req = urllib.request.Request(self.webhook_url, body, {"Content-Type": "application/json"})
         try:
             urllib.request.urlopen(req, timeout=5).close()

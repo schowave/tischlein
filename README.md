@@ -41,12 +41,15 @@ Das Prinzip ist „Sous-Chef“: Tischlein schlägt vor, die Familie gibt frei.
 
 ## Schnellstart mit Docker
 
-Voraussetzungen: Docker mit Compose und ein Paprika-Konto mit aktivierter Cloud-Synchronisation.
+Voraussetzungen: [mise](https://mise.jdx.dev), Docker mit Compose und ein Paprika-Konto mit
+aktivierter Cloud-Synchronisation.
 
 ```bash
 git clone git@github.com:schowave/tischlein.git
 cd tischlein
-docker compose up -d --build
+mise trust && mise run docker:build
+mkdir -p data && sudo chown 10001 data   # der Container läuft als UID 10001
+docker compose up -d
 ```
 
 Danach `http://<host>:8080` öffnen. Die Daten liegen im Ordner `./data`.
@@ -117,6 +120,9 @@ wird nie eingecheckt.
 
 ## Bedienung über die Kommandozeile
 
+Alle Befehle laufen in der von mise verwalteten Umgebung (`mise exec --` davor oder mise in der
+Shell aktivieren):
+
 ```bash
 uv run tischlein sync                                   # Rezepte mit Paprika abgleichen
 uv run tischlein plan --woche naechste [--freigeben]    # Plan erzeugen
@@ -164,13 +170,22 @@ Weil der Paprika-Zugang in der Datenbank steht, sollte `./data` nur für euch le
 
 ## Entwicklung
 
-Voraussetzungen: Python 3.13 und [uv](https://docs.astral.sh/uv/).
+Einzige Voraussetzung ist [mise](https://mise.jdx.dev). Es installiert Python, uv und ruff in den
+Versionen aus `mise.toml`, abgesichert über die Prüfsummen in `mise.lock`. Die Python-Abhängigkeiten
+kommen strikt aus `uv.lock`. CI und Docker-Build nutzen dieselben Tasks, ein grünes
+`mise run check` lokal ist also ein grünes CI.
 
 ```bash
-uv sync
-uv run pytest
-uv run tischlein serve --port 8080
+mise trust && mise run setup   # Werkzeuge und Abhängigkeiten
+mise run check                 # ruff und Tests, wie im CI
+mise run serve                 # lokal auf :8080, liest .env falls vorhanden
+mise run docker:build          # Image bauen
+mise tasks                     # alle Tasks
 ```
+
+Versionen aktualisieren: Version in `mise.toml` anheben, dann `mise lock --platform
+linux-x64,linux-arm64,macos-arm64` für die Werkzeuge und `mise exec -- uv lock --upgrade` für die
+Python-Abhängigkeiten.
 
 Den Aufbau, die Domänensprache, die Planungsregeln und die Details zur Paprika-Schnittstelle
 beschreibt [`CLAUDE.md`](CLAUDE.md). Neue Planungsregeln kommen immer zuerst als Test in

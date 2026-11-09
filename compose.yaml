@@ -1,16 +1,14 @@
+# Das Image entsteht mit `mise run docker:build` (Werkzeuge aus mise.toml/mise.lock).
 services:
   tischlein:
-    build: .
+    image: tischlein:latest
     container_name: tischlein
     restart: unless-stopped
     ports:
       - "8080:8080"
     env_file:
-      - path: .env          # PAPRIKA_EMAIL, PAPRIKA_PASSWORD (nicht committen)
+      - path: .env          # optional: PAPRIKA_EMAIL, PAPRIKA_PASSWORD, HA_WEBHOOK_URL (nicht committen)
         required: false
-    environment:
-      TZ: Europe/Berlin
-      # HA_WEBHOOK_URL: http://homeassistant.local:8123/api/webhook/tischlein
     volumes:
-      - ./data:/data
+      - ./data:/data        # muss für UID 10001 (Benutzer im Container) beschreibbar sein
       - ./tischlein.toml:/app/tischlein.toml:ro

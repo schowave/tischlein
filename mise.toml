@@ -1,0 +1,53 @@
+# Werkzeuge und Abläufe für dieses Repo – eine Quelle für lokal, CI und Docker-Build.
+min_version = "2026.11.5"  # dieselbe mise-Version nutzen CI und Docker-Build
+# Erstmalige Nutzung:  mise trust && mise run setup
+
+[settings]
+# mise.lock hält die exakten Versionen und Prüfsummen fest (für lokal und CI).
+lockfile = true
+
+[tools]
+# Exakt gepinnt: Der Docker-Build (Dockerfile) und das CI installieren dieselben Versionen über mise.
+python = "3.15.2"
+uv = "0.13.7"
+ruff = "0.17.4"
+
+[env]
+# mise legt .venv mit dem gepinnten Python an und aktiviert es; uv sync installiert hinein.
+_.python.venv = { path = ".venv", create = true }
+# uv lädt nie ein eigenes Python herunter – es gilt das aus mise.toml.
+UV_PYTHON_DOWNLOADS = "never"
+# .env wird NICHT hier geladen – sie enthält den Paprika-Zugang; `mise run serve` liest sie selbst.
+
+[tasks.setup]
+description = "Frischer Klon -> lauffähig: Toolchain und Abhängigkeiten installieren"
+run = ["mise install", "uv sync --frozen"]
+
+[tasks.lint]
+description = "Statische Prüfung mit ruff (Fehler, Importe, moderne Syntax)"
+run = "ruff check src tests"
+
+[tasks.format]
+description = "Code mit ruff formatieren"
+run = ["ruff check --fix src tests", "ruff format src tests"]
+
+[tasks.test]
+description = "Alle Tests"
+run = "uv run --frozen pytest -q"
+
+[tasks.check]
+description = "Alles, was vor einem Push grün sein muss (läuft genauso im CI)"
+depends = ["lint", "test"]
+
+[tasks.serve]
+description = "Web-Oberfläche lokal starten, Paprika-Zugang aus .env falls vorhanden"
+run = "if [ -f .env ]; then set -a; . ./.env; set +a; fi; exec uv run --frozen tischlein serve --port ${PORT:-8080}"
+
+[tasks."docker:build"]
+description = "Container-Image bauen (Werkzeuge im Image kommen ebenfalls aus mise.toml/mise.lock)"
+# Die mise-Version im Image ist min_version aus dieser Datei, nicht die zufällig lokal installierte.
+run = "docker build --build-arg MISE_VERSION=$(sed -n 's/^min_version = \"\\(.*\\)\".*/\\1/p' mise.toml) -t tischlein:latest -t tischlein:$(git rev-parse --short HEAD) ."
+
+[tasks."docker:run"]
+description = "Gebautes Image lokal starten, Daten in ./data"
+run = "docker run --rm -p 8080:8080 -v \"$PWD/data:/data\" --env-file .env tischlein:latest"

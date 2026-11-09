@@ -14,7 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
-from . import ics, paprika
+from . import paprika
 from .config import WEEKDAY_NAMES
 from .models import WeekPlan
 from .paprika_sync import PaprikaError
@@ -37,8 +37,15 @@ def _plan_json(plan: WeekPlan | None) -> dict:
         "woche": plan.week_start.isoformat(),
         "status": plan.status,
         "mahlzeiten": [
-            {"datum": m.day.isoformat(), "wochentag": WEEKDAY_NAMES[m.day.weekday()], "gericht": m.name,
-             "thema": m.theme, "neu": m.is_new, "hinweis": m.reason, "rezept_uid": m.recipe_uid}
+            {
+                "datum": m.day.isoformat(),
+                "wochentag": WEEKDAY_NAMES[m.day.weekday()],
+                "gericht": m.name,
+                "thema": m.theme,
+                "neu": m.is_new,
+                "hinweis": m.reason,
+                "rezept_uid": m.recipe_uid,
+            }
             for m in plan.meals
         ],
     }
@@ -55,13 +62,13 @@ def create_app(service: Tischlein | None = None) -> FastAPI:
         try:
             return service.resolve_week(which)
         except ValueError:
-            raise HTTPException(400, "Woche: 'aktuell', 'naechste' oder ein Datum (JJJJ-MM-TT)")
+            raise HTTPException(400, "Woche: 'aktuell', 'naechste' oder ein Datum (JJJJ-MM-TT)") from None
 
     def guard(fn, *args):
         try:
             return fn(*args)
         except KeyError as e:
-            raise HTTPException(404, str(e.args[0]))
+            raise HTTPException(404, str(e.args[0])) from e
 
     # Web UI ----------------------------------------------------------------
 
@@ -148,7 +155,7 @@ def create_app(service: Tischlein | None = None) -> FastAPI:
         try:
             recipes = paprika.read_export(io.BytesIO(await datei.read()))
         except (zipfile.BadZipFile, ValueError, KeyError):
-            raise HTTPException(400, "Keine gültige .paprikarecipes-Datei")
+            raise HTTPException(400, "Keine gültige .paprikarecipes-Datei") from None
         service.store.replace_recipes(recipes)
         return back()
 
@@ -174,9 +181,9 @@ def create_app(service: Tischlein | None = None) -> FastAPI:
         try:
             service.set_recipe_trashed(uid, True)
         except KeyError as e:
-            raise HTTPException(404, str(e.args[0]))
+            raise HTTPException(404, str(e.args[0])) from e
         except PaprikaError as e:
-            raise HTTPException(502, str(e))
+            raise HTTPException(502, str(e)) from e
         return {"ok": True}
 
     @app.post("/api/rezepte/{uid}/wiederherstellen")
@@ -184,9 +191,9 @@ def create_app(service: Tischlein | None = None) -> FastAPI:
         try:
             r = service.set_recipe_trashed(uid, False)
         except KeyError as e:
-            raise HTTPException(404, str(e.args[0]))
+            raise HTTPException(404, str(e.args[0])) from e
         except PaprikaError as e:
-            raise HTTPException(502, str(e))
+            raise HTTPException(502, str(e)) from e
         return recipe_json(service, r, service.store.feedback())
 
     @app.post("/api/rezepte/{uid}/tags")
@@ -194,9 +201,9 @@ def create_app(service: Tischlein | None = None) -> FastAPI:
         try:
             r = service.edit_recipe_tags(uid, body.hinzufuegen, body.entfernen)
         except KeyError as e:
-            raise HTTPException(404, str(e.args[0]))
+            raise HTTPException(404, str(e.args[0])) from e
         except (PaprikaError, RuntimeError) as e:
-            raise HTTPException(502, str(e))
+            raise HTTPException(502, str(e)) from e
         return recipe_json(service, r, service.store.feedback())
 
     @app.get("/api/plan")
@@ -208,7 +215,7 @@ def create_app(service: Tischlein | None = None) -> FastAPI:
         try:
             return {"ok": True, "ergebnis": service.sync_paprika()}
         except PaprikaError as e:
-            raise HTTPException(502, str(e))
+            raise HTTPException(502, str(e)) from e
 
     @app.post("/api/plaene/{which}/erzeugen")
     def api_generate(which: str):
@@ -225,8 +232,13 @@ def create_app(service: Tischlein | None = None) -> FastAPI:
         meal = next((m for m in plan.meals if m.day == today), None) if plan else None
         if meal is None:
             return {"gericht": "nichts geplant", "datum": today.isoformat()}
-        return {"gericht": meal.name, "datum": today.isoformat(), "thema": meal.theme,
-                "neu": meal.is_new, "freigegeben": plan.status == "freigegeben"}
+        return {
+            "gericht": meal.name,
+            "datum": today.isoformat(),
+            "thema": meal.theme,
+            "neu": meal.is_new,
+            "freigegeben": plan.status == "freigegeben",
+        }
 
     @app.get("/kalender.ics")
     def calendar():

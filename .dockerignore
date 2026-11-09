@@ -5,3 +5,7 @@ data
 .pytest_cache
 **/__pycache__
 *.paprikarecipes
+.taste-skill
+.github
+.claude
+tests

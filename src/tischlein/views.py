@@ -8,8 +8,20 @@ from .config import WEEKDAY_NAMES
 from .models import Recipe, WeekPlan
 from .service import Tischlein
 
-MONTHS = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August",
-          "September", "Oktober", "November", "Dezember"]
+MONTHS = [
+    "Januar",
+    "Februar",
+    "März",
+    "April",
+    "Mai",
+    "Juni",
+    "Juli",
+    "August",
+    "September",
+    "Oktober",
+    "November",
+    "Dezember",
+]
 
 
 def long_date(d: date) -> str:
@@ -31,9 +43,14 @@ def is_kid_ok(svc: Tischlein, r: Recipe | None, feedback: dict) -> bool:
 def recipe_json(svc: Tischlein, r: Recipe, feedback: dict) -> dict:
     themes = [t for t in svc.config.themes if r.has_tag(t)]
     return {
-        "uid": r.uid, "name": r.name, "tags": list(r.tags), "rating": r.rating,
-        "kinder_ok": is_kid_ok(svc, r, feedback), "kinder_tag": r.has_tag(svc.config.kid_tag),
-        "themen": themes, "hauptspeise": r.has_tag(svc.config.main_tag),
+        "uid": r.uid,
+        "name": r.name,
+        "tags": list(r.tags),
+        "rating": r.rating,
+        "kinder_ok": is_kid_ok(svc, r, feedback),
+        "kinder_tag": r.has_tag(svc.config.kid_tag),
+        "themen": themes,
+        "hauptspeise": r.has_tag(svc.config.main_tag),
         "rueckmeldung": feedback.get(r.uid),
         "bild": r.uid in svc_photos(svc),
     }
@@ -65,13 +82,19 @@ def week_view(svc: Tischlein, which: str | None, today: date) -> dict:
         d = start + timedelta(days=rule.weekday)
         meal = by_day.get(d)
         r = recipes.get(meal.recipe_uid) if meal and meal.recipe_uid else None
-        days.append({
-            "date": d, "weekday": WEEKDAY_NAMES[d.weekday()], "short": f"{d.day}.{d.month}.",
-            "theme": rule.theme, "meal": meal, "is_today": d == today,
-            "kinder_ok": is_kid_ok(svc, r, feedback),
-            "needs_feedback": bool(meal and meal.is_new and meal.recipe_uid and meal.recipe_uid not in feedback),
-            "feedback": feedback.get(meal.recipe_uid) if meal and meal.recipe_uid else None,
-        })
+        days.append(
+            {
+                "date": d,
+                "weekday": WEEKDAY_NAMES[d.weekday()],
+                "short": f"{d.day}.{d.month}.",
+                "theme": rule.theme,
+                "meal": meal,
+                "is_today": d == today,
+                "kinder_ok": is_kid_ok(svc, r, feedback),
+                "needs_feedback": bool(meal and meal.is_new and meal.recipe_uid and meal.recipe_uid not in feedback),
+                "feedback": feedback.get(meal.recipe_uid) if meal and meal.recipe_uid else None,
+            }
+        )
     planned = sum(1 for x in days if x["meal"] and x["meal"].recipe_uid)
     kid_in_plan = sum(1 for x in days if x["meal"] and x["kinder_ok"])
 
@@ -79,7 +102,9 @@ def week_view(svc: Tischlein, which: str | None, today: date) -> dict:
     kid_mains = sum(1 for r in mains if is_kid_ok(svc, r, feedback))
 
     today_meal = next((m for p in plans.values() if p for m in p.meals if m.day == today), None)
-    headline = f"Mahlzeit. Heute gibt’s {today_meal.theme}." if today_meal else "Mahlzeit. Für heute ist nichts geplant."
+    headline = (
+        f"Mahlzeit. Heute gibt’s {today_meal.theme}." if today_meal else "Mahlzeit. Für heute ist nichts geplant."
+    )
 
     if not shown:
         finding = f"Für {span(start, start + timedelta(days=4))} gibt es noch keinen Plan."
@@ -95,29 +120,47 @@ def week_view(svc: Tischlein, which: str | None, today: date) -> dict:
     def week_tile(key: str) -> dict:
         p = plans[key]
         n = sum(1 for m in p.meals if m.recipe_uid) if p else 0
-        state = "freigegeben" if p and p.status == "freigegeben" else ("Entwurf, wartet auf Freigabe" if p else "noch nicht geplant")
+        state = (
+            "freigegeben"
+            if p and p.status == "freigegeben"
+            else ("Entwurf, wartet auf Freigabe" if p else "noch nicht geplant")
+        )
         return {"value": f"{n} von {len(cfg.days)}", "caption": state}
 
     supply = svc.theme_supply()
-    lunch = lambda r: r.has_tag(cfg.main_tag) or any(r.has_tag(t) for t in cfg.themes)  # same rule as the planner
+
+    def lunch(r: Recipe) -> bool:  # same rule as the planner's new slot
+        return r.has_tag(cfg.main_tag) or any(r.has_tag(t) for t in cfg.themes)
+
     trial = [r for r in recipes.values() if r.has_tag(cfg.new_tag) and lunch(r) and r.uid not in feedback]
     return {
-        "which": which, "start": start, "plan": shown, "days": days,
+        "which": which,
+        "start": start,
+        "plan": shown,
+        "days": days,
         "range": span(start, start + timedelta(days=4)),
-        "headline": headline, "today_line": long_date(today), "finding": finding,
+        "headline": headline,
+        "today_line": long_date(today),
+        "finding": finding,
         "tiles": [
             {"label": "Diese Woche", **week_tile("aktuell")},
             {"label": "Nächste Woche", **week_tile("naechste")},
-            {"label": "Kinder-OK im Plan", "value": f"{kid_in_plan} von {planned}" if planned else "–",
-             "caption": "Gerichte der gezeigten Woche" if planned else "kein Plan in dieser Woche"},
+            {
+                "label": "Kinder-OK im Plan",
+                "value": f"{kid_in_plan} von {planned}" if planned else "–",
+                "caption": "Gerichte der gezeigten Woche" if planned else "kein Plan in dieser Woche",
+            },
             {"label": "Kinder-OK-Rezepte", "value": str(kid_mains), "caption": f"von {len(mains)} Hauptspeisen"},
         ],
         "supply": supply,
-        "trial": sorted(trial, key=lambda r: r.name.casefold())[:4], "trial_count": len(trial),
-        "new_tag": cfg.new_tag, "kid_tag": cfg.kid_tag,
+        "trial": sorted(trial, key=lambda r: r.name.casefold())[:4],
+        "trial_count": len(trial),
+        "new_tag": cfg.new_tag,
+        "kid_tag": cfg.kid_tag,
         "sync_enabled": svc.paprika is not None,
         "first_run": svc.paprika is None and not recipes,
-        "last_sync": svc.store.meta("last_sync"), "sync_error": svc.store.meta("last_sync_error"),
+        "last_sync": svc.store.meta("last_sync"),
+        "sync_error": svc.store.meta("last_sync_error"),
         "recipe_count": len(recipes),
     }
 
@@ -140,7 +183,9 @@ def recipes_view(svc: Tischlein) -> dict:
                 {"name": "Protein-Thema", "tags": themes},
                 {"name": "Weitere Kategorien", "tags": others},
             ],
-            "kidTag": cfg.kid_tag, "mainTag": svc.config.main_tag, "themes": themes,
+            "kidTag": cfg.kid_tag,
+            "mainTag": svc.config.main_tag,
+            "themes": themes,
             "canWrite": svc.paprika is not None,
             "rotationNeed": cfg.cooldown_weeks + 1,
         },
@@ -170,9 +215,12 @@ def settings_view(svc: Tischlein, base_url: str) -> dict:
     end = start + cal["minuten"]
     return {
         "account": svc.paprika_account(),
-        "last_sync": svc.store.meta("last_sync"), "sync_error": svc.store.meta("last_sync_error"),
+        "last_sync": svc.store.meta("last_sync"),
+        "sync_error": svc.store.meta("last_sync_error"),
         "recipe_count": len(svc.store.recipes()),
-        "cal": cal, "https_url": https_url, "webcal_url": webcal_url,
+        "cal": cal,
+        "https_url": https_url,
+        "webcal_url": webcal_url,
         "preview": {
             "day": long_date(preview.day) if preview else "Nächster freigegebener Tag",
             "time": f"{start // 60:02d}:{start % 60:02d}–{end // 60 % 24:02d}:{end % 60:02d}",

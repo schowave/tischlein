@@ -9,7 +9,6 @@ from tischlein.app import create_app
 from tischlein.config import PlanConfig
 from tischlein.service import Tischlein
 from tischlein.store import Store
-from conftest import make_export
 
 
 @pytest.fixture
@@ -71,7 +70,8 @@ def test_swap_without_alternative_keeps_meal(client):
 
 
 def test_sync_endpoints(export_bytes):
-    from test_paprika_sync import FakePaprika, client as paprika_client, recipe
+    from test_paprika_sync import FakePaprika, recipe
+    from test_paprika_sync import client as paprika_client
 
     fake = FakePaprika({"R1": recipe("R1", "h1", ["c-fisch", "c-kids"])})
     svc = Tischlein(Store(":memory:"), PlanConfig(), rng=random.Random(0), paprika=paprika_client(fake))
@@ -107,7 +107,8 @@ def test_week_page_tabs_and_redirects(client):
 
 
 def test_recipes_page_and_tag_api():
-    from test_tagging import WritablePaprika, client as paprika_client
+    from test_tagging import WritablePaprika
+    from test_tagging import client as paprika_client
 
     fake = WritablePaprika()
     svc = Tischlein(Store(":memory:"), PlanConfig(), rng=random.Random(0), paprika=paprika_client(fake))
@@ -136,7 +137,9 @@ def test_settings_page_and_secret_calendar(client):
     assert client.get(f"/kalender/{token}.ics").headers["content-type"].startswith("text/calendar")
     assert client.get("/kalender/falsch.ics").status_code == 404
 
-    r = client.post("/einstellungen/kalender", data={"name": "Mittag", "uhrzeit": "12:15", "minuten": 30}, follow_redirects=False)
+    r = client.post(
+        "/einstellungen/kalender", data={"name": "Mittag", "uhrzeit": "12:15", "minuten": 30}, follow_redirects=False
+    )
     assert r.status_code == 303
     assert "Mittag" in client.get(f"/kalender/{token}.ics").text
     bad = client.post("/einstellungen/kalender", data={"name": "x", "uhrzeit": "nope", "minuten": 30})
@@ -150,8 +153,11 @@ def test_settings_paprika_login_error_is_shown(client, monkeypatch):
     from tischlein import service as service_mod
 
     class Failing:
-        def __init__(self, *a, **k): pass
-        def login(self): raise service_mod.PaprikaError("Paprika-Anmeldung fehlgeschlagen: E-Mail oder Passwort falsch")
+        def __init__(self, *a, **k):
+            pass
+
+        def login(self):
+            raise service_mod.PaprikaError("Paprika-Anmeldung fehlgeschlagen: E-Mail oder Passwort falsch")
 
     monkeypatch.setattr(service_mod, "PaprikaClient", Failing)
     page = client.post("/einstellungen/paprika", data={"email": "a@b.de", "passwort": "x"}).text
@@ -160,4 +166,7 @@ def test_settings_paprika_login_error_is_shown(client, monkeypatch):
 
 def test_sync_redirects_back_to_allowed_page(client):
     assert client.post("/sync", data={"zurueck": "/rezepte"}, follow_redirects=False).headers["location"] == "/rezepte"
-    assert client.post("/sync", data={"zurueck": "https://evil.example"}, follow_redirects=False).headers["location"] == "/"
+    assert (
+        client.post("/sync", data={"zurueck": "https://evil.example"}, follow_redirects=False).headers["location"]
+        == "/"
+    )

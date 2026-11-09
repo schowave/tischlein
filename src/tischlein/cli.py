@@ -64,8 +64,10 @@ def main(argv: list[str] | None = None) -> None:
             r = apply_changes(svc.paprika, changes, execute=args.ausfuehren, backup=backup)
         except (PaprikaError, RuntimeError) as e:
             sys.exit(f"Fehler: {e}")
-        print(f"\nKategorien neu: {len(r.created_categories)}, Rezepte geändert: {len(r.updated)}, "
-              f"schon aktuell: {len(r.unchanged)}, fehlen: {len(r.missing)}")
+        print(
+            f"\nKategorien neu: {len(r.created_categories)}, Rezepte geändert: {len(r.updated)}, "
+            f"schon aktuell: {len(r.unchanged)}, fehlen: {len(r.missing)}"
+        )
         if args.ausfuehren and r.updated:
             print(f"Backup der vorherigen Fassungen: {backup}")
     elif args.cmd == "import":
