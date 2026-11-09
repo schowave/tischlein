@@ -15,6 +15,7 @@ Das Prinzip ist „Sous-Chef“: Tischlein schlägt vor, die Familie gibt frei.
 - [Konfiguration](#konfiguration)
 - [Bedienung über die Kommandozeile](#bedienung-über-die-kommandozeile)
 - [HTTP-API](#http-api)
+- [Releases und automatisches Deployment](#releases-und-automatisches-deployment)
 - [Betrieb auf dem Proxmox hinter Cloudflare](#betrieb-auf-dem-proxmox-hinter-cloudflare)
 - [Daten und Sicherungen](#daten-und-sicherungen)
 - [Entwicklung](#entwicklung)
@@ -145,9 +146,39 @@ uv run tischlein serve [--port 8080]                    # Web-Oberfläche und AP
 | `GET` | `/kalender/{token}.ics` | Kalender-Abo mit geheimem Schlüssel |
 | `GET` | `/healthz` | Health-Check |
 
+## Releases und automatisches Deployment
+
+```
+GitHub-Release vX.Y.Z ──▶ Action „Release“ ──▶ ghcr.io/schowave/tischlein:X.Y.Z, X.Y, latest
+                                                        │
+LXC auf dem Proxmox: tischlein-update.timer (alle 5 Min) ◀┘ holt latest, startet neu,
+                     prüft /healthz, bei Fehler zurück auf die vorherige Version
+```
+
+1. **Release erstellen:** auf GitHub ein Release mit Tag `vX.Y.Z` veröffentlichen. Die Action prüft
+   wie das CI, baut das Image über `mise run docker:publish` und testet das veröffentlichte Image.
+2. **Ausrollen passiert von selbst:** Der Timer im LXC zieht `latest`. Er startet den Container nur
+   neu, wenn sich das Image geändert hat, und wartet, bis `/healthz` die neue Version meldet.
+   Sonst setzt er die vorherige Version wieder in Betrieb. Mit `HA_WEBHOOK_URL` meldet er
+   erfolgreiche Updates an Home Assistant.
+3. **Welche Version läuft:** unten in der Seitenleiste oder `curl http://<lxc>:8080/healthz`.
+
+Der LXC braucht keinen offenen Port nach außen und GitHub keinen Zugang ins Heimnetz.
+
+**Einmalige Einrichtung des LXC** (Debian mit Docker, z. B. über die community-scripts):
+
+```bash
+# im LXC als root
+git clone https://github.com/schowave/tischlein.git /tmp/tischlein   # oder deploy/lxc/ kopieren
+bash /tmp/tischlein/deploy/lxc/install.sh
+```
+
+Solange das Paket auf ghcr.io privat ist, braucht der LXC einmalig ein `docker login ghcr.io` mit
+einem Token, das nur `read:packages` darf.
+
 ## Betrieb auf dem Proxmox hinter Cloudflare
 
-- Container per `docker compose up -d` in einer LXC oder VM, Port 8080, Volume `./data`.
+- Container im LXC unter `/opt/tischlein` (siehe oben), Port 8080, Daten in `/opt/tischlein/data`.
 - Tischlein hat keine eigene Anmeldung. Von außen nur über **Cloudflare Tunnel mit Cloudflare
   Access** erreichbar machen.
 - Für den Pfad `/kalender/*` eine **Access-Bypass-Regel** anlegen. Der iPhone-Kalender kann sich

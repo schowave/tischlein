@@ -61,8 +61,11 @@ button, input, select { font: inherit; color: inherit; }
 .nav a[aria-current="page"] { background: var(--active); color: var(--text); }
 .nav svg { width: 16px; height: 16px; flex: none; }
 .nav .count { margin-left: auto; font-size: 12px; color: var(--muted); }
-.side-foot { margin-top: auto; padding: 0 10px; font-size: 12px; line-height: 16px; color: var(--muted); }
+.side-bottom { margin-top: auto; display: grid; gap: 8px; }
+.side-foot { padding: 0 10px; font-size: 12px; line-height: 16px; color: var(--muted); }
 .side-foot strong { display: block; color: var(--text); font-weight: 500; }
+.side-version { margin: 0; padding: 0 10px; font-size: 12px; color: var(--muted); }
+
 
 .sheet {
   background: var(--ground); margin: 8px 8px 8px 0; border: 1px solid var(--border);
@@ -329,7 +332,7 @@ details[open] summary { color: var(--text); }
     position: sticky; top: 0; z-index: 5; height: 52px; flex-direction: row; align-items: center; gap: 8px;
     padding: 0 12px; background: var(--chrome);
   }
-  .brand-sub, .side-foot, .nav .count { display: none; }
+  .brand-sub, .side-bottom, .nav .count { display: none; }
   .nav { grid-auto-flow: column; margin-left: auto; }
   .nav a { height: 40px; }
   .sheet { margin: 0 8px 8px; padding: 20px 20px 32px; }

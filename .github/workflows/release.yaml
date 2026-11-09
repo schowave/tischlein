@@ -1,0 +1,51 @@
+name: Release
+
+# Ein veröffentlichtes GitHub-Release (Tag vX.Y.Z) baut das Image über mise und pusht es nach
+# ghcr.io/schowave/tischlein mit den Tags X.Y.Z, X.Y und latest. Der LXC auf dem Proxmox holt
+# sich "latest" per systemd-Timer selbst (deploy/lxc/).
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    name: Image bauen und pushen
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Version aus dem Tag und mise-Version aus mise.toml lesen
+        id: pins
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Tag muss vX.Y.Z sein, ist: $tag"; exit 1; }
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+          mise=$(sed -n 's/^min_version = "\([^"]*\)".*/\1/p' mise.toml)
+          test -n "$mise"
+          echo "mise=$mise" >> "$GITHUB_OUTPUT"
+      - uses: jdx/mise-action@v2
+        with:
+          version: ${{ steps.pins.outputs.mise }}
+          install: true
+          cache: true
+        env:
+          MISE_LOCKED: "1"
+      - name: Prüfen wie im CI
+        run: mise run setup && mise run check
+      - name: Bei ghcr.io anmelden
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+      - name: Image bauen und pushen
+        run: mise run docker:publish
+        env:
+          VERSION: ${{ steps.pins.outputs.version }}
+      - name: Rauchtest des veröffentlichten Images
+        run: |
+          docker run -d --name smoke -p 8080:8080 "ghcr.io/schowave/tischlein:${{ steps.pins.outputs.version }}"
+          for i in $(seq 1 30); do
+            curl -sf localhost:8080/healthz | grep -q '"version":"${{ steps.pins.outputs.version }}"' && exit 0
+            sleep 1
+          done
+          docker logs smoke; exit 1

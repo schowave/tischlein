@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import io
+import os
 import secrets
 import zipfile
 from datetime import date
+from importlib.metadata import version as package_version
 from pathlib import Path
 
 from fastapi import BackgroundTasks, FastAPI, Form, HTTPException, Request, UploadFile
@@ -22,6 +24,8 @@ from .service import Tischlein, from_env
 from .views import recipe_json, recipes_view, settings_view, week_view
 
 HERE = Path(__file__).parent
+# Set by the release build (Docker build arg); local runs show the package version.
+VERSION = os.environ.get("TISCHLEIN_VERSION") or package_version("tischlein")
 TEMPLATES = Jinja2Templates(directory=HERE / "templates")
 
 
@@ -56,6 +60,7 @@ def create_app(service: Tischlein | None = None) -> FastAPI:
         service = from_env()
     app = FastAPI(title="Tischlein")
     app.state.service = service
+    TEMPLATES.env.globals["version"] = VERSION
     app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
 
     def week(which: str) -> date:
@@ -252,6 +257,6 @@ def create_app(service: Tischlein | None = None) -> FastAPI:
 
     @app.get("/healthz")
     def health():
-        return {"ok": True}
+        return {"ok": True, "version": VERSION}
 
     return app

@@ -35,7 +35,10 @@
         <span>Einstellungen</span>
       </a>
     </nav>
-    {% block sidefoot %}{% endblock %}
+    <div class="side-bottom">
+      {% block sidefoot %}{% endblock %}
+      <p class="side-version">Version {{ version }}</p>
+    </div>
   </header>
   <main class="sheet">
     <div class="col">

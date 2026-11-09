@@ -1,0 +1,14 @@
+# Tischlein im LXC auf dem Proxmox. Liegt unter /opt/tischlein, Daten in /opt/tischlein/data.
+# Das Image kommt aus den GitHub-Releases (ghcr.io); tischlein-update.timer holt neue Versionen.
+services:
+  tischlein:
+    image: ghcr.io/schowave/tischlein:latest
+    container_name: tischlein
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    env_file:
+      - path: .env          # optional: HA_WEBHOOK_URL; der Paprika-Zugang steht in den Einstellungen
+        required: false
+    volumes:
+      - ./data:/data        # gehört UID 10001 (Benutzer im Container)

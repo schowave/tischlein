@@ -30,6 +30,13 @@ RUN mise exec -- uv sync --frozen --no-dev
 
 # ---------- runtime: nur das gepinnte Python und die fertige .venv ----------
 FROM ${DEBIAN}
+ARG VERSION=dev
+ARG REVISION=unknown
+LABEL org.opencontainers.image.title="tischlein" \
+      org.opencontainers.image.description="Familien-Essensplan für Mittagessen aus Paprika-Rezepten" \
+      org.opencontainers.image.source="https://github.com/schowave/tischlein" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.revision="${REVISION}"
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates tzdata \
  && rm -rf /var/lib/apt/lists/* \
@@ -44,7 +51,8 @@ ENV PATH="/app/.venv/bin:$PATH" \
     TISCHLEIN_DB=/data/tischlein.db \
     TISCHLEIN_CONFIG=/app/tischlein.toml \
     TZ=Europe/Berlin \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    TISCHLEIN_VERSION=${VERSION}
 RUN mkdir -p /data && chown tischlein /data
 USER tischlein
 VOLUME /data

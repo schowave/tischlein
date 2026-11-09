@@ -117,7 +117,13 @@ Regeln für den Code:
 
 ## Betrieb
 
-- Docker auf dem Proxmox, Port 8080, Volume `./data`.
+- Release-Kette: GitHub-Release `vX.Y.Z` → `.github/workflows/release.yaml` → `mise run docker:publish`
+  → `ghcr.io/schowave/tischlein:{X.Y.Z,X.Y,latest}`. Die Version steckt im Image
+  (`TISCHLEIN_VERSION`) und steht in `/healthz` und der Seitenleiste.
+- Im LXC (`deploy/lxc/`, eingerichtet mit `install.sh`): `/opt/tischlein/compose.yaml`,
+  `tischlein-update.timer` alle 5 Minuten → `tischlein-update.sh` zieht `latest`, startet nur bei
+  neuem Image neu, prüft `/healthz` auf die neue Version und rollt sonst zurück. Pull statt Push:
+  kein offener Port, kein Zugang von GitHub ins Heimnetz.
 - Keine eigene Authentifizierung. Von außen nur über Cloudflare Tunnel **mit Cloudflare Access**
   erreichbar machen. Für den Pfad `/kalender/*` eine Access-Bypass-Regel anlegen: Der
   iPhone-Kalender kann sich nicht anmelden, der Link ist durch seinen geheimen Schlüssel geschützt.

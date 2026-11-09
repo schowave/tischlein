@@ -11,6 +11,7 @@ lockfile = true
 python = "3.15.2"
 uv = "0.13.7"
 ruff = "0.17.4"
+shellcheck = "0.11.0"
 
 [env]
 # mise legt .venv mit dem gepinnten Python an und aktiviert es; uv sync installiert hinein.
@@ -24,8 +25,8 @@ description = "Frischer Klon -> lauffähig: Toolchain und Abhängigkeiten instal
 run = ["mise install", "uv sync --frozen"]
 
 [tasks.lint]
-description = "Statische Prüfung mit ruff (Fehler, Importe, moderne Syntax)"
-run = "ruff check src tests"
+description = "Statische Prüfung: ruff für Python, shellcheck für die Skripte"
+run = ["ruff check src tests", "shellcheck scripts/*.sh deploy/lxc/*.sh"]
 
 [tasks.format]
 description = "Code mit ruff formatieren"
@@ -45,8 +46,12 @@ run = "if [ -f .env ]; then set -a; . ./.env; set +a; fi; exec uv run --frozen t
 
 [tasks."docker:build"]
 description = "Container-Image bauen (Werkzeuge im Image kommen ebenfalls aus mise.toml/mise.lock)"
-# Die mise-Version im Image ist min_version aus dieser Datei, nicht die zufällig lokal installierte.
-run = "docker build --build-arg MISE_VERSION=$(sed -n 's/^min_version = \"\\(.*\\)\".*/\\1/p' mise.toml) -t tischlein:latest -t tischlein:$(git rev-parse --short HEAD) ."
+run = "./scripts/docker-image.sh"
+
+[tasks."docker:publish"]
+description = "Release-Image bauen und nach ghcr.io pushen (VERSION=1.2.3, im Release-Workflow)"
+env = { IMAGE = "ghcr.io/schowave/tischlein", PUSH = "1" }
+run = "./scripts/docker-image.sh"
 
 [tasks."docker:run"]
 description = "Gebautes Image lokal starten, Daten in ./data"
