@@ -1,0 +1,1 @@
+"""Tischlein – Familien-Essensplan."""

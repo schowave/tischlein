@@ -1,0 +1,29 @@
+# Wochenschema für Tischlein. Themen müssen als Kategorie in Paprika existieren.
+
+[plan]
+kinder_tag = "Kinder-OK"     # Kategorie für Rezepte, die die Jungs essen
+neu_tag = "Neu"              # Kategorie für Rezepte, die ausprobiert werden sollen
+neu_slot = "do"              # Tag für das Neu-Rezept; "" schaltet den Neu-Slot ab
+cooldown_wochen = 2          # Rezept frühestens nach so vielen Wochen wieder
+mittag_uhrzeit = "12:00"
+mittag_minuten = 45
+
+[[tage]]
+tag = "mo"
+thema = "Hähnchen"
+
+[[tage]]
+tag = "di"
+thema = "Hülsenfrüchte"
+
+[[tage]]
+tag = "mi"
+thema = "Fisch"
+
+[[tage]]
+tag = "do"
+thema = "Eier/Quark"
+
+[[tage]]
+tag = "fr"
+thema = "Pasta/Reis"

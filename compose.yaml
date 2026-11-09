@@ -1,0 +1,13 @@
+services:
+  tischlein:
+    build: .
+    container_name: tischlein
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      TZ: Europe/Berlin
+      # HA_WEBHOOK_URL: http://homeassistant.local:8123/api/webhook/tischlein
+    volumes:
+      - ./data:/data
+      - ./tischlein.toml:/app/tischlein.toml:ro

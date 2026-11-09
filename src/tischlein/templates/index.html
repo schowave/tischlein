@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tischlein</title>
+<style>
+  :root { --bg:#faf7f2; --card:#fff; --ink:#2b2622; --muted:#7a7067; --accent:#b5532a; --ok:#3d7a4a; --line:#e8e1d8; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#1d1a17; --card:#27231f; --ink:#f1ebe4; --muted:#a69c92; --accent:#e07a4b; --ok:#6fb07c; --line:#3a342e; } }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.45 system-ui, -apple-system, sans-serif; }
+  main { max-width:760px; margin:0 auto; padding:24px 16px 48px; }
+  h1 { font-size:1.6rem; margin:0 0 4px; } h1 span { color:var(--accent); }
+  .sub { color:var(--muted); margin:0 0 24px; }
+  section { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:20px; }
+  .head { display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:8px; }
+  h2 { font-size:1.15rem; margin:0; }
+  .badge { font-size:.8rem; padding:2px 8px; border-radius:99px; border:1px solid var(--line); color:var(--muted); }
+  .badge.freigegeben { color:var(--ok); border-color:var(--ok); }
+  ul { list-style:none; margin:0; padding:0; }
+  li { display:grid; grid-template-columns:7.5rem 1fr auto; gap:8px; padding:10px 0; border-top:1px solid var(--line); align-items:start; }
+  .day { color:var(--muted); font-size:.9rem; } .day b { display:block; color:var(--ink); }
+  .name { font-weight:600; } .neu { color:var(--accent); font-size:.8rem; font-weight:700; margin-right:4px; }
+  .reason { color:var(--muted); font-size:.85rem; }
+  form { display:inline; margin:0; }
+  button { font:inherit; font-size:.85rem; padding:5px 10px; border-radius:8px; border:1px solid var(--line); background:transparent; color:var(--ink); cursor:pointer; }
+  button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+  button:hover { border-color:var(--accent); }
+  .actions { display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end; }
+  .fb { margin-top:6px; display:flex; gap:6px; flex-wrap:wrap; }
+  .warn { color:var(--accent); font-size:.9rem; }
+  .empty { color:var(--muted); padding:8px 0; }
+  code { font-size:.85rem; }
+  @media (max-width:520px) { li { grid-template-columns:1fr; } .actions { justify-content:flex-start; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>Tisch<span>lein</span></h1>
+  <p class="sub">{{ recipe_count }} Rezepte aus Paprika · Kalender-Abo: <code>/kalender.ics</code></p>
+
+  {% if themes_without_recipes %}
+  <p class="warn">Für diese Themen gibt es noch keine Paprika-Kategorie: {{ themes_without_recipes | join(", ") }}</p>
+  {% endif %}
+
+  {% for w in weeks %}
+  {% set which = "aktuell" if loop.first else "naechste" %}
+  <section>
+    <div class="head">
+      <h2>{{ w.label }} <span class="day">ab {{ w.start.strftime("%d.%m.") }}</span></h2>
+      <div class="actions">
+        {% if w.plan %}<span class="badge {{ w.plan.status }}">{{ w.plan.status }}</span>{% endif %}
+        <form method="post" action="/plaene/{{ which }}/erzeugen"><button>{{ "Neu würfeln" if w.plan else "Plan erzeugen" }}</button></form>
+        {% if w.plan and w.plan.status == "entwurf" %}
+        <form method="post" action="/plaene/{{ which }}/status"><input type="hidden" name="status" value="freigegeben"><button class="primary">Freigeben</button></form>
+        {% elif w.plan %}
+        <form method="post" action="/plaene/{{ which }}/status"><input type="hidden" name="status" value="entwurf"><button>Zurück zu Entwurf</button></form>
+        {% endif %}
+      </div>
+    </div>
+    {% if w.plan %}
+    <ul>
+      {% for m in w.plan.meals %}
+      <li>
+        <div class="day"><b>{{ weekday_names[m.day.weekday()] }}</b>{{ m.day.strftime("%d.%m.") }} · {{ m.theme }}</div>
+        <div>
+          <div class="name">{% if m.is_new %}<span class="neu">NEU</span>{% endif %}{{ m.name }}</div>
+          {% if m.reason %}<div class="reason">{{ m.reason }}</div>{% endif %}
+          {% if m.is_new and m.recipe_uid and m.recipe_uid not in feedback %}
+          <div class="fb">
+            <form method="post" action="/rueckmeldung"><input type="hidden" name="rezept_uid" value="{{ m.recipe_uid }}"><input type="hidden" name="urteil" value="ok"><button>Hat geschmeckt → Rotation</button></form>
+            <form method="post" action="/rueckmeldung"><input type="hidden" name="rezept_uid" value="{{ m.recipe_uid }}"><input type="hidden" name="urteil" value="nein"><button>Nie wieder</button></form>
+          </div>
+          {% elif m.recipe_uid in feedback %}
+          <div class="reason">Rückmeldung: {{ "kommt in die Rotation" if feedback[m.recipe_uid] == "ok" else "fliegt raus" }}</div>
+          {% endif %}
+        </div>
+        <div class="actions">
+          {% if w.plan.status == "entwurf" %}
+          <form method="post" action="/plaene/{{ which }}/tauschen"><input type="hidden" name="tag" value="{{ m.day.isoformat() }}"><button>Tauschen</button></form>
+          {% endif %}
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="empty">Noch kein Plan.</p>
+    {% endif %}
+  </section>
+  {% endfor %}
+
+  <section>
+    <h2>Rezepte aus Paprika importieren</h2>
+    <p class="reason">Paprika → Einstellungen → Import/Export → Exportieren im Paprika-Format. Ersetzt den Rezeptbestand, Rückmeldungen bleiben.</p>
+    <form method="post" action="/import" enctype="multipart/form-data">
+      <input type="file" name="datei" accept=".paprikarecipes" required>
+      <button class="primary">Importieren</button>
+    </form>
+  </section>
+</main>
+</body>
+</html>
