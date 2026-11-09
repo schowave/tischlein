@@ -26,7 +26,7 @@ run = ["mise install", "uv sync --frozen"]
 
 [tasks.lint]
 description = "Statische Prüfung: ruff für Python, shellcheck für die Skripte"
-run = ["ruff check src tests", "shellcheck scripts/*.sh deploy/lxc/*.sh"]
+run = ["ruff check src tests", "shellcheck scripts/*.sh deploy/lxc/*.sh deploy/proxmox/*.sh"]
 
 [tasks.format]
 description = "Code mit ruff formatieren"
