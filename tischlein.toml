@@ -3,10 +3,12 @@
 [plan]
 kinder_tag = "Kinder-OK"     # Kategorie für Rezepte, die die Jungs essen
 neu_tag = "Neu"              # Kategorie für Rezepte, die ausprobiert werden sollen
+hauptspeise_tag = "Hauptspeisen"  # nur solche Gerichte (oder mit Thema) kommen in den Neu-Slot
 neu_slot = "do"              # Tag für das Neu-Rezept; "" schaltet den Neu-Slot ab
 cooldown_wochen = 2          # Rezept frühestens nach so vielen Wochen wieder
 mittag_uhrzeit = "12:00"
 mittag_minuten = 45
+weitere_themen = ["Fleisch"]   # Themen ohne eigenen Tag, erscheinen in der Rezeptverwaltung
 
 [[tage]]
 tag = "mo"

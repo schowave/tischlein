@@ -36,7 +36,8 @@ def main(argv: list[str] | None = None) -> None:
 
         from .app import create_app
 
-        uvicorn.run(create_app(), host=args.host, port=args.port)
+        # behind Cloudflare Tunnel / a reverse proxy: trust X-Forwarded-Proto and Host for absolute links
+        uvicorn.run(create_app(), host=args.host, port=args.port, proxy_headers=True, forwarded_allow_ips="*")
         return
 
     svc = from_env()

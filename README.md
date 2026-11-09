@@ -1,55 +1,186 @@
 # Tischlein
 
-Familien-Essensplan fürs Mittagessen: rotiert bewährte, eiweißreiche Rezepte aus Paprika nach
-Thementagen, plant pro Woche ein neues Rezept und liefert den Plan als Kalender-Abo.
+Familien-Essensplan fürs Mittagessen. Tischlein plant jede Woche eiweißreiche Gerichte aus euren
+[Paprika](https://www.paprikaapp.com)-Rezepten nach Thementagen. Es achtet darauf, was die Kinder
+essen, schlägt pro Woche ein neues Gericht vor und stellt den freigegebenen Plan als Kalender aufs
+iPhone und in Home Assistant.
 
-## Loslegen
+Das Prinzip ist „Sous-Chef“: Tischlein schlägt vor, die Familie gibt frei.
 
-1. In Paprika die Kategorien anlegen und Rezepte zuordnen: die Themen aus `tischlein.toml`
-   (Hähnchen, Hülsenfrüchte, Fisch, Eier/Quark, Pasta/Reis), dazu `Kinder-OK` und `Neu`.
-2. Paprika-Cloud-Sync in der App aktivieren, dann `.env.example` nach `.env` kopieren und
-   `PAPRIKA_EMAIL` und `PAPRIKA_PASSWORD` eintragen.
-3. Starten:
+## Inhalt
 
-   ```bash
-   docker compose up -d --build
-   ```
+- [Funktionen](#funktionen)
+- [Schnellstart mit Docker](#schnellstart-mit-docker)
+- [Einrichtung](#einrichtung)
+- [Konfiguration](#konfiguration)
+- [Bedienung über die Kommandozeile](#bedienung-über-die-kommandozeile)
+- [HTTP-API](#http-api)
+- [Betrieb auf dem Proxmox hinter Cloudflare](#betrieb-auf-dem-proxmox-hinter-cloudflare)
+- [Daten und Sicherungen](#daten-und-sicherungen)
+- [Entwicklung](#entwicklung)
+- [Bekannte Grenzen](#bekannte-grenzen)
 
-   Dann `http://<host>:8080` öffnen und „Jetzt synchronisieren“ klicken. Ohne Zugangsdaten
-   geht es auch per Export: Paprika → Einstellungen → Import/Export → Paprika-Format, Datei hochladen.
-4. „Plan erzeugen“, einzelne Tage tauschen, „Freigeben“.
-5. Kalender abonnieren: `http://<host>:8080/kalender.ics` (iPhone: Einstellungen → Kalender →
-   Accounts → Kalenderabo hinzufügen).
+## Funktionen
 
-## Home Assistant
+- **Wochenplan nach Thementagen**, z. B. Mo Hähnchen, Di Hülsenfrüchte, Mi Fisch, Do Eier/Quark,
+  Fr Pasta/Reis. Auf jeden Thementag kommt ein Rezept mit der passenden Kategorie.
+- **Kinder-OK zuerst:** An normalen Tagen nimmt der Plan nur Gerichte, die die Kinder essen.
+  „Vorrat pro Thema“ zeigt, wo noch welche fehlen.
+- **Rotation statt Wiederholung:** Ein Gericht kommt frühestens nach zwei Wochen wieder.
+  Gut bewertete Rezepte kommen öfter dran.
+- **Neu-Slot:** einmal pro Woche ein Rezept mit der Kategorie „Neu“, nur Hauptspeisen. Nach dem
+  Essen entscheidet die Familie: „Hat geschmeckt“ nimmt es in die Rotation, „Nie wieder“ wirft es
+  raus.
+- **Freigabe:** Einzelne Tage tauschen, die ganze Woche neu würfeln, freigeben. Nur freigegebene
+  Wochen landen im Kalender.
+- **Rezeptverwaltung** mit Foto, Zutaten und Kinder-OK-Schalter. Kategorien lassen sich direkt
+  setzen, Rezepte in den Papierkorb legen. Alles wird sofort nach Paprika zurückgeschrieben.
+- **Kalender-Abo** für iPhone und Mac über einen geheimen Link, dazu **Home Assistant**
+  (Sensor „Mittagessen heute“, Plan per Automation).
+- **Einstellungen im Browser:** Paprika-Konto verbinden, Kalendername, Uhrzeit und Dauer.
 
-```yaml
-# configuration.yaml
-rest:
-  - resource: http://tischlein:8080/api/heute
-    scan_interval: 1800
-    sensor:
-      - name: Mittagessen heute
-        value_template: "{{ value_json.gericht }}"
+## Schnellstart mit Docker
 
-rest_command:
-  tischlein_plan_erzeugen:
-    url: http://tischlein:8080/api/plaene/naechste/erzeugen
-    method: post
+Voraussetzungen: Docker mit Compose und ein Paprika-Konto mit aktivierter Cloud-Synchronisation.
+
+```bash
+git clone git@github.com:schowave/tischlein.git
+cd tischlein
+docker compose up -d --build
 ```
 
-Der Plan-Endpunkt gleicht vorher die Rezepte mit Paprika ab. Einzeln geht das mit
-`POST /api/sync`.
+Danach `http://<host>:8080` öffnen. Die Daten liegen im Ordner `./data`.
 
-Kalender: Integration „Remote Calendar“ mit der ICS-URL. Wöchentlicher Entwurf: Automation
-(z. B. Samstag 10:00) ruft `rest_command.tischlein_plan_erzeugen` auf. Mit `HA_WEBHOOK_URL`
-meldet Tischlein „Mahlzeit: Plan für die Woche … ist da“.
+## Einrichtung
+
+1. **Paprika verbinden:** unter **Einstellungen → Paprika-Konto** E-Mail und Passwort eintragen.
+   Tischlein prüft die Anmeldung und gleicht danach die Rezepte im Hintergrund ab. Der erste
+   Abgleich dauert einige Minuten.
+2. **Kategorien prüfen:** Die Themen aus `tischlein.toml` müssen als Paprika-Kategorien existieren.
+   In der Rezeptverwaltung lassen sie sich anlegen und zuordnen, dort setzt ihr auch Kinder-OK.
+3. **Woche planen:** auf der Startseite „Woche planen“, einzelne Tage tauschen, dann „Woche
+   freigeben“.
+4. **Kalender aufs iPhone:** unter **Einstellungen → Kalender auf dem iPhone** den Knopf „Auf
+   diesem Gerät abonnieren“ am iPhone öffnen. Das iPhone fragt, in welchem Konto der Kalender
+   liegen soll, iCloud bringt ihn auf alle Geräte.
+5. **Home Assistant** (optional):
+
+   ```yaml
+   # configuration.yaml
+   rest:
+     - resource: http://tischlein:8080/api/heute
+       scan_interval: 1800
+       sensor:
+         - name: Mittagessen heute
+           value_template: "{{ value_json.gericht }}"
+
+   rest_command:
+     tischlein_plan_erzeugen:
+       url: http://tischlein:8080/api/plaene/naechste/erzeugen
+       method: post
+   ```
+
+   Eine Automation, z. B. samstags um 10:00, ruft `rest_command.tischlein_plan_erzeugen` auf. Den
+   Kalender bindet ihr über die Integration „Remote Calendar“ mit dem Abo-Link ein.
+
+Ohne Paprika-Konto lassen sich Rezepte auch per Export einlesen: in Paprika unter Einstellungen →
+Import/Export im Paprika-Format exportieren und die Datei auf der Startseite hochladen.
+
+## Konfiguration
+
+### `tischlein.toml`
+
+| Schlüssel | Standard | Bedeutung |
+|---|---|---|
+| `plan.kinder_tag` | `Kinder-OK` | Kategorie für Gerichte, die die Kinder essen |
+| `plan.neu_tag` | `Neu` | Kategorie für Rezepte zum Ausprobieren |
+| `plan.hauptspeise_tag` | `Hauptspeisen` | Nur solche Gerichte (oder mit Thema) kommen in den Neu-Slot |
+| `plan.neu_slot` | `do` | Wochentag des Neu-Slots, `""` schaltet ihn ab |
+| `plan.cooldown_wochen` | `2` | Mindestabstand, bevor ein Gericht wiederkommt |
+| `plan.weitere_themen` | `["Fleisch"]` | Themen ohne eigenen Tag, für die Rezeptverwaltung |
+| `[[tage]]` | Mo–Fr | Ein Eintrag pro Thementag: `tag = "mo"`, `thema = "Hähnchen"` |
+
+Kalendername, Uhrzeit und Dauer stellt ihr unter **Einstellungen** ein.
+
+### Umgebungsvariablen
+
+| Variable | Standard | Bedeutung |
+|---|---|---|
+| `TISCHLEIN_DB` | `data/tischlein.db` | Pfad zur SQLite-Datenbank |
+| `TISCHLEIN_CONFIG` | `tischlein.toml` | Pfad zur Konfiguration |
+| `PAPRIKA_EMAIL`, `PAPRIKA_PASSWORD` | – | Alternative zu den Einstellungen; ein dort eingetragenes Konto hat Vorrang |
+| `PAPRIKA_USER_AGENT` | `Tischlein/0.1` | Kennung gegenüber Paprika |
+| `HA_WEBHOOK_URL` | – | Wird nach jedem automatisch erzeugten Plan aufgerufen |
+
+Für Docker gehören sie in eine `.env`-Datei, Vorlage: [`.env.example`](.env.example). Die `.env`
+wird nie eingecheckt.
+
+## Bedienung über die Kommandozeile
+
+```bash
+uv run tischlein sync                                   # Rezepte mit Paprika abgleichen
+uv run tischlein plan --woche naechste [--freigeben]    # Plan erzeugen
+uv run tischlein import Rezepte.paprikarecipes          # Export einlesen
+uv run tischlein tags-anwenden vorschlaege.csv          # Kategorien aus CSV, ohne --ausfuehren nur Probelauf
+uv run tischlein serve [--port 8080]                    # Web-Oberfläche und API
+```
+
+## HTTP-API
+
+| Methode | Pfad | Zweck |
+|---|---|---|
+| `GET` | `/api/heute` | Heutiges Gericht, für den Home-Assistant-Sensor |
+| `GET` | `/api/plan?woche=aktuell\|naechste\|JJJJ-MM-TT` | Wochenplan als JSON |
+| `POST` | `/api/plaene/{woche}/erzeugen` | Paprika abgleichen und einen Entwurf erzeugen |
+| `POST` | `/api/sync` | Nur abgleichen |
+| `GET` | `/api/rezepte`, `/api/rezepte/{uid}` | Rezepte, Zutaten und Kategorien |
+| `POST` | `/api/rezepte/{uid}/tags` | `{"hinzufuegen": [...], "entfernen": [...]}`, schreibt nach Paprika |
+| `POST` | `/api/rezepte/{uid}/papierkorb`, `…/wiederherstellen` | Papierkorb in Paprika |
+| `GET` | `/kalender/{token}.ics` | Kalender-Abo mit geheimem Schlüssel |
+| `GET` | `/healthz` | Health-Check |
+
+## Betrieb auf dem Proxmox hinter Cloudflare
+
+- Container per `docker compose up -d` in einer LXC oder VM, Port 8080, Volume `./data`.
+- Tischlein hat keine eigene Anmeldung. Von außen nur über **Cloudflare Tunnel mit Cloudflare
+  Access** erreichbar machen.
+- Für den Pfad `/kalender/*` eine **Access-Bypass-Regel** anlegen. Der iPhone-Kalender kann sich
+  nicht anmelden, der Link ist durch seinen geheimen Schlüssel geschützt. Wird er bekannt, erzeugt
+  ihr unter Einstellungen einen neuen.
+- Tischlein wertet `X-Forwarded-Proto` und `Host` aus, damit Abo-Links hinter dem Tunnel die
+  öffentliche https-Adresse tragen.
+
+## Daten und Sicherungen
+
+Alles liegt in `./data`. Sichert den Ordner mit, z. B. über Proxmox Backup:
+
+| Datei | Inhalt |
+|---|---|
+| `tischlein.db` | Pläne, Rückmeldungen, Einstellungen (inklusive Paprika-Zugang im Klartext), Rezept-Cache |
+| `bilder/` | Lokal zwischengespeicherte Rezeptfotos |
+| `paprika-backup-*.jsonl` | Fassungen der Rezepte vor jeder Änderung durch Tischlein |
+
+Weil der Paprika-Zugang in der Datenbank steht, sollte `./data` nur für euch lesbar sein.
 
 ## Entwicklung
 
+Voraussetzungen: Python 3.13 und [uv](https://docs.astral.sh/uv/).
+
 ```bash
+uv sync
 uv run pytest
-uv run tischlein serve
+uv run tischlein serve --port 8080
 ```
 
-Mehr zu Domäne und Regeln in [CLAUDE.md](CLAUDE.md).
+Den Aufbau, die Domänensprache, die Planungsregeln und die Details zur Paprika-Schnittstelle
+beschreibt [`CLAUDE.md`](CLAUDE.md). Neue Planungsregeln kommen immer zuerst als Test in
+`tests/test_planner.py`.
+
+## Bekannte Grenzen
+
+- Paprika hat **keine offizielle Schnittstelle**. Tischlein nutzt die inoffizielle Sync-API der
+  Apps, sie kann sich jederzeit ändern. Tischlein ist nicht mit Paprika verbunden oder von Paprika
+  unterstützt.
+- Die Paprika-Server sperren IPs bei zu vielen Anfragen. Tischlein lädt deshalb nur geänderte
+  Rezepte und macht Pausen zwischen den Abrufen.
+- Freigegebene Pläne werden noch nicht in den Meal Planner von Paprika geschrieben.

@@ -22,7 +22,7 @@ import urllib.parse
 import urllib.request
 from base64 import b64encode
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from .models import Recipe
 from .paprika import recipe_from_json
@@ -74,6 +74,7 @@ class SyncResult:
     cache: dict[str, CachedRecipe]
     fetched: int
     removed: int
+    categories: list[str] = field(default_factory=list)
 
 
 class PaprikaClient:
@@ -201,4 +202,5 @@ class PaprikaClient:
             if not c.data.get("in_trash") and not c.data.get("deleted")
         ]
         removed = len(set(cache) - set(new_cache))
-        return SyncResult(sorted(recipes, key=lambda r: r.name), new_cache, fetched, removed)
+        return SyncResult(sorted(recipes, key=lambda r: r.name), new_cache, fetched, removed,
+                          sorted(set(names.values()), key=str.casefold))

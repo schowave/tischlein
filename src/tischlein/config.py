@@ -30,10 +30,21 @@ class PlanConfig:
     )
     kid_tag: str = "Kinder-OK"
     new_tag: str = "Neu"
+    main_tag: str = "Hauptspeisen"
     new_slot: int | None = 3
     cooldown_weeks: int = 2
     lunch_time: time = time(12, 0)
     lunch_minutes: int = 45
+    extra_themes: tuple[str, ...] = ()
+
+    @property
+    def themes(self) -> tuple[str, ...]:
+        """Protein themes: those of the weekly schedule, then extra ones without a day."""
+        seen: list[str] = []
+        for t in [d.theme for d in self.days] + list(self.extra_themes):
+            if t.casefold() not in {s.casefold() for s in seen}:
+                seen.append(t)
+        return tuple(seen)
 
 
 def _weekday(value: str) -> int:
@@ -55,10 +66,12 @@ def parse_config(data: dict) -> PlanConfig:
         days=tuple(sorted(days, key=lambda d: d.weekday)),
         kid_tag=plan.get("kinder_tag", default.kid_tag),
         new_tag=plan.get("neu_tag", default.new_tag),
+        main_tag=plan.get("hauptspeise_tag", default.main_tag),
         new_slot=_weekday(new_slot) if new_slot else None,
         cooldown_weeks=int(plan.get("cooldown_wochen", default.cooldown_weeks)),
         lunch_time=time(hour, minute),
         lunch_minutes=int(plan.get("mittag_minuten", default.lunch_minutes)),
+        extra_themes=tuple(plan.get("weitere_themen", ())),
     )
 
 

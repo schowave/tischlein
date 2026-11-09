@@ -54,6 +54,7 @@ CREATE TABLE IF NOT EXISTS feedback (
 
 class Store:
     def __init__(self, path: Path | str):
+        self.path = str(path)
         if str(path) != ":memory:":
             Path(path).parent.mkdir(parents=True, exist_ok=True)
         self.db = sqlite3.connect(path, check_same_thread=False)
@@ -81,6 +82,40 @@ class Store:
             Recipe(r["uid"], r["name"], tuple(json.loads(r["tags"])), r["rating"], r["source_url"], r["total_time"])
             for r in rows
         ]
+
+    def upsert_recipe(self, r: Recipe, raw_hash: str, raw: dict) -> None:
+        """Replace one recipe (and its raw Paprika data) after an edit."""
+        now = datetime.now().isoformat(timespec="seconds")
+        with self.db:
+            self.db.execute("DELETE FROM recipes WHERE uid = ?", (r.uid,))
+            self.db.execute(
+                "INSERT INTO recipes VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (r.uid, r.name, json.dumps(r.tags, ensure_ascii=False), r.rating, r.source_url, r.total_time, now),
+            )
+            self.db.execute(
+                "INSERT INTO paprika_cache VALUES (?, ?, ?) ON CONFLICT(uid) DO UPDATE SET "
+                "hash = excluded.hash, data = excluded.data",
+                (r.uid, raw_hash, json.dumps(raw, ensure_ascii=False)),
+            )
+
+    def delete_recipe(self, uid: str) -> None:
+        with self.db:
+            self.db.execute("DELETE FROM recipes WHERE uid = ?", (uid,))
+
+    def recipe(self, uid: str) -> Recipe | None:
+        return next((r for r in self.recipes() if r.uid == uid), None)
+
+    def raw_recipe(self, uid: str) -> tuple[str, dict] | None:
+        row = self.db.execute("SELECT hash, data FROM paprika_cache WHERE uid = ?", (uid,)).fetchone()
+        return (row[0], json.loads(row[1])) if row else None
+
+    def set_raw_recipe(self, uid: str, raw_hash: str, raw: dict) -> None:
+        with self.db:
+            self.db.execute(
+                "INSERT INTO paprika_cache VALUES (?, ?, ?) ON CONFLICT(uid) DO UPDATE SET "
+                "hash = excluded.hash, data = excluded.data",
+                (uid, raw_hash, json.dumps(raw, ensure_ascii=False)),
+            )
 
     def paprika_cache(self) -> dict[str, tuple[str, dict]]:
         rows = self.db.execute("SELECT uid, hash, data FROM paprika_cache").fetchall()

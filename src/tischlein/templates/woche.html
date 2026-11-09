@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+{% block title %}Woche · Tischlein{% endblock %}
+{% block sidefoot %}
+<div class="side-foot">
+  {% if v.sync_enabled %}<strong>Paprika verbunden</strong>{{ (v.last_sync or 'noch nicht abgeglichen').split(' – ')[0] }}{% else %}<strong>Paprika nicht verbunden</strong>Export-Upload möglich{% endif %}
+</div>
+{% endblock %}
+{% block content %}
+<section class="greet">
+  <h1>{{ v.headline }}</h1>
+  <p>{{ v.today_line }} · <strong>{{ v.finding }}</strong></p>
+</section>
+
+<div class="grid">
+  {% for t in v.tiles %}
+  <div class="tile s3{% if loop.index == 4 and t.value != '0' %} is-accent{% endif %}">
+    <span class="tile-label">{{ t.label }}</span>
+    <span class="tile-value num">{{ t.value }}</span>
+    <span class="tile-cap">{{ t.caption }}</span>
+  </div>
+  {% endfor %}
+
+  <section class="panel s9" aria-labelledby="week-h">
+    <div class="panel-head">
+      <h2 id="week-h">Mittagessen {{ v.range }}</h2>
+      {% if v.plan %}<span class="pill {{ 'pill-kid' if v.plan.status == 'freigegeben' else 'pill-neutral' }}"><span class="pill-dot"></span>{{ 'Freigegeben, im Kalender' if v.plan.status == 'freigegeben' else 'Entwurf' }}</span>{% endif %}
+      <div class="end">
+        <nav class="seg" aria-label="Woche wählen">
+          <a href="/?woche=aktuell" {% if v.which == 'aktuell' %}aria-current="true"{% endif %}>Diese Woche</a>
+          <a href="/?woche=naechste" {% if v.which == 'naechste' %}aria-current="true"{% endif %}>Nächste Woche</a>
+        </nav>
+      </div>
+    </div>
+
+    {% if v.plan %}
+    <div class="days">
+      {% for d in v.days %}
+      <article class="day">
+        <div class="day-when">
+          <strong>{{ d.weekday }}</strong>
+          <span>{% if d.is_today %}<span class="today">Heute</span> · {% endif %}{{ d.short }} · {{ d.theme }}</span>
+        </div>
+        <div class="day-dish">
+          {% if d.meal and d.meal.recipe_uid %}
+            <strong><a class="dish-link" href="/rezepte?rezept={{ d.meal.recipe_uid | urlencode }}">{{ d.meal.name }}</a></strong>
+            {% if d.meal.is_new %}<span>Neu ausprobieren: eine sichere Beilage dazu, z. B. Nudeln, Brot oder Gurke.</span>
+            {% elif d.meal.reason and 'Kinder-OK' not in d.meal.reason %}<span>{{ d.meal.reason }}</span>{% endif %}
+          {% elif d.meal %}
+            <strong class="empty">{{ d.meal.reason }}</strong>
+          {% else %}
+            <strong class="empty">Nicht geplant</strong>
+          {% endif %}
+        </div>
+        <div class="day-status">
+          {% if d.meal and d.meal.is_new %}<span class="pill pill-new">Neu</span>
+          {% elif d.kinder_ok %}<span class="pill pill-kid"><span class="pill-dot"></span>Kinder-OK</span>
+          {% elif d.meal and d.meal.recipe_uid %}<a class="not" href="/rezepte?rezept={{ d.meal.recipe_uid | urlencode }}" aria-label="{{ d.meal.name }}: Kinder-OK setzen">nicht Kinder-OK</a>{% endif %}
+        </div>
+        <div class="day-act">
+          {% if v.plan.status == 'entwurf' and d.meal %}
+          <form class="inline" method="post" action="/plaene/{{ v.which }}/tauschen">
+            <input type="hidden" name="tag" value="{{ d.date.isoformat() }}">
+            <button class="btn btn-ghost btn-sm" aria-label="{{ d.weekday }} tauschen">Tauschen</button>
+          </form>
+          {% endif %}
+        </div>
+        {% if d.needs_feedback %}
+        <div class="day-feedback">
+          <span>Wie kam es an?</span>
+          <form class="inline" method="post" action="/rueckmeldung"><input type="hidden" name="rezept_uid" value="{{ d.meal.recipe_uid }}"><input type="hidden" name="urteil" value="ok"><input type="hidden" name="woche" value="{{ v.which }}"><button class="btn btn-sm">Hat geschmeckt</button></form>
+          <form class="inline" method="post" action="/rueckmeldung"><input type="hidden" name="rezept_uid" value="{{ d.meal.recipe_uid }}"><input type="hidden" name="urteil" value="nein"><input type="hidden" name="woche" value="{{ v.which }}"><button class="btn btn-ghost btn-sm">Nie wieder</button></form>
+        </div>
+        {% elif d.feedback %}
+        <div class="day-feedback">Rückmeldung: {{ 'kommt in die Rotation' if d.feedback == 'ok' else 'wird nicht mehr geplant' }}</div>
+        {% endif %}
+      </article>
+      {% endfor %}
+    </div>
+    <div class="panel-head" style="margin: 14px 0 0">
+      <div class="end">
+        <form class="inline" method="post" action="/plaene/{{ v.which }}/erzeugen"><button class="btn">Ganze Woche neu würfeln</button></form>
+        {% if v.plan.status == 'entwurf' %}
+        <form class="inline" method="post" action="/plaene/{{ v.which }}/status"><input type="hidden" name="status" value="freigegeben"><button class="btn btn-primary">Woche freigeben</button></form>
+        {% else %}
+        <form class="inline" method="post" action="/plaene/{{ v.which }}/status"><input type="hidden" name="status" value="entwurf"><button class="btn btn-ghost">Wieder bearbeiten</button></form>
+        {% endif %}
+      </div>
+    </div>
+    {% elif v.first_run %}
+    <div class="week-empty">
+      <span>Damit Tischlein planen kann, braucht es eure Rezepte. Verbinde dein Paprika-Konto, der Abgleich läuft danach von selbst.</span>
+      <a class="btn btn-primary" href="/einstellungen">Paprika verbinden</a>
+    </div>
+    {% else %}
+    <div class="week-empty">
+      <span>Für {{ v.range }} ist noch nichts geplant. Tischlein wählt pro Tag ein Gericht zum Thema.</span>
+      <form class="inline" method="post" action="/plaene/{{ v.which }}/erzeugen"><button class="btn btn-primary">Woche planen</button></form>
+    </div>
+    {% endif %}
+  </section>
+
+  <section class="panel s3" aria-labelledby="supply-h">
+    <div class="panel-head"><h2 id="supply-h">Vorrat pro Thema</h2></div>
+    <p class="panel-note">Damit sich nichts zu oft wiederholt, braucht jedes Thema {{ v.supply[0].bedarf if v.supply else 3 }} Kinder-OK-Gerichte.</p>
+    <div class="supply">
+      {% for s in v.supply %}
+      <a href="/rezepte?thema={{ s.thema | urlencode }}&amp;kinder=nein" aria-label="{{ s.thema }}: {{ s.kinder_ok }} von {{ s.bedarf }} Kinder-OK, {{ s.rezepte }} Rezepte. Rezepte markieren">
+        <span class="name">{{ s.thema }}{% if not s.hat_tag %}<small>ohne Tag</small>{% endif %}</span>
+        <span class="ratio num{% if s.kinder_ok >= s.bedarf %} ok{% endif %}"><b>{{ s.kinder_ok }}</b> von {{ s.bedarf }}</span>
+        <span class="slots" aria-hidden="true">
+          {% for i in range(s.bedarf) %}<span class="slot{% if i < s.kinder_ok %} on{% endif %}"></span>{% endfor %}
+          <span class="of num">{{ s.rezepte }} Rezepte</span>
+        </span>
+      </a>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="panel s6" aria-labelledby="trial-h">
+    <div class="panel-head">
+      <h2 id="trial-h">Zum Ausprobieren</h2>
+      <span class="chip-count num">{{ v.trial_count }}</span>
+      <div class="end"><a class="btn btn-ghost btn-sm" href="/rezepte">Alle Rezepte</a></div>
+    </div>
+    {% if v.trial %}
+    <div class="rows">
+      {% for r in v.trial %}
+      <div class="rowcard"><div class="grow"><strong>{{ r.name }}</strong><span>{{ r.tags | join(' · ') }}</span></div></div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-frame">Kein Rezept hat die Kategorie „{{ v.new_tag }}“. Der Neu-Slot am Donnerstag nimmt dann ein bewährtes Gericht. <a href="/rezepte">Rezepte markieren</a></div>
+    {% endif %}
+  </section>
+
+  <section class="panel s6" aria-labelledby="link-h">
+    <div class="panel-head"><h2 id="link-h">Paprika und Kalender</h2></div>
+    <div class="rows">
+      <div class="rowcard">
+        <div class="grow">
+          <strong>Paprika</strong>
+          <span>{% if v.sync_enabled %}{{ v.recipe_count }} Rezepte · abgeglichen {{ (v.last_sync or 'noch nie').split(' – ')[0] }}{% else %}Noch nicht verbunden{% endif %}</span>
+        </div>
+        {% if v.sync_enabled %}<form class="inline" method="post" action="/sync"><button class="btn btn-sm">Jetzt abgleichen</button></form>{% else %}<a class="btn btn-sm btn-primary" href="/einstellungen">Verbinden</a>{% endif %}
+      </div>
+      <div class="rowcard">
+        <div class="grow">
+          <strong>Kalender-Abo</strong>
+          <span>Freigegebene Wochen als Termine auf iPhone und Mac</span>
+        </div>
+        <a class="btn btn-sm" href="/einstellungen#kalender">Einrichten</a>
+      </div>
+    </div>
+    {% if v.sync_error %}<p class="error-line">Letzter Abgleich fehlgeschlagen: {{ v.sync_error }}</p>{% endif %}
+    <details>
+      <summary>Ohne Zugang: Paprika-Export hochladen</summary>
+      <form method="post" action="/import" enctype="multipart/form-data" class="field-row">
+        <input class="field" type="file" name="datei" accept=".paprikarecipes" required aria-label="Paprika-Export">
+        <button class="btn">Importieren</button>
+      </form>
+    </details>
+  </section>
+</div>
+{% endblock %}
+

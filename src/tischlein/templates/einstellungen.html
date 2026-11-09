@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% block title %}Einstellungen · Tischlein{% endblock %}
+{% block content %}
+<section class="title">
+  <div>
+    <h1>Einstellungen</h1>
+    <p>{% if v.account.verbunden %}Paprika verbunden als {{ v.account.email }}{% else %}Paprika ist noch nicht verbunden{% endif %} · Kalender „{{ v.cal.name }}“ um {{ v.cal.uhrzeit }} Uhr</p>
+  </div>
+  {% if ok %}
+  <p class="saved" role="status">{{ {'paprika': 'Paprika verbunden. Die Rezepte werden im Hintergrund abgeglichen.', 'getrennt': 'Paprika getrennt.', 'kalender': 'Kalender gespeichert.', 'link': 'Neuer Kalender-Link erstellt. Bitte auf dem iPhone neu abonnieren.'}.get(ok, 'Gespeichert.') }}</p>
+  {% endif %}
+</section>
+
+<div class="settings">
+  <section class="setting" aria-labelledby="paprika-h">
+    <div class="setting-label">
+      <h2 id="paprika-h">Paprika-Konto</h2>
+      <p>Tischlein liest eure Rezepte aus der Paprika-Cloud und schreibt Kategorien wie Kinder-OK zurück. Die Zugangsdaten liegen nur in der Datenbank auf eurem Server.</p>
+    </div>
+    <div class="panel setting-panel">
+      <div class="state-row">
+        {% if v.account.verbunden %}
+        <span class="pill pill-kid"><span class="pill-dot"></span>Verbunden</span>
+        <span>{{ v.account.email }}{% if v.account.quelle == 'umgebung' %} · aus der .env-Datei{% endif %}</span>
+        {% else %}
+        <span class="pill pill-neutral"><span class="pill-dot"></span>Nicht verbunden</span>
+        <span class="muted">Ohne Konto plant Tischlein nur mit hochgeladenen Exporten.</span>
+        {% endif %}
+      </div>
+      {% if v.account.verbunden %}
+      <p class="muted small">{{ v.recipe_count }} Rezepte · zuletzt abgeglichen {{ (v.last_sync or 'noch nie').split(' – ')[0] }}</p>
+      {% if v.sync_error %}<p class="error-line">Letzter Abgleich fehlgeschlagen: {{ v.sync_error.split(' – ', 1)[-1] }}</p>{% endif %}
+      {% endif %}
+      <form method="post" action="/einstellungen/paprika" class="form">
+        <label class="lbl" for="email">E-Mail bei Paprika</label>
+        <input class="input" id="email" name="email" type="email" autocomplete="username" required value="{{ email_input if email_input is defined else v.account.email }}">
+        <label class="lbl" for="passwort">Passwort</label>
+        <input class="input" id="passwort" name="passwort" type="password" autocomplete="current-password" aria-describedby="pw-hint" {% if not (v.account.quelle == 'einstellungen') %}required{% endif %}>
+        <p class="hint" id="pw-hint">{% if v.account.quelle == 'einstellungen' %}Leer lassen, um das gespeicherte Passwort zu behalten.{% else %}Das Passwort deines Paprika-Cloud-Kontos.{% endif %}</p>
+        {% if paprika_error is defined %}<p class="error-line" role="alert">{{ paprika_error }}</p>{% endif %}
+        <div class="form-actions">
+          <button class="btn btn-primary">{{ 'Speichern und prüfen' if v.account.verbunden else 'Verbinden und prüfen' }}</button>
+        </div>
+      </form>
+      {% if v.account.verbunden %}
+      <div class="sub-actions">
+        <form class="inline" method="post" action="/sync"><button class="btn btn-sm">Jetzt abgleichen</button></form>
+        {% if v.account.quelle == 'einstellungen' %}
+        <form class="inline" method="post" action="/einstellungen/paprika/trennen" onsubmit="return confirm('Paprika-Zugang aus Tischlein entfernen? Die Rezepte bleiben bis zum nächsten Abgleich erhalten.')"><button class="btn btn-ghost btn-sm danger">Verbindung trennen</button></form>
+        {% endif %}
+      </div>
+      {% endif %}
+    </div>
+  </section>
+
+  <section class="setting" id="kalender" aria-labelledby="cal-h">
+    <div class="setting-label">
+      <h2 id="cal-h">Kalender auf dem iPhone</h2>
+      <p>Ein Kalender-Abo zeigt freigegebene Wochen als Termine und aktualisiert sich von selbst. Beim Abonnieren fragt das iPhone, in welchem Konto der Kalender liegen soll, zum Beispiel iCloud, damit er auf allen Geräten erscheint.</p>
+    </div>
+    <div class="panel setting-panel">
+      <div class="cal-subscribe">
+        <a class="btn btn-primary" href="{{ v.webcal_url }}">Auf diesem Gerät abonnieren</a>
+        <button class="btn" type="button" data-copy="{{ v.https_url }}">Link kopieren</button>
+      </div>
+      <label class="lbl" for="cal-url">Abo-Link für andere Geräte und Home Assistant</label>
+      <input class="input mono-ish" id="cal-url" type="text" readonly value="{{ v.https_url }}" onclick="this.select()">
+      <p class="hint">Der Link enthält einen geheimen Schlüssel und funktioniert ohne Anmeldung. Gib ihn nur in der Familie weiter.</p>
+
+      <form method="post" action="/einstellungen/kalender" class="form cal-form">
+        <div class="form-grid">
+          <div class="span-all">
+            <label class="lbl" for="cal-name">Name des Kalenders</label>
+            <input class="input" id="cal-name" name="name" maxlength="60" value="{{ v.cal.name }}" data-preview="name">
+          </div>
+          <div>
+            <label class="lbl" for="cal-time">Mittagessen um</label>
+            <input class="input" id="cal-time" name="uhrzeit" type="time" value="{{ v.cal.uhrzeit }}" required data-preview="time">
+          </div>
+          <div>
+            <label class="lbl" for="cal-min">Dauer in Minuten</label>
+            <input class="input" id="cal-min" name="minuten" type="number" min="10" max="240" step="5" value="{{ v.cal.minuten }}" required data-preview="minutes">
+          </div>
+        </div>
+        <figure class="event-preview" aria-label="So erscheint der Termin">
+          <span class="ev-bar" aria-hidden="true"></span>
+          <div>
+            <strong id="pv-dish">{{ v.preview.dish }}</strong>
+            <span><span id="pv-day">{{ v.preview.day }}</span> · <span id="pv-time" class="num">{{ v.preview.time }}</span></span>
+            <span class="muted" id="pv-name">{{ v.cal.name }}</span>
+          </div>
+        </figure>
+        {% if calendar_error is defined %}<p class="error-line" role="alert">{{ calendar_error }}</p>{% endif %}
+        <div class="form-actions"><button class="btn btn-primary">Kalender speichern</button></div>
+      </form>
+      <div class="sub-actions">
+        <form class="inline" method="post" action="/einstellungen/kalender/neu" onsubmit="return confirm('Neuen Link erstellen? Bestehende Abos auf iPhone und Mac funktionieren danach nicht mehr und müssen neu abonniert werden.')"><button class="btn btn-ghost btn-sm danger">Neuen geheimen Link erstellen</button></form>
+      </div>
+    </div>
+  </section>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+  for (const btn of document.querySelectorAll("[data-copy]")) {
+    btn.addEventListener("click", async () => {
+      try { await navigator.clipboard.writeText(btn.dataset.copy); btn.textContent = "Kopiert"; }
+      catch { document.getElementById("cal-url").select(); btn.textContent = "Mit Cmd+C kopieren"; }
+      setTimeout(() => (btn.textContent = "Link kopieren"), 2500);
+    });
+  }
+  const t = document.getElementById("cal-time"), m = document.getElementById("cal-min"), n = document.getElementById("cal-name");
+  const pad = (x) => String(x).padStart(2, "0");
+  function preview() {
+    const [h, mi] = (t.value || "12:00").split(":").map(Number);
+    const s = h * 60 + mi, e = s + (Number(m.value) || 0);
+    document.getElementById("pv-time").textContent = `${pad(h)}:${pad(mi)}–${pad(Math.floor(e / 60) % 24)}:${pad(e % 60)}`;
+    document.getElementById("pv-name").textContent = n.value || "Tischlein Mittagessen";
+  }
+  for (const el of [t, m, n]) el.addEventListener("input", preview);
+</script>
+{% endblock %}

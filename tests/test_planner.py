@@ -75,7 +75,7 @@ def test_new_slot_prefers_new_recipe_matching_theme():
 
 
 def test_new_slot_takes_any_new_recipe_then_falls_back_to_rotation():
-    recipes = [r("std", "Eier", "Kinder-OK"), r("new-other", "Fisch", "Neu")]
+    recipes = [r("std", "Eier", "Kinder-OK"), r("new-other", "Fisch", "Neu", "Hauptspeisen")]
     assert plan_week(MONDAY, recipes, cfg("Eier", new_slot=0))[0].recipe_uid == "new-other"
 
     meal = plan_week(MONDAY, [r("std", "Eier", "Kinder-OK")], cfg("Eier", new_slot=0))[0]
@@ -123,3 +123,18 @@ def test_exclude_forces_a_different_recipe():
     for seed in range(10):
         meal = plan_week(MONDAY, recipes, cfg("Fisch"), exclude={"a"}, rng=random.Random(seed))[0]
         assert meal.recipe_uid == "b"
+
+
+def test_new_slot_only_picks_lunch_dishes():
+    """A new bread or cake must never become Thursday's lunch."""
+    cfg_ = PlanConfig(days=(DayRule(0, "Eier"),), new_slot=0, extra_themes=("Fisch",))
+    bread = r("brot", "Brot", "Neu")
+    cake = r("kuchen", "Kuchen", "Neu", rating=5)
+    main_new = r("haupt", "Hauptspeisen", "Neu")
+    themed_new = r("fisch", "Fisch", "Neu")
+    std = r("std", "Eier", "Kinder-OK")
+    for seed in range(20):
+        meal = plan_week(MONDAY, [bread, cake, std], cfg_, rng=random.Random(seed))[0]
+        assert meal.recipe_uid == "std" and not meal.is_new
+        meal = plan_week(MONDAY, [bread, cake, main_new, themed_new, std], cfg_, rng=random.Random(seed))[0]
+        assert meal.recipe_uid in {"haupt", "fisch"} and meal.is_new

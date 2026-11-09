@@ -82,7 +82,7 @@ def test_sync_endpoints(export_bytes):
     plan = c.post("/api/plaene/naechste/erzeugen").json()
     assert plan["mahlzeiten"][2]["gericht"] == "Rezept R1"
     assert "sync_fehler" not in plan
-    assert "Letzter Abgleich" in c.get("/").text
+    assert "Jetzt abgleichen" in c.get("/").text
 
     fake.login_status = 401
     svc.paprika._token = None
@@ -94,4 +94,70 @@ def test_sync_endpoints(export_bytes):
 
 def test_sync_not_configured(client):
     assert client.post("/api/sync").status_code == 502
-    assert "Paprika-Sync" not in client.get("/").text
+    assert "Jetzt abgleichen" not in client.get("/").text
+
+
+def test_week_page_tabs_and_redirects(client):
+    assert "Woche planen" in client.get("/?woche=naechste").text
+    r = client.post("/plaene/naechste/erzeugen", follow_redirects=False)
+    assert r.headers["location"] == "/?woche=naechste"
+    page = client.get("/?woche=naechste").text
+    assert "Hähnchen-Bowl" in page and "Woche freigeben" in page and "Vorrat pro Thema" in page
+    assert "/rezepte?rezept=A1" in page  # dish links to its recipe for tagging
+
+
+def test_recipes_page_and_tag_api():
+    from test_tagging import WritablePaprika, client as paprika_client
+
+    fake = WritablePaprika()
+    svc = Tischlein(Store(":memory:"), PlanConfig(), rng=random.Random(0), paprika=paprika_client(fake))
+    svc.sync_paprika()
+    c = TestClient(create_app(svc))
+
+    page = c.get("/rezepte").text
+    assert '"name": "Bowl"' in page and "Rezept suchen" in page
+
+    r = c.post("/api/rezepte/R1/tags", json={"hinzufuegen": ["Kinder-OK"], "entfernen": []})
+    assert r.status_code == 200 and r.json()["kinder_ok"] is True
+    data = c.get("/api/rezepte").json()
+    assert next(x for x in data["recipes"] if x["uid"] == "R1")["kinder_tag"] is True
+    assert "Kinder-OK" in data["groups"][0]["tags"]
+
+    assert c.post("/api/rezepte/NOPE/tags", json={"hinzufuegen": ["X"]}).status_code == 404
+    svc.paprika = None
+    assert c.post("/api/rezepte/R1/tags", json={"hinzufuegen": ["X"]}).status_code == 502
+
+
+def test_settings_page_and_secret_calendar(client):
+    page = client.get("/einstellungen").text
+    assert "Verbinden und prüfen" in page and "webcal://" in page
+    svc = client.app.state.service
+    token = svc.calendar_settings()["token"]
+    assert client.get(f"/kalender/{token}.ics").headers["content-type"].startswith("text/calendar")
+    assert client.get("/kalender/falsch.ics").status_code == 404
+
+    r = client.post("/einstellungen/kalender", data={"name": "Mittag", "uhrzeit": "12:15", "minuten": 30}, follow_redirects=False)
+    assert r.status_code == 303
+    assert "Mittag" in client.get(f"/kalender/{token}.ics").text
+    bad = client.post("/einstellungen/kalender", data={"name": "x", "uhrzeit": "nope", "minuten": 30})
+    assert "Uhrzeit bitte" in bad.text
+
+    r = client.post("/einstellungen/kalender/neu", follow_redirects=False)
+    assert client.get(f"/kalender/{token}.ics").status_code == 404
+
+
+def test_settings_paprika_login_error_is_shown(client, monkeypatch):
+    from tischlein import service as service_mod
+
+    class Failing:
+        def __init__(self, *a, **k): pass
+        def login(self): raise service_mod.PaprikaError("Paprika-Anmeldung fehlgeschlagen: E-Mail oder Passwort falsch")
+
+    monkeypatch.setattr(service_mod, "PaprikaClient", Failing)
+    page = client.post("/einstellungen/paprika", data={"email": "a@b.de", "passwort": "x"}).text
+    assert "E-Mail oder Passwort falsch" in page and 'value="a@b.de"' in page
+
+
+def test_sync_redirects_back_to_allowed_page(client):
+    assert client.post("/sync", data={"zurueck": "/rezepte"}, follow_redirects=False).headers["location"] == "/rezepte"
+    assert client.post("/sync", data={"zurueck": "https://evil.example"}, follow_redirects=False).headers["location"] == "/"

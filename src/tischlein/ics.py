@@ -26,14 +26,15 @@ def _fold(line: str) -> list[str]:
     return [out[0]] + [" " + part for part in out[1:]]
 
 
-def render(plans: Iterable[WeekPlan], config: PlanConfig, now: datetime | None = None) -> str:
+def render(plans: Iterable[WeekPlan], config: PlanConfig, now: datetime | None = None,
+           name: str = "Tischlein Mittagessen") -> str:
     stamp = (now or datetime.now(timezone.utc)).strftime("%Y%m%dT%H%M%SZ")
     lines = [
         "BEGIN:VCALENDAR",
         "VERSION:2.0",
         "PRODID:-//Tischlein//Essensplan//DE",
         "CALSCALE:GREGORIAN",
-        "X-WR-CALNAME:Tischlein Mittagessen",
+        f"X-WR-CALNAME:{_escape(name)}",
         "REFRESH-INTERVAL;VALUE=DURATION:PT6H",
     ]
     for plan in plans:

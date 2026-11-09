@@ -30,6 +30,10 @@ class _View:
     def is_new(self, r: Recipe) -> bool:
         return r.uid not in self.feedback and r.has_tag(self.config.new_tag)
 
+    def is_lunch(self, r: Recipe) -> bool:
+        """Main dishes and anything with a protein theme; keeps bread and cake out of the new slot."""
+        return r.has_tag(self.config.main_tag) or any(r.has_tag(t) for t in self.config.themes)
+
     def with_theme(self, theme: str) -> list[Recipe]:
         return [r for r in self.recipes if r.has_tag(theme)]
 
@@ -66,7 +70,7 @@ def plan_day(
     themed = view.with_theme(rule.theme)
 
     if cfg.new_slot == rule.weekday:
-        new = [r for r in view.recipes if view.is_new(r)]
+        new = [r for r in view.recipes if view.is_new(r) and view.is_lunch(r)]
         new_themed = [r for r in new if r in themed]
         for pool in (new_themed, new):
             recipe, _ = _pick(pool, day, taken, last_cooked, 0, rng)

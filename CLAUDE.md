@@ -19,8 +19,9 @@ docker compose up -d --build                     # Container, Daten in ./data
 ```
 
 Konfiguration: `tischlein.toml` (Wochenschema, Tags, Cooldown). Pfad über `TISCHLEIN_CONFIG`,
-Datenbank über `TISCHLEIN_DB` (Default `data/tischlein.db`). Paprika-Sync über `PAPRIKA_EMAIL`,
-`PAPRIKA_PASSWORD` (optional `PAPRIKA_USER_AGENT`) in `.env`, nie im Repo.
+Datenbank über `TISCHLEIN_DB` (Default `data/tischlein.db`). Paprika-Zugang am besten über die
+Seite **Einstellungen** (liegt in der Tabelle `meta`, gewinnt gegen die Umgebung); alternativ
+`PAPRIKA_EMAIL`, `PAPRIKA_PASSWORD` (optional `PAPRIKA_USER_AGENT`) in `.env`, nie im Repo.
 
 ## Domänensprache
 
@@ -46,8 +47,9 @@ Datenbank über `TISCHLEIN_DB` (Default `data/tischlein.db`). Paprika-Sync über
    diese Woche schon drin sind, scheiden aus. Bleibt nichts übrig, nimmt er das am längsten
    nicht gekochte.
 4. Unter den Kandidaten wählt er gewichtet zufällig nach Paprika-Bewertung (Gewicht = Sterne + 1).
-5. Neu-Slot: ein Rezept mit Tag `Neu` und ohne Rückmeldung, bevorzugt passend zum Thema. Gibt es
-   keins, gilt die normale Regel. Der Hinweis „sichere Komponente dazu“ steht in der Mahlzeit.
+5. Neu-Slot: ein Rezept mit Tag `Neu` und ohne Rückmeldung, das ein Mittagsgericht ist
+   (Kategorie `Hauptspeisen` oder ein Protein-Thema), bevorzugt passend zum Thema. Gibt es keins,
+   gilt die normale Regel. Der Hinweis „sichere Komponente dazu“ steht in der Mahlzeit.
 6. Rückmeldungen überlagern Paprika-Tags lokal: `ok` macht ein Rezept Kinder-OK und nicht mehr
    neu, `nein` schließt es aus. Rückmeldungen überleben einen erneuten Import.
 
@@ -59,7 +61,11 @@ src/tischlein/
   models.py    Recipe, Meal, WeekPlan, Feedback (Dataclasses, keine Logik mit I/O)
   paprika.py   .paprikarecipes lesen (ZIP mit gzip-JSON pro Rezept)
   paprika_sync.py  Client für die inoffizielle Paprika-Sync-API (Transport injizierbar)
-  service.py   Anwendungsfälle für Web und CLI, from_env() baut alles aus Umgebungsvariablen
+  service.py   Anwendungsfälle für Web und CLI, from_env() baut alles aus Umgebungsvariablen;
+               Einstellungen (Paprika-Login, Kalender), Tags schreiben, Bild-Cache
+  tagging.py   Kategorie-Differenzen nach Paprika schreiben (CSV-Befehl und Oberfläche)
+  views.py     View-Modelle für die Templates (Woche, Rezepte, Einstellungen)
+  templates/   base, woche, rezepte, einstellungen (Jinja); static/ CSS und rezepte.js
   planner.py   reine Funktion plan_week(...) – deterministisch über übergebenen Random
   store.py     SQLite (stdlib sqlite3), einzige Stelle mit SQL
   ics.py       ICS-Feed erzeugen (ohne Fremdbibliothek, floating local time)
@@ -74,7 +80,10 @@ Regeln für den Code:
 
 ## Integrationen
 
-- **Apple-Kalender:** `https://<host>/kalender.ics` abonnieren. Enthält nur freigegebene Pläne.
+- **Apple-Kalender:** geheimer Abo-Link `https://<host>/kalender/<token>.ics` aus den
+  Einstellungen (Knopf „Auf diesem Gerät abonnieren“ öffnet `webcal://`). Enthält nur freigegebene
+  Pläne; Name, Uhrzeit und Dauer stehen in den Einstellungen. „Neuen geheimen Link erstellen“
+  macht alte Abos ungültig. `/kalender.ics` ohne Token nur im LAN bzw. hinter Access nutzen.
 - **Home Assistant:**
   - Kalender: Integration „Remote Calendar“ mit derselben ICS-URL.
   - Sensor: REST-Sensor auf `/api/heute` (Feld `gericht`).
@@ -99,7 +108,12 @@ Regeln für den Code:
 
 - Docker auf dem Proxmox, Port 8080, Volume `./data`.
 - Keine eigene Authentifizierung. Von außen nur über Cloudflare Tunnel **mit Cloudflare Access**
-  erreichbar machen; die ICS-URL für HA/Kalender über einen Access-Service-Token oder nur im LAN.
+  erreichbar machen. Für den Pfad `/kalender/*` eine Access-Bypass-Regel anlegen: Der
+  iPhone-Kalender kann sich nicht anmelden, der Link ist durch seinen geheimen Schlüssel geschützt.
+- `tischlein serve` wertet `X-Forwarded-Proto`/`Host` aus, damit Abo-Links hinter dem Tunnel die
+  öffentliche https-Adresse tragen.
+- Rezeptfotos werden beim ersten Anzeigen nach `data/bilder/` geladen. Paprikas Bild-Links sind
+  nur kurz gültig; abgelaufene werden über einen Rezeptabruf erneuert (seriell, 0,25 s Pause).
 
 ## Offen
 

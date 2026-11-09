@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Rezepte · Tischlein{% endblock %}
+{% block content %}
+<section class="title">
+  <div>
+    <h1>Rezepte</h1>
+    <p><span class="num">{{ v.kid_count }}</span> von <span class="num">{{ v.main_count }}</span> Hauptspeisen sind Kinder-OK · <span class="num">{{ v.untagged }}</span> ohne Thema · <span class="num">{{ v.count }}</span> Rezepte in Paprika</p>
+  </div>
+  {% if v.data.canWrite %}
+  <div class="title-actions">
+    <span class="stamp">Abgeglichen {{ (v.last_sync or 'noch nie').split(' – ')[0] }}</span>
+    <form class="inline" method="post" action="/sync" data-sync><input type="hidden" name="zurueck" value="/rezepte"><button class="btn">Mit Paprika abgleichen</button></form>
+  </div>
+  {% else %}
+  <a class="btn" href="/einstellungen">Paprika verbinden</a>
+  {% endif %}
+</section>
+
+<div class="filters" role="search">
+  <div class="line">
+    <label class="search">
+      <span class="sr-only">Rezept suchen</span>
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14"/></svg>
+      <input class="field" id="q" type="search" placeholder="Rezept suchen" autocomplete="off">
+    </label>
+    <div class="seg" role="group" aria-label="Umfang">
+      <button type="button" data-scope="main" aria-pressed="true">Hauptspeisen</button>
+      <button type="button" data-scope="all" aria-pressed="false">Alle</button>
+    </div>
+    <button type="button" class="chip kid" id="only-open" aria-pressed="false">Noch nicht Kinder-OK</button>
+  </div>
+  <div class="chips scroll" id="theme-chips" role="group" aria-label="Thema"></div>
+</div>
+
+<div class="grid">
+  <section class="panel s8" aria-labelledby="list-h">
+    <div class="panel-head">
+      <h2 id="list-h">Gerichte</h2>
+      <span class="chip-count num" id="result-count">0</span>
+    </div>
+    <div class="list-head" aria-hidden="true"><span>Rezept und Kategorien</span><span>Kinder-OK</span></div>
+    <div class="rlist" id="list" role="listbox" aria-label="Rezepte"></div>
+    <p class="list-foot" id="list-foot"></p>
+  </section>
+  <div class="s4 detail-wrap" id="detail-wrap">
+    <section class="panel detail" id="detail" aria-live="polite">
+      <p class="detail-empty">Wähl ein Rezept, um seine Kategorien zu bearbeiten. Kinder-OK schaltest du direkt in der Liste.</p>
+    </section>
+  </div>
+</div>
+<script type="application/json" id="data">{{ v.data | tojson }}</script>
+{% endblock %}
+{% block scripts %}<script src="/static/rezepte.js" defer></script>
+<script>
+  document.querySelector("[data-sync]")?.addEventListener("submit", (e) => {
+    const b = e.target.querySelector("button"); b.disabled = true; b.textContent = "Gleicht ab …";
+  });
+</script>{% endblock %}
