@@ -35,6 +35,15 @@ CREATE TABLE IF NOT EXISTS meals (
     reason TEXT NOT NULL DEFAULT '',
     PRIMARY KEY (week_start, day)
 );
+CREATE TABLE IF NOT EXISTS paprika_cache (
+    uid TEXT PRIMARY KEY,
+    hash TEXT NOT NULL,
+    data TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS meta (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS feedback (
     recipe_uid TEXT PRIMARY KEY,
     verdict TEXT NOT NULL CHECK (verdict IN ('ok', 'nein')),
@@ -72,6 +81,28 @@ class Store:
             Recipe(r["uid"], r["name"], tuple(json.loads(r["tags"])), r["rating"], r["source_url"], r["total_time"])
             for r in rows
         ]
+
+    def paprika_cache(self) -> dict[str, tuple[str, dict]]:
+        rows = self.db.execute("SELECT uid, hash, data FROM paprika_cache").fetchall()
+        return {uid: (h, json.loads(data)) for uid, h, data in rows}
+
+    def replace_paprika_cache(self, cache: dict[str, tuple[str, dict]]) -> None:
+        with self.db:
+            self.db.execute("DELETE FROM paprika_cache")
+            self.db.executemany(
+                "INSERT INTO paprika_cache VALUES (?, ?, ?)",
+                [(uid, h, json.dumps(data, ensure_ascii=False)) for uid, (h, data) in cache.items()],
+            )
+
+    def set_meta(self, key: str, value: str) -> None:
+        with self.db:
+            self.db.execute(
+                "INSERT INTO meta VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", (key, value)
+            )
+
+    def meta(self, key: str) -> str | None:
+        row = self.db.execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()
+        return row[0] if row else None
 
     # Plans -----------------------------------------------------------------
 

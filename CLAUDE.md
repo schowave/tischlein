@@ -11,14 +11,16 @@ landen im Kalender.
 
 ```bash
 uv run pytest                                    # alle Tests
-uv run tischlein import Rezepte.paprikarecipes   # Paprika-Export einlesen
+uv run tischlein sync                            # Rezepte aus der Paprika-Cloud abgleichen
+uv run tischlein import Rezepte.paprikarecipes   # alternativ: Paprika-Export einlesen
 uv run tischlein plan --woche naechste           # Plan erzeugen (Entwurf)
 uv run tischlein serve                           # Web + API auf :8080
 docker compose up -d --build                     # Container, Daten in ./data
 ```
 
 Konfiguration: `tischlein.toml` (Wochenschema, Tags, Cooldown). Pfad über `TISCHLEIN_CONFIG`,
-Datenbank über `TISCHLEIN_DB` (Default `data/tischlein.db`).
+Datenbank über `TISCHLEIN_DB` (Default `data/tischlein.db`). Paprika-Sync über `PAPRIKA_EMAIL`,
+`PAPRIKA_PASSWORD` (optional `PAPRIKA_USER_AGENT`) in `.env`, nie im Repo.
 
 ## Domänensprache
 
@@ -56,6 +58,8 @@ src/tischlein/
   config.py    tischlein.toml laden → PlanConfig
   models.py    Recipe, Meal, WeekPlan, Feedback (Dataclasses, keine Logik mit I/O)
   paprika.py   .paprikarecipes lesen (ZIP mit gzip-JSON pro Rezept)
+  paprika_sync.py  Client für die inoffizielle Paprika-Sync-API (Transport injizierbar)
+  service.py   Anwendungsfälle für Web und CLI, from_env() baut alles aus Umgebungsvariablen
   planner.py   reine Funktion plan_week(...) – deterministisch über übergebenen Random
   store.py     SQLite (stdlib sqlite3), einzige Stelle mit SQL
   ics.py       ICS-Feed erzeugen (ohne Fremdbibliothek, floating local time)
@@ -76,8 +80,20 @@ Regeln für den Code:
   - Sensor: REST-Sensor auf `/api/heute` (Feld `gericht`).
   - Wöchentlicher Entwurf: HA-Automation ruft `POST /api/plaene/naechste/erzeugen` auf,
     Tischlein ruft danach optional `HA_WEBHOOK_URL` auf („Mahlzeit: Plan für nächste Woche ist da“).
-- **Paprika:** Import über den Export „Paprika Recipe Format“. Rückschreiben in den Paprika
-  Meal Planner ist offen (siehe unten).
+- **Paprika:** Primär Sync über die inoffizielle Cloud-API (`paprika_sync.py`):
+  - Login `POST /api/v1/account/login/` (Form + Basic Auth) → Token.
+    v2-Login lehnt Fremd-Clients ab („Unrecognized client“).
+  - Lesen über `/api/v2/sync/...` mit `Bearer <token>`. Geprüft 2026-11: v2 nimmt nur Bearer,
+    v1-Sync nur Basic Auth.
+  - `sync/categories/`, `sync/recipes/` (uid + hash), `sync/recipe/<uid>/`.
+    Rezepte verweisen per UID auf Kategorien.
+  - Nur geänderte Rezepte (Hash) werden geladen, Rohdaten liegen in `paprika_cache`. Paprika
+    sperrt IPs bei zu vielen Anfragen, daher 0,2 s Pause zwischen Abrufen.
+  - `POST /api/plaene/.../erzeugen` synchronisiert vorher; schlägt das fehl, wird mit dem
+    letzten Stand geplant und `sync_fehler` gemeldet.
+  - Fallback: Upload des Exports „Paprika Recipe Format“.
+  - Die API ist undokumentiert und kann sich ändern. Bei Fehlern zuerst gegen
+    github.com/johnwbyrd/kappari (Protokoll-Doku) abgleichen.
 
 ## Betrieb
 
@@ -87,8 +103,9 @@ Regeln für den Code:
 
 ## Offen
 
-- Rückschreiben in den Paprika Meal Planner: Paprika hat nur eine inoffizielle Sync-API
-  (`paprikaapp.com/api/v2/sync/...`). Vor der Umsetzung als ADR entscheiden, ob sich das lohnt.
+- Rückschreiben freigegebener Pläne in den Paprika Meal Planner: `POST /api/v1/sync/meals/`,
+  multipart-Feld `data` = gzip-JSON-Liste von `{uid, recipe_uid, date "YYYY-MM-DD 00:00:00",
+  type, name, deleted, order_flag}`. Welcher `type` Mittagessen ist, vorher prüfen.
 - Vorschläge für neue Rezepte (z. B. per Claude API anhand von Kinder-OK-Rezepten) – erst wenn
   die Rotation im Alltag läuft.
 - Vorlieben und Abneigungen der Jungs als Ausschluss-Zutaten.

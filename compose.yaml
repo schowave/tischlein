@@ -5,6 +5,9 @@ services:
     restart: unless-stopped
     ports:
       - "8080:8080"
+    env_file:
+      - path: .env          # PAPRIKA_EMAIL, PAPRIKA_PASSWORD (nicht committen)
+        required: false
     environment:
       TZ: Europe/Berlin
       # HA_WEBHOOK_URL: http://homeassistant.local:8123/api/webhook/tischlein

@@ -68,3 +68,30 @@ def test_swap_without_alternative_keeps_meal(client):
     montag = client.get("/api/plan", params={"woche": "naechste"}).json()["mahlzeiten"][0]
     assert montag["gericht"] == "Hähnchen-Bowl"
     assert "Keine Alternative" in montag["hinweis"]
+
+
+def test_sync_endpoints(export_bytes):
+    from test_paprika_sync import FakePaprika, client as paprika_client, recipe
+
+    fake = FakePaprika({"R1": recipe("R1", "h1", ["c-fisch", "c-kids"])})
+    svc = Tischlein(Store(":memory:"), PlanConfig(), rng=random.Random(0), paprika=paprika_client(fake))
+    c = TestClient(create_app(svc))
+
+    assert c.post("/api/sync").json() == {"ok": True, "ergebnis": "1 Rezepte, 1 geladen, 0 entfernt"}
+    assert c.post("/api/sync").json()["ergebnis"] == "1 Rezepte, 0 geladen, 0 entfernt"  # unchanged hash
+    plan = c.post("/api/plaene/naechste/erzeugen").json()
+    assert plan["mahlzeiten"][2]["gericht"] == "Rezept R1"
+    assert "sync_fehler" not in plan
+    assert "Letzter Abgleich" in c.get("/").text
+
+    fake.login_status = 401
+    svc.paprika._token = None
+    assert c.post("/api/sync").status_code == 502
+    plan = c.post("/api/plaene/naechste/erzeugen").json()  # still plans with cached recipes
+    assert "Anmeldung" in plan["sync_fehler"]
+    assert plan["mahlzeiten"][2]["gericht"] == "Rezept R1"
+
+
+def test_sync_not_configured(client):
+    assert client.post("/api/sync").status_code == 502
+    assert "Paprika-Sync" not in client.get("/").text

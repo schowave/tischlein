@@ -89,8 +89,19 @@
   </section>
   {% endfor %}
 
+  {% if sync_enabled %}
   <section>
-    <h2>Rezepte aus Paprika importieren</h2>
+    <div class="head">
+      <h2>Paprika-Sync</h2>
+      <form method="post" action="/sync"><button class="primary">Jetzt synchronisieren</button></form>
+    </div>
+    <p class="reason">Letzter Abgleich: {{ last_sync or "noch nie" }}</p>
+    {% if sync_error %}<p class="warn">Fehler: {{ sync_error }}</p>{% endif %}
+  </section>
+  {% endif %}
+
+  <section>
+    <h2>Rezepte aus Paprika-Export importieren</h2>
     <p class="reason">Paprika → Einstellungen → Import/Export → Exportieren im Paprika-Format. Ersetzt den Rezeptbestand, Rückmeldungen bleiben.</p>
     <form method="post" action="/import" enctype="multipart/form-data">
       <input type="file" name="datei" accept=".paprikarecipes" required>

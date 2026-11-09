@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import io
-import os
 import zipfile
 from datetime import date
 from pathlib import Path
@@ -13,10 +12,10 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
 from . import ics, paprika
-from .config import WEEKDAY_NAMES, load_config
+from .config import WEEKDAY_NAMES
 from .models import WeekPlan
-from .service import Tischlein
-from .store import Store
+from .paprika_sync import PaprikaError
+from .service import Tischlein, from_env
 
 TEMPLATES = Jinja2Templates(directory=Path(__file__).parent / "templates")
 
@@ -37,11 +36,7 @@ def _plan_json(plan: WeekPlan | None) -> dict:
 
 def create_app(service: Tischlein | None = None) -> FastAPI:
     if service is None:
-        service = Tischlein(
-            Store(os.environ.get("TISCHLEIN_DB", "data/tischlein.db")),
-            load_config(Path(os.environ.get("TISCHLEIN_CONFIG", "tischlein.toml"))),
-            webhook_url=os.environ.get("HA_WEBHOOK_URL", ""),
-        )
+        service = from_env()
     app = FastAPI(title="Tischlein")
     app.state.service = service
 
@@ -72,6 +67,9 @@ def create_app(service: Tischlein | None = None) -> FastAPI:
             "recipe_count": len(recipes),
             "feedback": service.store.feedback(),
             "config": service.config,
+            "sync_enabled": service.paprika is not None,
+            "last_sync": service.store.meta("last_sync"),
+            "sync_error": service.store.meta("last_sync_error"),
             "themes_without_recipes": [
                 d.theme for d in service.config.days if not any(r.has_tag(d.theme) for r in recipes)
             ],
@@ -104,6 +102,11 @@ def create_app(service: Tischlein | None = None) -> FastAPI:
         service.feedback(rezept_uid, urteil)  # type: ignore[arg-type]
         return back()
 
+    @app.post("/sync")
+    def ui_sync():
+        service.try_sync_paprika()
+        return back()
+
     @app.post("/import")
     async def ui_import(datei: UploadFile):
         try:
@@ -119,9 +122,20 @@ def create_app(service: Tischlein | None = None) -> FastAPI:
     def api_plan(woche: str = "aktuell"):
         return _plan_json(service.store.plan(week(woche)))
 
+    @app.post("/api/sync")
+    def api_sync():
+        try:
+            return {"ok": True, "ergebnis": service.sync_paprika()}
+        except PaprikaError as e:
+            raise HTTPException(502, str(e))
+
     @app.post("/api/plaene/{which}/erzeugen")
     def api_generate(which: str):
-        return _plan_json(service.generate(week(which), notify=True))
+        sync_error = service.try_sync_paprika()
+        body = _plan_json(service.generate(week(which), notify=True))
+        if sync_error:
+            body["sync_fehler"] = sync_error
+        return body
 
     @app.get("/api/heute")
     def api_today():
