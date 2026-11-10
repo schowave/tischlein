@@ -25,7 +25,7 @@
       {% if v.count %}<div class="end">
         <label class="toggle-line"><input type="checkbox" x-model="hideDone"> Erledigte ausblenden</label>
         <button type="button" class="btn btn-ghost btn-sm" @click="share('Einkaufsliste {{ v.range }}')">Teilen</button>
-        {% if v.bring %}<button type="button" class="btn btn-ghost btn-sm" @click="toBring()" :disabled="busy" title="{{ 'Auf die Bring-Liste ' ~ v.bring_name if v.bring_name else 'Auf die Bring-Liste' }}">An Bring</button>{% endif %}
+        {% if v.bring %}<button type="button" class="btn btn-ghost btn-sm" @click="toBring()" :disabled="busy" title="{{ 'Mit der Bring-Liste ' ~ v.bring_name ~ ' abgleichen' if v.bring_name else 'Mit Bring abgleichen' }}">{{ 'Bring abgleichen' if v.bring_sync else 'An Bring' }}</button>{% endif %}
       </div>{% endif %}
     </div>
     <form class="add-row" @submit.prevent="add()">
@@ -68,7 +68,7 @@
     <div class="list-actions">
       <button type="button" class="btn btn-sm" @click="allDone({{ 'true' if v.open else 'false' }})">{{ 'Alle abhaken' if v.open else 'Alle wieder offen' }}</button>
       <button type="button" class="btn btn-ghost btn-sm danger" @click="removeDone()">Abgehakte entfernen</button>
-      {% if v.generated %}{{ collect_form(v.which, 'Neu sammeln', 'btn btn-ghost btn-sm', 'Zutaten neu aus dem Plan sammeln? Abgehakte Zutaten aus dem Plan gehen dabei verloren, eigene Einträge bleiben.') }}{% endif %}
+      {% if v.generated %}{{ collect_form(v.which, 'Neu sammeln', 'btn btn-ghost btn-sm', 'Zutaten neu aus dem Plan sammeln? Was schon abgehakt ist, bleibt abgehakt; eigene Einträge bleiben.') }}{% endif %}
     </div>
     {% elif v.has_plan %}
     <div class="empty-frame shop-empty">

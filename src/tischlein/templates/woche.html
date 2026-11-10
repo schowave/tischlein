@@ -75,22 +75,22 @@
         </div>
         <div class="day-act">
           {% if d.free %}
-          <form class="inline" method="post" action="/tage/{{ d.date.isoformat() }}/kochen"><input type="hidden" name="woche" value="{{ v.which }}"><button class="btn btn-ghost btn-sm">Doch kochen</button></form>
+          <form data-stay class="inline" method="post" action="/tage/{{ d.date.isoformat() }}/kochen"><input type="hidden" name="woche" value="{{ v.which }}"><button class="btn btn-ghost btn-sm">Doch kochen</button></form>
           {% else %}
           {% if d.portions %}
           {% set p = d.portions %}
           <div class="portions{% if p.custom %} is-custom{% endif %}" role="group" aria-label="{{ d.weekday }}: Portionen">
-            <form method="post" action="/tage/{{ d.date.isoformat() }}/portionen"><input type="hidden" name="portionen" value="{{ p.servings - 1 }}"><input type="hidden" name="woche" value="{{ v.which }}"><button class="step" aria-label="Eine Portion weniger" {% if p.servings <= 1 %}disabled{% endif %}>−</button></form>
+            <form data-stay method="post" action="/tage/{{ d.date.isoformat() }}/portionen"><input type="hidden" name="portionen" value="{{ p.servings - 1 }}"><input type="hidden" name="woche" value="{{ v.which }}"><button class="step" aria-label="Eine Portion weniger" {% if p.servings <= 1 %}disabled{% endif %}>−</button></form>
             <span class="num" title="Portionen für die Einkaufsliste">{{ p.servings }}<small> Port.</small></span>
-            <form method="post" action="/tage/{{ d.date.isoformat() }}/portionen"><input type="hidden" name="portionen" value="{{ p.servings + 1 }}"><input type="hidden" name="woche" value="{{ v.which }}"><button class="step" aria-label="Eine Portion mehr" {% if p.servings >= 30 %}disabled{% endif %}>+</button></form>
+            <form data-stay method="post" action="/tage/{{ d.date.isoformat() }}/portionen"><input type="hidden" name="portionen" value="{{ p.servings + 1 }}"><input type="hidden" name="woche" value="{{ v.which }}"><button class="step" aria-label="Eine Portion mehr" {% if p.servings >= 30 %}disabled{% endif %}>+</button></form>
           </div>
           {% endif %}
           {% if v.plan.status == 'entwurf' and d.meal %}
-          <form class="inline" method="post" action="/tage/{{ d.date.isoformat() }}/schnell"><input type="hidden" name="an" value="{{ 0 if d.quick else 1 }}"><input type="hidden" name="woche" value="{{ v.which }}"><button class="btn btn-ghost btn-sm quick-toggle{% if d.quick %} is-on{% endif %}" aria-pressed="{{ 'true' if d.quick else 'false' }}" title="{{ 'Wieder normal planen' if d.quick else 'Wenig Zeit: ein Gericht bis 30 Minuten wählen' }}">Schnell</button></form>
+          <form data-stay class="inline" method="post" action="/tage/{{ d.date.isoformat() }}/schnell"><input type="hidden" name="an" value="{{ 0 if d.quick else 1 }}"><input type="hidden" name="woche" value="{{ v.which }}"><button class="btn btn-ghost btn-sm quick-toggle{% if d.quick %} is-on{% endif %}" aria-pressed="{{ 'true' if d.quick else 'false' }}" title="{{ 'Wieder normal planen' if d.quick else 'Wenig Zeit: ein Gericht bis 30 Minuten wählen' }}">Schnell</button></form>
           {% elif d.quick %}<span class="pill pill-neutral">Schnell</span>
           {% endif %}
           {% if v.plan.status == 'entwurf' and d.meal %}
-          <form class="inline" method="post" action="/plaene/{{ v.which }}/tauschen">
+          <form data-stay class="inline" method="post" action="/plaene/{{ v.which }}/tauschen">
             <input type="hidden" name="tag" value="{{ d.date.isoformat() }}">
             <button class="btn btn-ghost btn-sm" aria-label="{{ d.weekday }} tauschen">Tauschen</button>
           </form>
@@ -99,7 +99,7 @@
             <summary class="btn btn-ghost btn-sm" aria-label="{{ d.weekday }}: kein Mittagessen">Frei</summary>
             <div class="free-options" role="group" aria-label="Grund">
               {% for g in free_reasons %}
-              <form method="post" action="/tage/{{ d.date.isoformat() }}/frei"><input type="hidden" name="grund" value="{{ g }}"><input type="hidden" name="woche" value="{{ v.which }}"><button class="chip">{{ g }}</button></form>
+              <form data-stay method="post" action="/tage/{{ d.date.isoformat() }}/frei"><input type="hidden" name="grund" value="{{ g }}"><input type="hidden" name="woche" value="{{ v.which }}"><button class="chip">{{ g }}</button></form>
               {% endfor %}
             </div>
           </details>
@@ -110,7 +110,7 @@
           <span>{% if d.rating %}Bewertet: {{ {'gut': 'gut', 'mittel': 'ging so', 'schlecht': 'kam nicht an'}[d.rating.verdict] }}{% if d.rating.person %} ({{ d.rating.person }}){% endif %}{% elif d.feedback == 'nein' %}Wird nicht mehr geplant{% else %}Wie war's?{% endif %}</span>
           {% if d.feedback != 'nein' %}
           {% for value, label in [('gut', 'Gut'), ('mittel', 'Ging so'), ('nie', 'Nie wieder')] %}
-          <form class="inline" method="post" action="/bewertung"><input type="hidden" name="rezept_uid" value="{{ d.meal.recipe_uid }}"><input type="hidden" name="tag" value="{{ d.date.isoformat() }}"><input type="hidden" name="urteil" value="{{ value }}"><input type="hidden" name="woche" value="{{ v.which }}"><button class="btn btn-sm{% if d.rating and d.rating.verdict == value %} is-chosen{% elif value == 'nie' %} btn-ghost{% endif %}" aria-pressed="{{ 'true' if d.rating and d.rating.verdict == value else 'false' }}">{{ label }}</button></form>
+          <form data-stay class="inline" method="post" action="/bewertung"><input type="hidden" name="rezept_uid" value="{{ d.meal.recipe_uid }}"><input type="hidden" name="tag" value="{{ d.date.isoformat() }}"><input type="hidden" name="urteil" value="{{ value }}"><input type="hidden" name="woche" value="{{ v.which }}"><button class="btn btn-sm{% if d.rating and d.rating.verdict == value %} is-chosen{% elif value == 'nie' %} btn-ghost{% endif %}" aria-pressed="{{ 'true' if d.rating and d.rating.verdict == value else 'false' }}">{{ label }}</button></form>
           {% endfor %}
           {% endif %}
         </div>
@@ -121,11 +121,11 @@
     <div class="panel-head" style="margin: 14px 0 0">
       <div class="end">
         <a class="btn btn-ghost" href="/einkauf?woche={{ v.which }}">Einkaufsliste</a>
-        <form class="inline" method="post" action="/plaene/{{ v.which }}/erzeugen"><button class="btn">Ganze Woche neu würfeln</button></form>
+        <form data-stay class="inline" method="post" action="/plaene/{{ v.which }}/erzeugen"><button class="btn">Ganze Woche neu würfeln</button></form>
         {% if v.plan.status == 'entwurf' %}
-        <form class="inline" method="post" action="/plaene/{{ v.which }}/status"><input type="hidden" name="status" value="freigegeben"><button class="btn btn-primary">Woche freigeben</button></form>
+        <form data-stay class="inline" method="post" action="/plaene/{{ v.which }}/status"><input type="hidden" name="status" value="freigegeben"><button class="btn btn-primary">Woche freigeben</button></form>
         {% else %}
-        <form class="inline" method="post" action="/plaene/{{ v.which }}/status"><input type="hidden" name="status" value="entwurf"><button class="btn btn-ghost">Wieder bearbeiten</button></form>
+        <form data-stay class="inline" method="post" action="/plaene/{{ v.which }}/status"><input type="hidden" name="status" value="entwurf"><button class="btn btn-ghost">Wieder bearbeiten</button></form>
         {% endif %}
       </div>
     </div>
@@ -137,7 +137,7 @@
     {% else %}
     <div class="week-empty">
       <span>Für {{ v.range }} ist noch nichts geplant. Tischlein wählt pro Tag ein Gericht zum Thema.</span>
-      <form class="inline" method="post" action="/plaene/{{ v.which }}/erzeugen"><button class="btn btn-primary">Woche planen</button></form>
+      <form data-stay class="inline" method="post" action="/plaene/{{ v.which }}/erzeugen"><button class="btn btn-primary">Woche planen</button></form>
     </div>
     {% endif %}
   </section>

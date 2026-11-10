@@ -33,6 +33,7 @@ landen im Kalender.
 | Bewertung | Nach jedem Essen: gut / mittel / schlecht, pro Tag und Person; steuert die Gewichtung | `ratings` |
 | Freier Tag | Kein Mittagessen (Urlaub, Feiertag, Kita …); Feiertage automatisch, „Doch kochen“ überstimmt | `skipdays`, `holidays.py` |
 | Einkaufsliste | Zutaten der Woche ohne Vorräte, auf die Portionen umgerechnet, gleiche Zutaten zusammengeführt und nach Gang sortiert (mit LLM oder per Regeln) | `shopping.py`, `shopping` |
+| Bring-Abgleich | Einkaufsliste ↔ Bring über Home Assistant; pro Eintrag `bring` 0/1/2 (nicht drin, offen, abgehakt), nur Änderungen werden geschickt | `push_bring`, `apply_bring_state` |
 | Abneigung | Zutat, die die Kinder nicht mögen (Einstellungen); solche Rezepte plant Tischlein zuletzt | `dislikes`, `avoid` |
 | Schneller Tag | Tag mit wenig Zeit: Gerichte bis 30 Minuten zuerst | `quickdays`, `quick` |
 | Portionen | Pro geplantem Gericht, Standard `portionen` aus tischlein.toml; skaliert die Mengen | `config.portions`, `servings` |
@@ -75,6 +76,7 @@ src/tischlein/
   views.py     View-Modelle für die Templates
   templates/   eine Seite pro Bereich (Jinja, serverseitig gerendert); _macros.html: Rezeptbild, Einkaufs-Formular
   static/      tischlein.css; rezepte.js, ideen.js, einkauf.js = Alpine-Komponenten (Markup im Template);
+               stay.js: Formulare mit data-stay schicken ohne Neuladen ab (keine springende Seite);
                sw.js = Service Worker (unter /sw.js), nur damit die Einkaufsliste offline öffnet;
                manifest.webmanifest + icons/ für den Home-Bildschirm (display: browser, wegen Cloudflare Access);
                vendor/alpine-<version>.min.js, nur über `mise run vendor:alpine` aktualisieren

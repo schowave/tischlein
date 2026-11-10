@@ -145,7 +145,7 @@ document.addEventListener("alpine:init", () => {
       else if (!res.ok) this.error = (await res.json().catch(() => ({}))).detail || "Konnte nicht senden.";
       else {
         const n = (await res.json()).gesendet;
-        this.error = n ? `${n} ${n === 1 ? "Eintrag" : "Einträge"} an Bring geschickt.` : "Nichts offen.";
+        this.error = n ? `Mit Bring abgeglichen: ${n} ${n === 1 ? "Eintrag" : "Einträge"} offen.` : "Mit Bring abgeglichen, nichts offen.";
       }
     },
 

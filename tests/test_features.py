@@ -205,15 +205,17 @@ def test_ideas_in_background_report_state(svc):
 def test_shopping_item_added_by_hand_notifies_home_assistant(svc, monkeypatch):
     sent = []
     monkeypatch.setattr(svc, "_post_webhook", lambda p: sent.append(p) is None)  # delivered
+    monkeypatch.setattr(svc, "_post_async", lambda p, ok=None: (sent.append(p), ok and ok()))
     svc.add_shopping_item(MONDAY, "Kaffee", "500 g", "Julia")
     assert sent == []  # no webhook configured
     svc.webhook_url = "http://ha/hook"
-    monkeypatch.setattr(svc, "_post_async", sent.append)
     svc.add_shopping_item(MONDAY, "Kaffee", "500 g", "Julia")
-    assert sent[0]["nachricht"] == "Julia hat Kaffee (500 g) auf die Liste gesetzt." and sent[0]["art"] == "einkauf"
+    note = next(p for p in sent if p["art"] == "einkauf")
+    assert note["nachricht"] == "Julia hat Kaffee (500 g) auf die Liste gesetzt."
     assert len(svc.store.shopping(MONDAY)) == 2
+
     assert svc.send_to_bring(MONDAY, "Julia") == 2
-    assert sent[-1]["art"] == "bring" and sent[-1]["eintraege"][0] == {"name": "Kaffee", "menge": "500 g"}
+    assert sent[-1]["art"] == "bring_sync" and sent[-1]["offen"][0] == {"name": "Kaffee", "menge": "500 g"}
     assert sent[-1]["liste"] == ""  # no list chosen: Home Assistant's default
     assert svc.save_bring_lists([{"entity_id": "todo.ikea", "name": "Ikea"}, {"entity_id": "light.x"}]) == 1
     svc.set_bring_list("todo.ikea")
@@ -231,6 +233,46 @@ def test_shopping_item_added_by_hand_notifies_home_assistant(svc, monkeypatch):
         svc.send_to_bring(MONDAY)
 
 
+def test_bring_sync_both_ways(svc, monkeypatch):
+    sent = []
+    monkeypatch.setattr(svc, "_post_async", lambda p, ok=None: (sent.append(p), ok and ok()))
+    svc.webhook_url = "http://ha/hook"
+    assert not svc.bring_sync_on()  # off until switched on in the settings
+    svc.set_bring_sync(True)
+    kaffee = svc.add_shopping_item(MONDAY, "Kaffee", "500 g")
+    svc.add_shopping_item(MONDAY, "Milch", "")
+    sync = [p for p in sent if p["art"] == "bring_sync"]
+    assert all(i["bring"] == 1 for i in svc.store.shopping(MONDAY))  # both are in Bring now
+    assert len(sync) == 2 and sync[0]["offen"] == [{"name": "Kaffee", "menge": "500 g"}]
+    assert sync[1]["offen"] == [{"name": "Milch", "menge": ""}]  # only what changed: no re-adds
+
+    svc.set_item_done(kaffee, True, "Julia")  # ticked here: ticked off in Bring
+    assert sent[-1]["erledigt"] == ["Kaffee"] and sent[-1]["offen"] == []
+
+    state = [
+        {"summary": "Milch", "description": "", "status": "completed"},  # bought in Bring
+        {"summary": "Brot", "description": "1 Laib", "status": "needs_action"},  # added in Bring
+        {"summary": "Kaffee", "description": "500 g", "status": "completed"},
+    ]
+    assert svc.apply_bring_state("todo.zuhause", state, today=MONDAY) == {"abgehakt": 1, "neu": 1}
+    rows = {i["name"]: i for i in svc.store.shopping(MONDAY)}
+    assert rows["Milch"]["done"] and rows["Milch"]["done_by"] == "Bring"
+    assert rows["Brot"]["group"] == "Aus Bring" and rows["Brot"]["amount"] == "1 Laib" and not rows["Brot"]["done"]
+    assert svc.apply_bring_state("todo.zuhause", state, today=MONDAY) == {"abgehakt": 0, "neu": 0}  # idempotent
+    assert svc.apply_bring_state("todo.zuhause", [], today=MONDAY) == {"abgehakt": 0, "neu": 0}  # failed read
+
+    svc.save_bring_lists([{"entity_id": "todo.ikea", "name": "Ikea"}])
+    svc.set_bring_list("todo.ikea")
+    assert svc.apply_bring_state("todo.zuhause", state, today=MONDAY) == {"abgehakt": 0, "neu": 0}  # other list
+    n = len(sent)
+    svc.remove_done(MONDAY)  # both are already ticked off in Bring: nothing to send
+    assert sent[n:] == [] and [i["name"] for i in svc.store.shopping(MONDAY)] == ["Brot"]
+    svc.set_bring_sync(False)
+    n = len(sent)
+    svc.add_shopping_item(MONDAY, "Tee", "")
+    assert all(p["art"] != "bring_sync" for p in sent[n:])  # sync off: only the push notice
+
+
 def test_day_info_and_reminder(svc, monkeypatch):
     plan = svc.generate(MONDAY)
     changed = svc.fake.recipes[plan.meals[0].recipe_uid]
@@ -243,7 +285,7 @@ def test_day_info_and_reminder(svc, monkeypatch):
     sent = []
     svc.webhook_url = "http://ha/webhook"
     monkeypatch.setattr(svc, "_post_webhook", sent.append)
-    monkeypatch.setattr(svc, "_post_async", sent.append)
+    monkeypatch.setattr(svc, "_post_async", lambda p, ok=None: (sent.append(p), ok and ok()))
     sunday_evening = datetime(2026, 11, 15, 18, 5)
     assert svc.reminder_tick(sunday_evening) is False  # plan is only a draft
     svc.set_status(MONDAY, "freigegeben")
@@ -316,3 +358,29 @@ def test_people_names(svc):
     svc.save_people({"julia@example.com": "Julia", "fremd@example.com": "X"})
     assert svc.person_name("julia@example.com") == "Julia"
     assert "fremd@example.com" not in svc.people()
+
+
+def test_bring_push_is_remembered_only_when_home_assistant_has_it(svc, monkeypatch):
+    svc.webhook_url = "http://ha/hook"
+    svc.set_bring_sync(True)
+    monkeypatch.setattr(svc, "_post_async", lambda p, ok=None: None)  # Home Assistant never answers
+    svc.add_shopping_item(MONDAY, "Milch", "")
+    assert svc.store.shopping(MONDAY)[0]["bring"] == 0
+    assert svc.apply_bring_state("", [{"summary": "Brot", "status": "needs_action"}], today=MONDAY)["abgehakt"] == 0
+    assert not {i["name"]: i for i in svc.store.shopping(MONDAY)}["Milch"]["done"]  # not "bought" by mistake
+
+
+def test_regenerating_the_list_keeps_ticks_and_bring_state(svc, monkeypatch):
+    sent = []
+    monkeypatch.setattr(svc, "_post_async", lambda p, ok=None: (sent.append(p), ok and ok()))
+    svc.webhook_url = "http://ha/hook"
+    svc.set_bring_sync(True)
+    svc.generate(MONDAY)
+    svc.generate_shopping(MONDAY)
+    rows = {i["name"]: i for i in svc.store.shopping(MONDAY)}
+    svc.set_item_done(rows["Zwiebel"]["id"], True, "Julia")
+    n = len(sent)
+    svc.generate_shopping(MONDAY)  # again, same plan: nothing new for Bring, the tick stays
+    rows = {i["name"]: i for i in svc.store.shopping(MONDAY)}
+    assert rows["Zwiebel"]["done"] and rows["Zwiebel"]["bring"] == 2
+    assert all(not p["offen"] and not p["erledigt"] for p in sent[n:] if p["art"] == "bring_sync")

@@ -148,7 +148,7 @@
   <section class="setting" id="bring" aria-labelledby="bring-h">
     <div class="setting-label">
       <h2 id="bring-h">Bring</h2>
-      <p>„An Bring“ in der Einkaufsliste schickt die offenen Einträge über Home Assistant auf diese Bring-Liste. Home Assistant meldet seine Listen jede Stunde.</p>
+      <p>Tischlein hält die Einkaufsliste über Home Assistant mit dieser Bring-Liste abgeglichen, in beide Richtungen. Home Assistant meldet seine Listen jede Stunde.</p>
     </div>
     <div class="panel setting-panel">
       {% if v.bring_lists %}
@@ -158,6 +158,8 @@
           <option value="" {% if not v.bring_list %}selected{% endif %}>Standard aus Home Assistant</option>
           {% for l in v.bring_lists %}<option value="{{ l.entity_id }}" {% if l.entity_id == v.bring_list %}selected{% endif %}>{{ l.name }}</option>{% endfor %}
         </select>
+        <label class="check-line"><input type="checkbox" name="abgleich" value="1" {% if v.bring_sync %}checked{% endif %}> Automatisch abgleichen</label>
+        <p class="hint">Neue, geänderte und abgehakte Einträge gehen sofort nach Bring; was ihr in Bring abhakt oder neu anlegt, kommt nach ein paar Minuten in die Einkaufsliste (unter „Aus Bring“).</p>
         <div class="form-actions"><button class="btn btn-primary">Speichern</button></div>
       </form>
       {% else %}

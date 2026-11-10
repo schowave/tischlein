@@ -55,6 +55,11 @@ class BringLists(BaseModel):
     listen: list[dict]
 
 
+class BringState(BaseModel):
+    liste: str = ""
+    eintraege: list[dict] = []
+
+
 class TagEdit(BaseModel):
     hinzufuegen: list[str] = []
     entfernen: list[str] = []
@@ -169,9 +174,10 @@ def create_app(service: Tischlein | None = None, auto_sync: bool | None = None) 
         return RedirectResponse("/einstellungen?ok=personen#personen", status_code=303)
 
     @app.post("/einstellungen/bring")
-    def settings_bring(liste: str = Form("")):
+    def settings_bring(liste: str = Form(""), abgleich: str = Form("")):
         try:
             service.set_bring_list(liste)
+            service.set_bring_sync(abgleich == "1")
         except KeyError as e:
             raise HTTPException(400, e.args[0]) from e
         return RedirectResponse("/einstellungen?ok=bring#bring", status_code=303)
@@ -267,13 +273,25 @@ def create_app(service: Tischlein | None = None, auto_sync: bool | None = None) 
 
     @app.post("/api/einkauf/{which}/alle-erledigt")
     def api_shopping_all_done(request: Request, which: str, body: Done):
-        n = service.store.set_all_shopping_done(week(which), body.erledigt, person_of(request))
+        n = service.set_all_done(week(which), body.erledigt, person_of(request))
         return {"geaendert": n}
 
     @app.post("/api/bring/listen")
     def api_bring_lists(body: BringLists):
         """Home Assistant reports its Bring lists here (rest_command, hourly)."""
         return {"listen": service.save_bring_lists(body.listen)}
+
+    @app.get("/api/bring/ziel")
+    def api_bring_target():
+        """Which Bring list Home Assistant should read for the sync ("" = its default)."""
+        return {"liste": service.bring_list(), "abgleich": service.bring_sync_on()}
+
+    @app.post("/api/bring/stand")
+    def api_bring_state(body: BringState):
+        """Home Assistant reports the Bring list (todo.get_items); ticks and new items come over."""
+        if not service.bring_sync_on():
+            return {"abgehakt": 0, "neu": 0}
+        return service.apply_bring_state(body.liste, body.eintraege)
 
     @app.post("/api/einkauf/{which}/bring")
     def api_shopping_bring(request: Request, which: str):
@@ -284,17 +302,17 @@ def create_app(service: Tischlein | None = None, auto_sync: bool | None = None) 
 
     @app.post("/api/einkauf/{which}/erledigte-entfernen")
     def api_shopping_remove_done(which: str):
-        return {"entfernt": service.store.delete_done_shopping(week(which))}
+        return {"entfernt": service.remove_done(week(which))}
 
     @app.post("/api/einkauf/{item_id}/erledigt")
     def api_shopping_done(request: Request, item_id: int, body: Done):
-        if not service.store.set_shopping_done(item_id, body.erledigt, person_of(request)):
+        if not service.set_item_done(item_id, body.erledigt, person_of(request)):
             raise HTTPException(404, "Eintrag nicht gefunden")
         return {"ok": True, "von": person_of(request) if body.erledigt else ""}
 
     @app.post("/api/einkauf/{item_id}/loeschen")
     def api_shopping_delete(item_id: int):
-        service.store.delete_shopping_item(item_id)
+        service.delete_item(item_id)
         return {"ok": True}
 
     # Ideas -------------------------------------------------------------------------

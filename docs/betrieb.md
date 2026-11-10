@@ -36,10 +36,14 @@
   am Tag). Trägt jemand von Hand etwas in die Einkaufsliste ein, kommt
   „<Name> hat Kaffee (500 g) auf die Liste gesetzt.“ mit `art: einkauf`, `von`, `eintrag`, `menge`.
   Gibt jemand eine Woche frei, kommt „<Name> hat die Woche ab 16.11. freigegeben: Mo …“ mit `art: freigabe`.
-  „An Bring“ schickt `art: bring` mit `eintraege` [{name, menge}]; die Automation `notify_tischlein`
-  im homelab-Repo legt sie per `todo.add_item` auf die Bring-Liste (Integration Bring!, in HA eingerichtet).
-  Welche Liste, wählt ihr unter Einstellungen → Bring (`liste` im JSON); die Auswahl kennt Tischlein,
-  weil Home Assistant beim Start und stündlich seine Bring-Listen an `POST /api/bring/listen` meldet.
+  **Bring-Abgleich** (Einstellungen → Bring, „Automatisch abgleichen“): Tischlein schickt nach jeder
+  Änderung nur das Geänderte als `art: bring_sync` (`offen` [{name, menge}], `erledigt` [name], `liste`);
+  `notify_tischlein` im homelab-Repo legt an (`todo.add_item`) bzw. hakt ab (`todo.update_item`).
+  Zurück: `tischlein_bring_stand` liest bei jeder Änderung einer Bring-Liste und alle 5 Minuten die
+  gewählte Liste (`todo.get_items`) und meldet sie an `POST /api/bring/stand`; Tischlein hakt dort
+  Gekauftes ab („abgehakt von Bring“) und übernimmt neue Artikel unter „Aus Bring“. Welche Listen es
+  gibt, meldet HA beim Start und stündlich an `POST /api/bring/listen`. Abgleich über den Namen
+  (Zwiebel = Zwiebeln); nur die Liste der laufenden Woche.
   Fürs iPhone: Automation mit Webhook-Trigger, Aktion `notify.mobile_app_<gerät>` mit
   `message: "{{ trigger.json.nachricht }}"` (Companion-App). Wer den Eintrag selbst gemacht hat,
   lässt sich über `trigger.json.von` ausfiltern.

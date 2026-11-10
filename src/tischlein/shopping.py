@@ -458,6 +458,11 @@ def _key(name: str) -> str:
     return k
 
 
+def item_key(name: str) -> str:
+    """The same item in Tischlein and Bring: "Zwiebeln" = "Zwiebel", "Eier" = "Ei" (no amounts)."""
+    return _key(clean_name(name)[0] or name)
+
+
 def aisle(name: str, unit: str = "") -> str:
     if unit in ("Dose", "Glas"):
         return "Trockenwaren & Konserven"

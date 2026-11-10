@@ -64,7 +64,9 @@ Das Prinzip ist „Sous-Chef“: Tischlein schlägt vor, die Familie gibt frei.
   Gerichte. Vorräte wie Salz und Öl bleiben weg. Mit LLM noch genauer, ohne LLM per Regeln.
 - **Gemeinsam abhaken, auch ohne Netz:** Was die andere Person abhakt, erscheint nach wenigen
   Sekunden; im Laden ohne Empfang wird nachgeholt. Eigene Einträge dazuschreiben, alles abhaken,
-  Abgehaktes entfernen, die Liste mit „An Bring“ (über Home Assistant) oder „Teilen“ weitergeben. Neue Einträge
+  Abgehaktes entfernen, „Teilen“ als Text.
+- **Mit Bring abgeglichen** (über Home Assistant): Einträge und Haken gehen in beide Richtungen,
+  was ihr in Bring neu anlegt, kommt unter „Aus Bring“ dazu; die Liste wählt ihr in den Einstellungen. Neue Einträge
   melden sich über Home Assistant auf dem Handy der anderen.
 - **Bewertung nach jedem Essen:** gut, ging so, nie wieder. Lieblingsgerichte kommen öfter.
 
@@ -205,8 +207,10 @@ uv run tischlein serve [--port 8080]                    # Web-Oberfläche und AP
 | `GET` | `/api/einkauf?woche=…` | Einkaufsliste der Woche |
 | `POST` | `/api/einkauf/{woche}/eintrag` | `{"name": "Kaffee", "menge": "500 g"}`, meldet sich bei Home Assistant |
 | `POST` | `/api/einkauf/{woche}/alle-erledigt`, `…/erledigte-entfernen` | Alles abhaken, Abgehakte entfernen |
-| `POST` | `/api/einkauf/{woche}/bring` | Offene Einträge an Home Assistant, von dort auf die Bring-Liste |
+| `POST` | `/api/einkauf/{woche}/bring` | Ganze Liste noch einmal mit Bring abgleichen |
 | `POST` | `/api/bring/listen` | Home Assistant meldet seine Bring-Listen (für die Auswahl in den Einstellungen) |
+| `GET` | `/api/bring/ziel` | Welche Bring-Liste Home Assistant abgleichen soll |
+| `POST` | `/api/bring/stand` | Home Assistant meldet die Bring-Liste (`todo.get_items`); Abgehaktes und Neues kommen an |
 | `POST` | `/api/ideen/start`, `GET /api/ideen/status` | Rezeptideen im Hintergrund erzeugen, Fortschritt |
 | `GET` | `/api/plan?woche=aktuell\|naechste\|JJJJ-MM-TT` | Wochenplan als JSON |
 | `POST` | `/api/plaene/{woche}/erzeugen` | Paprika abgleichen und einen Entwurf erzeugen |

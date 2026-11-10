@@ -289,6 +289,7 @@ def settings_view(svc: Tischlein, base_url: str) -> dict:
         "bring_lists": svc.bring_lists(),
         "bring_list": svc.bring_list(),
         "ha": bool(svc.webhook_url),
+        "bring_sync": svc.bring_sync_on(),
         "avoided": len(svc.avoided_uids()),
         "sync_minutes": svc.config.sync_minutes,
         "auto_check": svc.store.meta("auto_check"),
@@ -314,7 +315,8 @@ def shopping_view(svc: Tischlein, week_start: date, which: str) -> dict:
     items = svc.store.shopping(week_start)
     groups: dict[str, list[dict]] = {}
     for i in items:
-        groups.setdefault("Eigene Einträge" if i["manual"] else i["group"], []).append(i)
+        name = i["group"] if not i["manual"] or i["group"] == svc.BRING_GROUP else "Eigene Einträge"
+        groups.setdefault(name, []).append(i)
     plan = svc.store.plan(week_start)
     photos = svc_photos(svc)
     dishes = (
@@ -340,6 +342,7 @@ def shopping_view(svc: Tischlein, week_start: date, which: str) -> dict:
         "open": sum(1 for i in items if not i["done"]),
         "generated": sum(1 for i in items if not i["manual"]),
         "bring": bool(svc.webhook_url),
+        "bring_sync": svc.bring_sync_on(),
         "bring_name": next((x["name"] for x in svc.bring_lists() if x["entity_id"] == svc.bring_list()), ""),
         "dishes": dishes,
         "has_plan": bool(dishes),

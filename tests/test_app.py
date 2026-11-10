@@ -237,6 +237,9 @@ def test_new_pages_render_and_actions_work(client):
     assert "Ikea" in client.get("/einstellungen").text
     assert client.post("/einstellungen/bring", data={"liste": "todo.ikea"}, follow_redirects=False).status_code == 303
     assert client.post("/einstellungen/bring", data={"liste": "todo.x"}).status_code == 400
+    assert client.get("/api/bring/ziel").json() == {"liste": "todo.ikea", "abgleich": False}  # no webhook here
+    stand = {"liste": "todo.ikea", "eintraege": [{"summary": "Brot", "status": "needs_action"}]}
+    assert client.post("/api/bring/stand", json=stand).json() == {"abgehakt": 0, "neu": 0}  # sync off
     assert client.post("/api/ideen/start").status_code == 400
     assert client.get("/api/ideen/status").json()["laeuft"] is False
     assert client.get("/api/morgen").json()["datum"]

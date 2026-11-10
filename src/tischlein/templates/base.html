@@ -67,6 +67,7 @@
   {% for key, href, label in sections %}{{ nav_link(key, href, label) }}{% endfor %}
 </nav>
 <script src="/static/sync.js?v={{ version }}" defer></script>
+<script src="/static/stay.js?v={{ version }}" defer></script>
 <script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});</script>
 {% block scripts %}{% endblock %}
 </body>

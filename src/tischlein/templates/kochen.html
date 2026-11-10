@@ -10,9 +10,9 @@
       <p class="hero-sub">{{ v.date }}{% if v.time %} · {{ v.time }}{% endif %}</p>
       <div class="cook-portions">
         <div class="portions{% if v.scaled %} is-custom{% endif %}" role="group" aria-label="Portionen">
-          <form method="post" action="/tage/{{ v.meal.day.isoformat() }}/portionen"><input type="hidden" name="portionen" value="{{ v.servings - 1 }}"><input type="hidden" name="ziel" value="kochen"><button class="step" aria-label="Eine Portion weniger" {% if v.servings <= 1 %}disabled{% endif %}>−</button></form>
+          <form data-stay method="post" action="/tage/{{ v.meal.day.isoformat() }}/portionen"><input type="hidden" name="portionen" value="{{ v.servings - 1 }}"><input type="hidden" name="ziel" value="kochen"><button class="step" aria-label="Eine Portion weniger" {% if v.servings <= 1 %}disabled{% endif %}>−</button></form>
           <span class="num">{{ v.servings }}<small> Port.</small></span>
-          <form method="post" action="/tage/{{ v.meal.day.isoformat() }}/portionen"><input type="hidden" name="portionen" value="{{ v.servings + 1 }}"><input type="hidden" name="ziel" value="kochen"><button class="step" aria-label="Eine Portion mehr" {% if v.servings >= 30 %}disabled{% endif %}>+</button></form>
+          <form data-stay method="post" action="/tage/{{ v.meal.day.isoformat() }}/portionen"><input type="hidden" name="portionen" value="{{ v.servings + 1 }}"><input type="hidden" name="ziel" value="kochen"><button class="step" aria-label="Eine Portion mehr" {% if v.servings >= 30 %}disabled{% endif %}>+</button></form>
         </div>
         <span class="muted">{% if v.scaled %}Mengen umgerechnet, Rezept ist für {{ v.base }}{% else %}Mengen wie im Rezept{% endif %}</span>
       </div>

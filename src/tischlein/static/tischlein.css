@@ -419,6 +419,8 @@ details[open] summary { color: var(--text); }
 }
 .input:focus { border-color: var(--text); outline: none; box-shadow: 0 0 0 3px var(--accent-soft); }
 .input[readonly] { background: var(--surface); color: var(--muted); }
+.check-line { display: flex; gap: 10px; align-items: center; margin: 0 0 8px; cursor: pointer; }
+.check-line input { width: 20px; height: 20px; accent-color: var(--accent); }
 .hint { color: var(--muted); font-size: 13px; line-height: 18px; margin: -10px 0 16px; }
 .form-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .sub-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border); }

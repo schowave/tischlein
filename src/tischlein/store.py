@@ -293,25 +293,40 @@ class Store:
 
     @_locked
     def replace_generated_shopping(self, week_start: date, items: list[dict]) -> None:
-        """Replace the generated items of a week; manual items and their state stay."""
+        """Replace the generated items of a week; manual items and their state stay. An item that is
+        still on the list (same `key`, if given) keeps its tick and its Bring state."""
         ws = week_start.isoformat()
         with self.db:
             self.db.execute("DELETE FROM shopping WHERE week_start = ? AND manual = 0", (ws,))
             self.db.executemany(
-                "INSERT INTO shopping (week_start, name, amount, grp, recipes, manual, position) "
-                "VALUES (?, ?, ?, ?, ?, 0, ?)",
+                "INSERT INTO shopping (week_start, name, amount, grp, recipes, manual, position, done, done_by, "
+                "bring, bring_menge) VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)",
                 [
-                    (ws, i["name"], i.get("amount", ""), i.get("group", "Sonstiges"), i.get("recipes", ""), n)
+                    (
+                        ws,
+                        i["name"],
+                        i.get("amount", ""),
+                        i.get("group", "Sonstiges"),
+                        i.get("recipes", ""),
+                        n,
+                        int(i.get("done", False)),
+                        i.get("done_by", ""),
+                        i.get("bring", 0),
+                        i.get("bring_menge", ""),
+                    )
                     for n, i in enumerate(items)
                 ],
             )
 
     @_locked
-    def add_shopping_item(self, week_start: date, name: str, amount: str = "", group: str = "Sonstiges") -> int:
+    def add_shopping_item(
+        self, week_start: date, name: str, amount: str = "", group: str = "Sonstiges", bring: bool = False
+    ) -> int:
         with self.db:
             cur = self.db.execute(
-                "INSERT INTO shopping (week_start, name, amount, grp, manual, position) VALUES (?, ?, ?, ?, 1, 9999)",
-                (week_start.isoformat(), name, amount, group),
+                "INSERT INTO shopping (week_start, name, amount, grp, manual, position, bring, bring_menge) "
+                "VALUES (?, ?, ?, ?, 1, 9999, ?, ?)",
+                (week_start.isoformat(), name, amount, group, int(bring), amount if bring else ""),
             )
         return cur.lastrowid
 
@@ -346,7 +361,8 @@ class Store:
     @_locked
     def shopping(self, week_start: date) -> list[dict]:
         rows = self.db.execute(
-            "SELECT id, name, amount, grp, recipes, manual, done, done_by FROM shopping WHERE week_start = ? "
+            "SELECT id, name, amount, grp, recipes, manual, done, done_by, bring, bring_menge FROM shopping "
+            "WHERE week_start = ? "
             "ORDER BY position, id",
             (week_start.isoformat(),),
         ).fetchall()
@@ -360,9 +376,33 @@ class Store:
                 "manual": bool(m),
                 "done": bool(d),
                 "done_by": b,
+                "bring": br,
+                "bring_menge": bm,
             }
-            for i, n, a, g, r, m, d, b in rows
+            for i, n, a, g, r, m, d, b, br, bm in rows
         ]
+
+    @_locked
+    def shopping_week(self, item_id: int) -> date | None:
+        row = self.db.execute("SELECT week_start FROM shopping WHERE id = ?", (item_id,)).fetchone()
+        return date.fromisoformat(row[0]) if row else None
+
+    @_locked
+    def bought_in_bring(self, ids: list[int]) -> None:
+        """Ticked off in Bring: done here too, in one transaction."""
+        with self.db:
+            self.db.executemany(
+                "UPDATE shopping SET done = 1, done_by = 'Bring', bring = 2 WHERE id = ? AND done = 0",
+                [(i,) for i in ids],
+            )
+
+    @_locked
+    def set_bring_state(self, changes: list[tuple[int, int, str]]) -> None:
+        """(id, state, amount as sent) per item: 0 not in Bring, 1 open there, 2 ticked off there."""
+        with self.db:
+            self.db.executemany(
+                "UPDATE shopping SET bring = ?, bring_menge = ? WHERE id = ?", [(s, m, i) for i, s, m in changes]
+            )
 
     # Ideas -------------------------------------------------------------------
 
