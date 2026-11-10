@@ -218,6 +218,15 @@ def create_app(service: Tischlein | None = None, auto_sync: bool | None = None) 
         item_id = service.add_shopping_item(week(which), body.name.strip(), body.menge.strip(), person_of(request))
         return {"id": item_id}
 
+    @app.post("/api/einkauf/{which}/alle-erledigt")
+    def api_shopping_all_done(request: Request, which: str, body: Done):
+        n = service.store.set_all_shopping_done(week(which), body.erledigt, person_of(request))
+        return {"geaendert": n}
+
+    @app.post("/api/einkauf/{which}/erledigte-entfernen")
+    def api_shopping_remove_done(which: str):
+        return {"entfernt": service.store.delete_done_shopping(week(which))}
+
     @app.post("/api/einkauf/{item_id}/erledigt")
     def api_shopping_done(request: Request, item_id: int, body: Done):
         if not service.store.set_shopping_done(item_id, body.erledigt, person_of(request)):

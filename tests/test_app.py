@@ -192,6 +192,12 @@ def test_new_pages_render_and_actions_work(client):
         r = client.get(path)
         assert r.status_code == 200, path
     assert "Zutaten sammeln" in client.get("/einkauf?woche=naechste").text
+    for name in ["Kaffee", "Milch"]:
+        client.post("/api/einkauf/naechste/eintrag", json={"name": name, "menge": ""})
+    assert client.post("/api/einkauf/naechste/alle-erledigt", json={"erledigt": True}).json() == {"geaendert": 2}
+    assert "Alle wieder offen" in client.get("/einkauf?woche=naechste").text
+    assert client.post("/api/einkauf/naechste/erledigte-entfernen").json() == {"entfernt": 2}
+    assert client.get("/api/einkauf", params={"woche": "naechste"}).json() == []
 
     assert client.post(f"/tage/{monday}/frei", data={"grund": "Urlaub", "woche": "naechste"}).status_code == 200
     page = client.get("/?woche=naechste").text

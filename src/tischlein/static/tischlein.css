@@ -61,6 +61,7 @@ button, input, select { font: inherit; color: inherit; }
 .nav a[aria-current="page"] { background: var(--active); color: var(--text); }
 .nav svg { width: 16px; height: 16px; flex: none; }
 .nav .count { margin-left: auto; font-size: 12px; color: var(--muted); }
+.tabbar, .top-settings { display: none; }
 .side-bottom { margin-top: auto; display: grid; gap: 8px; }
 .side-foot { padding: 0 10px; font-size: 12px; line-height: 16px; color: var(--muted); }
 .side-foot strong { display: block; color: var(--text); font-weight: 500; }
@@ -396,23 +397,25 @@ details[open] summary { color: var(--text); }
   /* phone and small tablet: a labelled tab bar at the bottom, settings top right */
   body { padding-bottom: calc(64px + env(safe-area-inset-bottom)); }
   .side { padding-top: env(safe-area-inset-top); height: calc(52px + env(safe-area-inset-top)); }
-  .nav {
-    position: fixed; left: 0; right: 0; bottom: 0; z-index: 10; margin: 0;
-    display: grid; grid-template-columns: repeat(5, 1fr); grid-auto-flow: row; gap: 0;
+  .side .nav { display: none; }
+  .top-settings {
+    display: inline-flex; align-items: center; justify-content: center; margin-left: auto;
+    width: 44px; height: 44px; border-radius: 12px; color: var(--muted);
+  }
+  .top-settings svg { width: 22px; height: 22px; }
+  .top-settings[aria-current="page"] { background: var(--active); color: var(--text); }
+  .tabbar {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 10;
+    display: grid; grid-template-columns: repeat(5, 1fr);
     padding: 6px 6px calc(6px + env(safe-area-inset-bottom)); background: var(--chrome); border-top: 1px solid var(--border);
   }
-  .nav a {
-    flex-direction: column; justify-content: center; gap: 3px; height: 52px; padding: 0; border-radius: 12px;
-    font-size: 11px; line-height: 14px; font-weight: 500;
+  .tabbar a {
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; height: 52px;
+    border-radius: 12px; text-decoration: none; color: var(--muted); font-size: 11px; line-height: 14px; font-weight: 500;
   }
-  .nav a[aria-current="page"] { background: transparent; color: var(--text); }
-  .nav a[aria-current="page"] svg { color: var(--accent); }
-  .nav svg { width: 22px; height: 22px; }
-  .nav a.nav-settings {
-    position: fixed; top: calc(4px + env(safe-area-inset-top)); right: 8px; width: 44px; height: 44px;
-  }
-  .nav a.nav-settings span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-  .nav a.nav-settings[aria-current="page"] { background: var(--active); }
+  .tabbar a[aria-current="page"] { color: var(--text); }
+  .tabbar a[aria-current="page"] svg { color: var(--accent); }
+  .tabbar svg { width: 22px; height: 22px; }
   .toast { bottom: calc(80px + env(safe-area-inset-bottom)); }
 }
 @media (max-width: 640px) {
@@ -472,6 +475,7 @@ details[open] summary { color: var(--text); }
 .add-row .field { height: 44px; }
 .add-row .add-amount { flex: 0 0 120px; }
 .add-row .btn { height: 44px; padding: 0 20px; }
+.list-actions { display: flex; gap: 8px; flex-wrap: wrap; padding-top: 4px; }
 .add-row + .status { margin: -10px 0 14px; }
 .shop-empty { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
 .shop-empty span { flex: 1 1 280px; }

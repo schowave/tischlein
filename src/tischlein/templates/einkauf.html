@@ -63,6 +63,10 @@
       </ul>
     </div>
     {% endfor %}
+    <div class="list-actions">
+      <button type="button" class="btn btn-sm" @click="allDone({{ 'true' if v.open else 'false' }})">{{ 'Alle abhaken' if v.open else 'Alle wieder offen' }}</button>
+      <button type="button" class="btn btn-ghost btn-sm danger" @click="removeDone()">Abgehakte entfernen</button>
+    </div>
     {% elif v.has_plan %}
     <div class="empty-frame shop-empty">
       <span>Noch keine Zutaten für diese Woche. Tischlein sammelt sie aus den {{ v.dishes | length }} geplanten Gerichten{% if v.llm %}, fasst Gleiches zusammen und sortiert nach Gang im Laden{% endif %}.</span>
@@ -110,6 +114,15 @@
         }
         if (!res.ok) { this.busy = false; this.error = (await res.json().catch(() => ({}))).detail || "Konnte nicht speichern."; return; }
         location.reload();
+      },
+      async allDone(done) {
+        const res = await fetch(`/api/einkauf/${which}/alle-erledigt`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ erledigt: done }) }).catch(() => null);
+        if (res && res.ok) location.reload(); else this.error = "Konnte nicht speichern.";
+      },
+      async removeDone() {
+        if (!confirm("Alle abgehakten Einträge von der Liste entfernen?")) return;
+        const res = await fetch(`/api/einkauf/${which}/erledigte-entfernen`, { method: "POST" }).catch(() => null);
+        if (res && res.ok) location.reload(); else this.error = "Konnte nicht entfernen.";
       },
       async remove(id, el) {
         const res = await fetch(`/api/einkauf/${id}/loeschen`, { method: "POST" });

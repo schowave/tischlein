@@ -274,6 +274,21 @@ class Store:
         return cur.rowcount == 1
 
     @_locked
+    def set_all_shopping_done(self, week_start: date, done: bool, person: str = "") -> int:
+        with self.db:
+            cur = self.db.execute(
+                "UPDATE shopping SET done = ?, done_by = ? WHERE week_start = ? AND done != ?",
+                (int(done), person if done else "", week_start.isoformat(), int(done)),
+            )
+        return cur.rowcount
+
+    @_locked
+    def delete_done_shopping(self, week_start: date) -> int:
+        with self.db:
+            cur = self.db.execute("DELETE FROM shopping WHERE week_start = ? AND done = 1", (week_start.isoformat(),))
+        return cur.rowcount
+
+    @_locked
     def delete_shopping_item(self, item_id: int) -> None:
         with self.db:
             self.db.execute("DELETE FROM shopping WHERE id = ?", (item_id,))
