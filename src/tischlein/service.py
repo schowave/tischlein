@@ -71,6 +71,10 @@ class Tischlein:
         self.backup_dir = Path(store.path).parent if store.path != ":memory:" else None
         self._paprika_lock = threading.Lock()
         self._photo_lock = threading.Lock()
+        self._sync_lock = threading.Lock()
+        self._state_lock = threading.Lock()
+        self._sync_state = {"laeuft": False, "phase": "", "fertig": 0, "gesamt": 0, "ergebnis": None, "fehler": None}
+        self._sync_thread: threading.Thread | None = None
         self._user_agent = user_agent
 
         # A login entered in the settings wins over PAPRIKA_EMAIL/PAPRIKA_PASSWORD.
@@ -299,12 +303,16 @@ class Tischlein:
             )
         return out
 
-    def sync_paprika(self) -> str:
-        """Pull recipes from Paprika's cloud. Returns a short German summary."""
+    def sync_paprika(self, progress=None) -> str:
+        """Pull recipes from Paprika's cloud. Returns a short German summary. One sync at a time."""
         if self.paprika is None:
             raise PaprikaError("Paprika-Sync ist nicht eingerichtet (PAPRIKA_EMAIL/PAPRIKA_PASSWORD fehlen)")
+        with self._sync_lock:
+            return self._sync(progress)
+
+    def _sync(self, progress) -> str:
         cache = {uid: CachedRecipe(h, data) for uid, (h, data) in self.store.paprika_cache().items()}
-        result = self.paprika.sync(cache)
+        result = self.paprika.sync(cache, progress=progress)
         self.store.replace_paprika_cache({uid: (c.hash, c.data) for uid, c in result.cache.items()})
         count = self.store.replace_recipes(result.recipes)
         if result.categories:
@@ -313,6 +321,42 @@ class Tischlein:
         self.store.set_meta("last_sync", f"{datetime.now():%d.%m.%Y %H:%M} – {summary}")
         self.store.set_meta("last_sync_error", "")
         return summary
+
+    def sync_status(self) -> dict:
+        with self._state_lock:
+            return dict(self._sync_state)
+
+    def start_sync(self) -> dict:
+        """Run the sync in a background thread (the first full sync takes minutes) and return its state."""
+        if self.paprika is None:
+            raise PaprikaError("Paprika-Sync ist nicht eingerichtet (PAPRIKA_EMAIL/PAPRIKA_PASSWORD fehlen)")
+        with self._state_lock:
+            if self._sync_state["laeuft"]:
+                return dict(self._sync_state)
+            self._sync_state = {"laeuft": True, "phase": "start", "fertig": 0, "gesamt": 0,
+                                "ergebnis": None, "fehler": None}
+            state = dict(self._sync_state)
+        self._sync_thread = threading.Thread(target=self._run_background_sync, name="paprika-sync", daemon=True)
+        self._sync_thread.start()
+        return state
+
+    def _run_background_sync(self) -> None:
+        def progress(phase: str, done: int, total: int) -> None:
+            with self._state_lock:
+                self._sync_state.update(phase=phase, fertig=done, gesamt=total)
+
+        result: dict = {}
+        try:
+            result["ergebnis"] = self.sync_paprika(progress=progress)
+        except PaprikaError as e:
+            self.store.set_meta("last_sync_error", f"{datetime.now():%d.%m.%Y %H:%M} – {e}")
+            result["fehler"] = str(e)
+        except Exception as e:  # noqa: BLE001 - surface anything in the UI instead of a silent dead thread
+            result["fehler"] = f"Unerwarteter Fehler: {e}"
+            raise
+        finally:
+            with self._state_lock:
+                self._sync_state.update(laeuft=False, phase="fertig", **result)
 
     def try_sync_paprika(self) -> str | None:
         """Sync if configured; on failure keep the existing recipes and return the error."""

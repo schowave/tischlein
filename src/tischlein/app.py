@@ -10,7 +10,7 @@ from datetime import date
 from importlib.metadata import version as package_version
 from pathlib import Path
 
-from fastapi import BackgroundTasks, FastAPI, Form, HTTPException, Request, UploadFile
+from fastapi import FastAPI, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -96,12 +96,12 @@ def create_app(service: Tischlein | None = None) -> FastAPI:
         return settings_page(request, ok=ok)
 
     @app.post("/einstellungen/paprika", response_class=HTMLResponse)
-    def settings_paprika(request: Request, tasks: BackgroundTasks, email: str = Form(""), passwort: str = Form("")):
+    def settings_paprika(request: Request, email: str = Form(""), passwort: str = Form("")):
         try:
             service.connect_paprika(email, passwort)
         except (ValueError, PaprikaError) as e:
             return settings_page(request, paprika_error=str(e), email_input=email)
-        tasks.add_task(service.try_sync_paprika)
+        service.start_sync()
         return RedirectResponse("/einstellungen?ok=paprika", status_code=303)
 
     @app.post("/einstellungen/paprika/trennen")
@@ -151,7 +151,9 @@ def create_app(service: Tischlein | None = None) -> FastAPI:
 
     @app.post("/sync")
     def ui_sync(zurueck: str = Form("/")):
-        service.try_sync_paprika()
+        # without JavaScript: start in the background and return; the banner shows the progress
+        if service.paprika is not None:
+            service.start_sync()
         target = zurueck if zurueck in ("/", "/rezepte", "/einstellungen") else "/"
         return RedirectResponse(target, status_code=303)
 
@@ -214,6 +216,17 @@ def create_app(service: Tischlein | None = None) -> FastAPI:
     @app.get("/api/plan")
     def api_plan(woche: str = "aktuell"):
         return _plan_json(service.store.plan(week(woche)))
+
+    @app.post("/api/sync/start")
+    def api_sync_start():
+        try:
+            return service.start_sync()
+        except PaprikaError as e:
+            raise HTTPException(502, str(e)) from e
+
+    @app.get("/api/sync/status")
+    def api_sync_status():
+        return service.sync_status()
 
     @app.post("/api/sync")
     def api_sync():

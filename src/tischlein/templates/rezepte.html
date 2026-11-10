@@ -10,9 +10,9 @@
   {% if v.data.canWrite %}
   <div class="title-actions">
     <span class="stamp">Abgeglichen {{ (v.last_sync or 'noch nie').split(' – ')[0] }}</span>
-    <form class="inline" method="post" action="/sync" x-data="{ busy: false }" @submit="busy = true">
+    <form class="inline" method="post" action="/sync" data-sync>
       <input type="hidden" name="zurueck" value="/rezepte">
-      <button class="btn" :disabled="busy" x-text="busy ? 'Gleicht ab …' : 'Mit Paprika abgleichen'">Mit Paprika abgleichen</button>
+      <button class="btn">Mit Paprika abgleichen</button>
     </form>
   </div>
   {% else %}

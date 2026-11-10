@@ -170,3 +170,16 @@ def test_sync_redirects_back_to_allowed_page(client):
         client.post("/sync", data={"zurueck": "https://evil.example"}, follow_redirects=False).headers["location"]
         == "/"
     )
+
+
+def test_sync_start_and_status_endpoints():
+    from test_tagging import WritablePaprika
+    from test_tagging import client as paprika_client
+
+    svc = Tischlein(Store(":memory:"), PlanConfig(), paprika=paprika_client(WritablePaprika()))
+    c = TestClient(create_app(svc))
+    assert c.post("/api/sync/start").json()["laeuft"] is True
+    svc._sync_thread.join(5)
+    assert c.get("/api/sync/status").json()["ergebnis"] == "2 Rezepte, 2 geladen, 0 entfernt"
+    svc.paprika = None
+    assert c.post("/api/sync/start").status_code == 502

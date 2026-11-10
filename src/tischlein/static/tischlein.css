@@ -289,6 +289,20 @@ details[open] summary { color: var(--text); }
 .toast .linkish { color: var(--primary-ink); font-weight: 600; white-space: nowrap; }
 .toast[hidden] { display: none; }
 
+/* ---------- sync progress ---------- */
+.sync-banner { margin: 0 0 20px; padding: 12px 16px; border-radius: var(--radius-row); background: var(--surface); }
+.sync-banner.err { background: var(--pill-negative-bg); color: var(--pill-negative-ink); }
+.sync-banner.ok { background: var(--accent-soft); color: var(--accent-ink); }
+.sync-line { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; font-size: 14px; }
+.sync-line strong { font-weight: 500; }
+.sync-line span { color: var(--muted); }
+.sync-banner.err .sync-line span, .sync-banner.ok .sync-line span { color: inherit; }
+.sync-bar { height: 6px; margin-top: 10px; border-radius: 999px; background: var(--active); overflow: hidden; }
+.sync-bar span { display: block; height: 100%; width: 0; border-radius: 999px; background: var(--accent); transition: width 400ms ease-out; }
+.sync-banner.indeterminate .sync-bar span { width: 30%; animation: sync-slide 1.4s ease-in-out infinite; }
+.sync-banner.err .sync-bar, .sync-banner.ok .sync-bar { display: none; }
+@keyframes sync-slide { 0% { transform: translateX(-100%); } 100% { transform: translateX(340%); } }
+
 /* ---------- settings ---------- */
 .saved { margin: 0; padding: 8px 14px; border-radius: 999px; background: var(--accent-soft); color: var(--accent-ink); font-size: 13px; }
 .settings { display: grid; gap: 40px; }
@@ -312,6 +326,9 @@ details[open] summary { color: var(--text); }
 .form-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .sub-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border); }
 .danger { color: var(--negative); }
+.change-login { margin-top: 14px; }
+.change-login summary { cursor: pointer; color: var(--text); font-size: 14px; font-weight: 500; padding: 6px 0; width: fit-content; }
+.change-login .form { margin-top: 10px; }
 .cal-subscribe { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 18px; }
 .cal-form { margin-top: 8px; padding-top: 18px; border-top: 1px solid var(--border); }
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }

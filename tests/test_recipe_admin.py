@@ -111,3 +111,39 @@ def test_trash_and_restore_recipe(svc):
     assert svc.store.recipe("R1") is not None
     with pytest.raises(KeyError):
         svc.set_recipe_trashed("NOPE", True)
+
+
+def test_background_sync_reports_progress_and_result(svc):
+    svc.fake.recipes["R3"] = {"uid": "R3", "name": "Neu", "categories": [], "hash": "z"}
+    seen = []
+    original = svc.paprika.sync
+
+    def spy(cache, progress=None):
+        def record(phase, done, total):
+            seen.append((phase, done, total))
+            progress(phase, done, total)
+
+        return original(cache, progress=record)
+
+    svc.paprika.sync = spy
+    state = svc.start_sync()
+    assert state["laeuft"] is True
+    assert svc.start_sync()["laeuft"] is True  # a second start joins the running sync
+    svc._sync_thread.join(5)
+
+    status = svc.sync_status()
+    assert status["laeuft"] is False and status["fehler"] is None
+    assert status["ergebnis"] == "3 Rezepte, 1 geladen, 0 entfernt"
+    assert ("kategorien", 0, 0) in seen and ("rezepte", 0, 1) in seen and ("rezepte", 1, 1) in seen
+    assert svc.store.recipe("R3") is not None
+
+
+def test_background_sync_reports_errors(svc):
+    def broken(cache, progress=None):
+        raise PaprikaError("Paprika nicht erreichbar")
+
+    svc.paprika.sync = broken
+    svc.start_sync()
+    svc._sync_thread.join(5)
+    assert svc.sync_status()["fehler"] == "Paprika nicht erreichbar"
+    assert "nicht erreichbar" in svc.store.meta("last_sync_error")

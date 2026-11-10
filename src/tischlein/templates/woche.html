@@ -141,7 +141,7 @@
           <strong>Paprika</strong>
           <span>{% if v.sync_enabled %}{{ v.recipe_count }} Rezepte · abgeglichen {{ (v.last_sync or 'noch nie').split(' – ')[0] }}{% else %}Noch nicht verbunden{% endif %}</span>
         </div>
-        {% if v.sync_enabled %}<form class="inline" method="post" action="/sync"><button class="btn btn-sm">Jetzt abgleichen</button></form>{% else %}<a class="btn btn-sm btn-primary" href="/einstellungen">Verbinden</a>{% endif %}
+        {% if v.sync_enabled %}<form class="inline" method="post" action="/sync" data-sync><button class="btn btn-sm">Jetzt abgleichen</button></form>{% else %}<a class="btn btn-sm btn-primary" href="/einstellungen">Verbinden</a>{% endif %}
       </div>
       <div class="rowcard">
         <div class="grow">

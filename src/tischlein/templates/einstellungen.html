@@ -31,6 +31,7 @@
       <p class="muted small">{{ v.recipe_count }} Rezepte · zuletzt abgeglichen {{ (v.last_sync or 'noch nie').split(' – ')[0] }}</p>
       {% if v.sync_error %}<p class="error-line">Letzter Abgleich fehlgeschlagen: {{ v.sync_error.split(' – ', 1)[-1] }}</p>{% endif %}
       {% endif %}
+{% set paprika_form %}
       <form method="post" action="/einstellungen/paprika" class="form">
         <label class="lbl" for="email">E-Mail bei Paprika</label>
         <input class="input" id="email" name="email" type="email" autocomplete="username" required value="{{ email_input if email_input is defined else v.account.email }}">
@@ -42,9 +43,19 @@
           <button class="btn btn-primary">{{ 'Speichern und prüfen' if v.account.verbunden else 'Verbinden und prüfen' }}</button>
         </div>
       </form>
+{% endset %}
+      {% if v.account.verbunden %}
+      {# verbunden: Felder nur auf Wunsch (oder nach einer fehlgeschlagenen Änderung) zeigen #}
+      <details class="change-login" {% if paprika_error is defined %}open{% endif %}>
+        <summary>Zugangsdaten ändern</summary>
+        {{ paprika_form }}
+      </details>
+      {% else %}
+      {{ paprika_form }}
+      {% endif %}
       {% if v.account.verbunden %}
       <div class="sub-actions">
-        <form class="inline" method="post" action="/sync"><button class="btn btn-sm">Jetzt abgleichen</button></form>
+        <form class="inline" method="post" action="/sync" data-sync><input type="hidden" name="zurueck" value="/einstellungen"><button class="btn btn-sm">Jetzt abgleichen</button></form>
         {% if v.account.quelle == 'einstellungen' %}
         <form class="inline" method="post" action="/einstellungen/paprika/trennen" onsubmit="return confirm('Paprika-Zugang aus Tischlein entfernen? Die Rezepte bleiben bis zum nächsten Abgleich erhalten.')"><button class="btn btn-ghost btn-sm danger">Verbindung trennen</button></form>
         {% endif %}

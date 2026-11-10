@@ -42,10 +42,15 @@
   </header>
   <main class="sheet">
     <div class="col">
+      <div class="sync-banner" id="sync-banner" role="status" aria-live="polite" hidden>
+        <div class="sync-line"><strong id="sync-text">Paprika-Abgleich läuft …</strong><span id="sync-count" class="num"></span></div>
+        <div class="sync-bar" aria-hidden="true"><span id="sync-fill"></span></div>
+      </div>
       {% block content %}{% endblock %}
     </div>
   </main>
 </div>
+<script src="/static/sync.js" defer></script>
 {% block scripts %}{% endblock %}
 </body>
 </html>

@@ -30,6 +30,9 @@ from .paprika import recipe_from_json
 BASE_URL = "https://www.paprikaapp.com/api"
 DEFAULT_USER_AGENT = "Tischlein/0.1"
 
+# progress(phase, done, total) during a sync
+Progress = Callable[[str, int, int], None]
+
 # transport(method, url, headers, body) -> (status, response bytes)
 Transport = Callable[[str, str, Mapping[str, str], bytes | None], tuple[int, bytes]]
 
@@ -195,21 +198,32 @@ class PaprikaClient:
     def recipe(self, uid: str) -> dict:
         return self._get(f"sync/recipe/{urllib.parse.quote(uid)}/")
 
-    def sync(self, cache: Mapping[str, CachedRecipe]) -> SyncResult:
-        """Fetch changed recipes. `cache` holds the raw recipes from the previous sync."""
+    def sync(self, cache: Mapping[str, CachedRecipe], progress: Progress | None = None) -> SyncResult:
+        """Fetch changed recipes. `cache` holds the raw recipes from the previous sync.
+
+        `progress(phase, done, total)` is called for "kategorien", "liste" and each "rezepte" step.
+        """
+        report = progress or (lambda *_: None)
+        report("kategorien", 0, 0)
         names = self.categories()
+        report("liste", 0, 0)
         index = self.recipe_index()
         new_cache: dict[str, CachedRecipe] = {}
-        fetched = 0
+        changed = []
         for uid, h in index.items():
             cached = cache.get(uid)
             if cached and h and cached.hash == h:
                 new_cache[uid] = cached
-                continue
+            else:
+                changed.append((uid, h))
+        fetched = 0
+        report("rezepte", 0, len(changed))
+        for uid, h in changed:
             if fetched and self._delay:
                 time.sleep(self._delay)
             new_cache[uid] = CachedRecipe(h, self.recipe(uid))
             fetched += 1
+            report("rezepte", fetched, len(changed))
         recipes = [
             recipe_from_json(c.data, names)
             for c in new_cache.values()
