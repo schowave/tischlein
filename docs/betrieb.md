@@ -40,3 +40,6 @@
   lässt sich über `trigger.json.von` ausfiltern.
 - **LLM:** OpenAI-kompatibel (z. B. LiteLLM), in den Einstellungen; Tischlein ruft
   `<Basis-URL>/chat/completions` mit `response_format: json_object`.
+- **iPhone-Home-Bildschirm:** In Safari „Teilen → Zum Home-Bildschirm“ legt Tischlein mit eigenem Symbol
+  ab. Das Manifest nutzt `display: browser`: eine eigenständige Web-App hätte einen eigenen Cookie-Speicher
+  und käme nicht durch die Anmeldung von Cloudflare Access.

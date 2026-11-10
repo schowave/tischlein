@@ -1,0 +1,14 @@
+{# Shared bits: a recipe thumbnail (photo or initial) and the form that builds the shopping list. #}
+{% macro thumb(uid, name, has_photo, size=44) -%}
+{%- if has_photo -%}
+<img class="thumb" src="/bilder/{{ uid | urlencode }}.jpg" alt="" loading="lazy" decoding="async" width="{{ size }}" height="{{ size }}" style="width: {{ size }}px; height: {{ size }}px" onerror="this.replaceWith(Object.assign(document.createElement('span'), {className: 'thumb ph', textContent: '{{ name[:1] }}', style: 'width: {{ size }}px; height: {{ size }}px'}))">
+{%- else -%}
+<span class="thumb ph" aria-hidden="true" style="width: {{ size }}px; height: {{ size }}px">{{ name[:1] }}</span>
+{%- endif -%}
+{%- endmacro %}
+
+{% macro collect_form(which, label, cls="btn btn-primary", confirm=None) -%}
+<form class="inline" method="post" action="/einkauf/{{ which }}/erzeugen" x-data="{ busy: false }" @submit="{% if confirm %}if (!confirm('{{ confirm }}')) { $event.preventDefault(); return; } {% endif %}busy = true">
+  <button class="{{ cls }}" :disabled="busy" x-text="busy ? 'Wird erstellt …' : '{{ label }}'">{{ label }}</button>
+</form>
+{%- endmacro %}

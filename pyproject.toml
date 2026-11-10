@@ -1,6 +1,6 @@
 [project]
 name = "tischlein"
-version = "0.4.1"
+version = "0.5.0"
 description = "Familien-Essensplan: rotiert bewährte Mittagessen aus Paprika, plant Neu-Slots, liefert ICS-Kalender."
 readme = "README.md"
 authors = [

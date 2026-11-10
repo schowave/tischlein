@@ -1,6 +1,6 @@
 import json
 import random
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 import pytest
 from test_tagging import WritablePaprika, client
@@ -215,6 +215,32 @@ def test_day_info_and_reminder(svc, monkeypatch):
     assert svc.reminder_tick(sunday_evening) is True
     assert "Morgen gibt's" in sent[0]["nachricht"] and "Tiefkühlware" in sent[0]["nachricht"]
     assert svc.reminder_tick(sunday_evening) is False  # once a day
+
+
+def test_week_hero_names_the_next_dish_and_tomorrows_preparation(svc):
+    from tischlein.views import week_view
+
+    plan = svc.generate(MONDAY)
+    monday, tuesday = plan.meals[0], plan.meals[1]
+    svc.fake.recipes[tuesday.recipe_uid]["ingredients"] += "\n500 g TK Erbsen"
+    svc.fake.recipes[tuesday.recipe_uid]["hash"] = "geaendert"
+    svc.sync_paprika()
+
+    hero = week_view(svc, None, MONDAY)["hero"]
+    assert hero["headline"] == f"Heute gibt’s {monday.name}."
+    assert hero["tomorrow"] == tuesday.name and any("Tiefkühl" in p for p in hero["prep"])
+
+    sunday = week_view(svc, None, MONDAY - timedelta(days=1))["hero"]
+    assert sunday["headline"] == f"Morgen gibt’s {monday.name}." and sunday["tomorrow"] is None
+
+    monday_eve = week_view(svc, None, MONDAY)["hero"]  # prep is for Tuesday, named because the hero is Monday
+    assert monday_eve["tomorrow"] == tuesday.name
+
+    far = week_view(svc, None, MONDAY - timedelta(days=7))["hero"]  # only next week is planned
+    assert far["headline"].startswith("Am Montag, 16. November gibt’s")
+
+    empty = week_view(svc, None, MONDAY + timedelta(days=30))["hero"]
+    assert empty["meal"] is None
 
 
 def test_people_names(svc):

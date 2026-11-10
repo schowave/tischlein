@@ -191,7 +191,7 @@ def test_new_pages_render_and_actions_work(client):
     for path in ["/einkauf?woche=naechste", "/ideen", "/rueckblick", "/einstellungen"]:
         r = client.get(path)
         assert r.status_code == 200, path
-    assert "Aus dem Plan erstellen" in client.get("/einkauf?woche=naechste").text
+    assert "Zutaten sammeln" in client.get("/einkauf?woche=naechste").text
 
     assert client.post(f"/tage/{monday}/frei", data={"grund": "Urlaub", "woche": "naechste"}).status_code == 200
     page = client.get("/?woche=naechste").text

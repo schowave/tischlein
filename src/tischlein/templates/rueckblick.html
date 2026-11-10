@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros.html" import thumb %}
 {% block title %}Rückblick · Tischlein{% endblock %}
 {% block content %}
 <section class="title">
@@ -11,13 +12,31 @@
   </nav>
 </section>
 
-<div class="grid">
-  <div class="tile s3"><span class="tile-label">Gekocht</span><span class="tile-value num">{{ v.cooked }}</span><span class="tile-cap">Mittagessen</span></div>
-  <div class="tile s3"><span class="tile-label">Verschiedene Gerichte</span><span class="tile-value num">{{ v.distinct }}</span><span class="tile-cap">von {{ v.cooked }}</span></div>
-  <div class="tile s3{% if v.kid_share %} is-accent{% endif %}"><span class="tile-label">Kinder-OK</span><span class="tile-value num">{{ v.kid_share }} %</span><span class="tile-cap">der gekochten Gerichte</span></div>
-  <div class="tile s3"><span class="tile-label">Bewertungen</span><span class="tile-value num">{{ v.ratings.gut }} · {{ v.ratings.mittel }} · {{ v.ratings.schlecht }}</span><span class="tile-cap">gut · ging so · kam nicht an</span></div>
+<div class="grid top">
+  <section class="kpis s12" aria-label="Zahlen">
+    <div class="kpi"><span class="kpi-label">Gekocht</span><span class="kpi-value num">{{ v.cooked }}</span><span class="kpi-cap">Mittagessen</span></div>
+    <div class="kpi"><span class="kpi-label">Verschiedene Gerichte</span><span class="kpi-value num">{{ v.distinct }}</span><span class="kpi-cap">{% if v.cooked %}bei {{ v.cooked }} Mittagessen{% else %}noch nichts gekocht{% endif %}</span></div>
+    <div class="kpi"><span class="kpi-label">Kinder-OK</span><span class="kpi-value num{% if v.kid_share %} is-accent{% endif %}">{% if v.cooked %}{{ v.kid_share }} %{% else %}<span class="dash">–</span>{% endif %}</span><span class="kpi-cap">der gekochten Gerichte</span></div>
+    <div class="kpi"><span class="kpi-label">Bewertungen „gut“</span><span class="kpi-value num">{{ v.ratings.gut }}</span><span class="kpi-cap">dazu {{ v.ratings.mittel }} „ging so“, {{ v.ratings.schlecht }} „kam nicht an“</span></div>
+  </section>
 
-  <section class="panel s6" aria-labelledby="themes-h">
+  <section class="panel s6" aria-labelledby="fav-h">
+    <div class="panel-head"><h2 id="fav-h">Lange nicht mehr gegessen</h2></div>
+    {% if v.favourites %}
+    <ul class="dish-list">
+      {% for r in v.favourites %}
+      <li><a href="/rezepte?rezept={{ r.uid | urlencode }}">
+        {{ thumb(r.uid, r.name, r.uid in v.photos, 40) }}
+        <span><strong>{{ r.name }}</strong><small>{% if r.uid in v.last %}zuletzt am {{ v.last[r.uid].strftime('%d.%m.') }}{% else %}noch nie geplant{% endif %}</small></span>
+      </a></li>
+      {% endfor %}
+    </ul>
+    {% if v.favourites_more %}<p class="list-foot">und {{ v.favourites_more }} weitere</p>{% endif %}
+    {% else %}<div class="empty-frame">Sobald Gerichte als Kinder-OK markiert oder gut bewertet sind, stehen hier die, die lange nicht dran waren.</div>{% endif %}
+  </section>
+
+  <div class="s6 stack">
+  <section class="panel" aria-labelledby="themes-h">
     <div class="panel-head"><h2 id="themes-h">Themen</h2></div>
     {% if v.themes %}
     <div class="bars">
@@ -28,18 +47,7 @@
     {% else %}<div class="empty-frame">Noch keine freigegebenen Wochen in diesem Zeitraum.</div>{% endif %}
   </section>
 
-  <section class="panel s6" aria-labelledby="fav-h">
-    <div class="panel-head"><h2 id="fav-h">Lange nicht mehr gegessen</h2></div>
-    {% if v.favourites %}
-    <ul class="plain-list">
-      {% for r in v.favourites %}
-      <li><a href="/rezepte?rezept={{ r.uid | urlencode }}">{{ r.name }}</a> <span class="muted small">{% if r.uid in v.last %}zuletzt {{ v.last[r.uid].strftime('%d.%m.') }}{% else %}noch nie geplant{% endif %}</span></li>
-      {% endfor %}
-    </ul>
-    {% else %}<div class="empty-frame">Sobald Gerichte als Kinder-OK markiert oder gut bewertet sind, stehen hier die, die lange nicht dran waren.</div>{% endif %}
-  </section>
-
-  <section class="panel s12" aria-labelledby="weeks-h">
+  <section class="panel" aria-labelledby="weeks-h">
     <div class="panel-head"><h2 id="weeks-h">Wochen</h2></div>
     {% if v.week_list %}
     <div class="review-weeks">
@@ -56,5 +64,7 @@
     </div>
     {% else %}<div class="empty-frame">Noch keine freigegebenen Wochen. Der Rückblick füllt sich, sobald ihr Wochen freigebt und kocht.</div>{% endif %}
   </section>
+  </div>
+
 </div>
 {% endblock %}

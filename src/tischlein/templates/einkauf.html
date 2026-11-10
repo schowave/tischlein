@@ -1,34 +1,46 @@
 {% extends "base.html" %}
+{% from "_macros.html" import thumb, collect_form %}
 {% block title %}Einkauf · Tischlein{% endblock %}
 {% block content %}
 <section class="title">
   <div>
     <h1>Einkaufsliste</h1>
-    <p>{{ v.range }} · <span class="num">{{ v.open }}</span> von <span class="num">{{ v.count }}</span> offen{% if v.dishes %} · für {{ v.dishes | join(', ') }}{% endif %}</p>
+    <p>{{ v.range }}{% if v.count %} · <span class="num">{{ v.open }}</span> von <span class="num">{{ v.count }}</span> noch offen{% elif v.has_plan %} · {{ v.dishes | length }} Gerichte geplant{% endif %}</p>
   </div>
   <div class="title-actions">
     <nav class="seg" aria-label="Woche wählen">
       <a href="/einkauf?woche=aktuell" {% if v.which == 'aktuell' %}aria-current="true"{% endif %}>Diese Woche</a>
       <a href="/einkauf?woche=naechste" {% if v.which == 'naechste' %}aria-current="true"{% endif %}>Nächste Woche</a>
     </nav>
-    {% if v.has_plan %}
-    <form class="inline" method="post" action="/einkauf/{{ v.which }}/erzeugen" x-data="{ busy: false }" @submit="busy = true">
-      <button class="btn btn-primary" :disabled="busy" x-text="busy ? 'Wird erstellt …' : '{{ 'Neu aus dem Plan erstellen' if v.count else 'Aus dem Plan erstellen' }}'">{{ 'Neu aus dem Plan erstellen' if v.count else 'Aus dem Plan erstellen' }}</button>
-    </form>
-    {% endif %}
   </div>
 </section>
 
 {% if hinweis %}<p class="notice" role="status">{{ hinweis }}</p>{% endif %}
 
-<div class="grid" x-data="shopping('{{ v.which }}')">
+<div class="grid top" x-data="shopping('{{ v.which }}')">
   <section class="panel s8" aria-labelledby="list-h">
     <div class="panel-head">
       <h2 id="list-h">Zu kaufen</h2>
-      <div class="end">
+      {% if v.count %}<span class="chip-count num">{{ v.open }}</span>{% endif %}
+      {% if v.count %}<div class="end">
         <label class="toggle-line"><input type="checkbox" x-model="hideDone"> Erledigte ausblenden</label>
-      </div>
+        {% if v.generated %}{{ collect_form(v.which, 'Neu sammeln', 'btn btn-ghost btn-sm', 'Zutaten neu aus dem Plan sammeln? Abgehakte Zutaten aus dem Plan gehen dabei verloren, eigene Einträge bleiben.') }}{% endif %}
+      </div>{% endif %}
     </div>
+    <form class="add-row" @submit.prevent="add()">
+      <label class="sr-only" for="item-name">Was</label>
+      <input class="field" id="item-name" x-model="name" placeholder="Was fehlt?" required autocomplete="off" enterkeyhint="done">
+      <label class="sr-only" for="item-amount">Menge</label>
+      <input class="field add-amount" id="item-amount" x-model="amount" placeholder="Menge" autocomplete="off">
+      <button class="btn btn-primary" :disabled="busy">Dazu</button>
+    </form>
+    <p class="status err" x-text="error" x-show="error" x-cloak></p>
+    {% if v.has_plan and not v.generated and v.groups %}
+    <div class="empty-frame shop-empty shop-empty-top">
+      <span>Die Zutaten der {{ v.dishes | length }} geplanten Gerichte fehlen noch.</span>
+      {{ collect_form(v.which, 'Zutaten sammeln', 'btn btn-primary btn-sm') }}
+    </div>
+    {% endif %}
     {% if v.groups %}
     {% for g in v.groups %}
     <div class="shop-group">
@@ -52,23 +64,30 @@
     </div>
     {% endfor %}
     {% elif v.has_plan %}
-    <div class="empty-frame">Noch keine Liste für diese Woche. „Aus dem Plan erstellen“ sammelt die Zutaten der geplanten Gerichte{% if v.llm %} und fasst sie mit dem LLM zusammen{% endif %}.</div>
+    <div class="empty-frame shop-empty">
+      <span>Noch keine Zutaten für diese Woche. Tischlein sammelt sie aus den {{ v.dishes | length }} geplanten Gerichten{% if v.llm %}, fasst Gleiches zusammen und sortiert nach Gang im Laden{% endif %}.</span>
+      {{ collect_form(v.which, 'Zutaten sammeln') }}
+    </div>
     {% else %}
     <div class="empty-frame">Für diese Woche gibt es noch keinen Plan. <a href="/?woche={{ v.which }}">Woche planen</a></div>
     {% endif %}
   </section>
 
-  <section class="panel s4" aria-labelledby="add-h">
-    <div class="panel-head"><h2 id="add-h">Etwas dazuschreiben</h2></div>
-    <form class="form add-form" @submit.prevent="add()">
-      <label class="lbl" for="item-name">Was</label>
-      <input class="input" id="item-name" x-model="name" placeholder="z. B. Kaffee" required>
-      <label class="lbl" for="item-amount">Menge</label>
-      <input class="input" id="item-amount" x-model="amount" placeholder="optional">
-      <button class="btn btn-primary">Hinzufügen</button>
-      <p class="status err" x-text="error" x-show="error"></p>
-    </form>
-    <p class="panel-note">{% if v.llm %}Die Liste fasst gleiche Zutaten zusammen und sortiert sie nach Gang im Laden. {% else %}Mit einem LLM in den Einstellungen fasst Tischlein gleiche Zutaten zusammen und sortiert sie nach Gang. {% endif %}Vorräte wie Salz und Öl bleiben weg (tischlein.toml, <code>[einkauf] vorrat</code>).</p>
+  <section class="panel s4" aria-labelledby="dish-h">
+    <div class="panel-head"><h2 id="dish-h">Für diese Gerichte</h2></div>
+    {% if v.dishes %}
+    <ul class="dish-list">
+      {% for d in v.dishes %}
+      <li><a href="/rezepte?rezept={{ d.uid | urlencode }}">
+        {{ thumb(d.uid, d.name, d.photo, 40) }}
+        <span><strong>{{ d.name }}</strong><small>{{ d.day }}</small></span>
+      </a></li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="muted">Noch nichts geplant.</p>
+    {% endif %}
+    <p class="panel-note dish-note">Salz, Öl und andere Vorräte lässt Tischlein weg (<code>[einkauf] vorrat</code> in tischlein.toml).{% if not v.llm %} Mit einem LLM in den Einstellungen fasst es gleiche Zutaten zusammen und sortiert nach Gang.{% endif %}</p>
   </section>
 </div>
 {% endblock %}
@@ -76,15 +95,20 @@
 <script>
   document.addEventListener("alpine:init", () => {
     Alpine.data("shopping", (which) => ({
-      hideDone: false, name: "", amount: "", error: "",
+      hideDone: false, name: "", amount: "", error: "", busy: false,
       async toggle(id, done) {
         const res = await fetch(`/api/einkauf/${id}/erledigt`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ erledigt: done }) });
         return res.ok ? (await res.json()).von : "";
       },
       async add() {
-        this.error = "";
-        const res = await fetch(`/api/einkauf/${which}/eintrag`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: this.name, menge: this.amount }) });
-        if (!res.ok) { this.error = (await res.json().catch(() => ({}))).detail || "Konnte nicht speichern."; return; }
+        this.error = ""; this.busy = true;
+        let res;
+        try {
+          res = await fetch(`/api/einkauf/${which}/eintrag`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: this.name, menge: this.amount }) });
+        } catch {
+          this.busy = false; this.error = "Keine Verbindung. Bitte noch einmal versuchen."; return;
+        }
+        if (!res.ok) { this.busy = false; this.error = (await res.json().catch(() => ({}))).detail || "Konnte nicht speichern."; return; }
         location.reload();
       },
       async remove(id, el) {

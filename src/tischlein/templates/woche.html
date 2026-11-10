@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros.html" import thumb %}
 {% block title %}Woche · Tischlein{% endblock %}
 {% block sidefoot %}
 <div class="side-foot">
@@ -6,9 +7,22 @@
 </div>
 {% endblock %}
 {% block content %}
-<section class="greet">
-  <h1>{{ v.headline }}</h1>
-  <p>{{ v.today_line }} · <strong>{{ v.finding }}</strong></p>
+{% set h = v.hero %}
+<section class="hero{% if h.photo %} has-photo{% endif %}">
+  <div class="hero-text">
+    <h1>{{ h.headline }}</h1>
+    <p class="hero-sub">{% if h.meal %}{{ h.date }}{% if h.time %} · {{ h.time }}{% endif %}{% if h.kid_ok %} · <span class="kid-word">Kinder-OK</span>{% endif %}{% if h.draft %} · noch nicht freigegeben{% endif %}{% else %}{{ v.today_line }}{% endif %}</p>
+    {% if h.meal and h.meal.is_new %}<p class="hero-note">Neu ausprobieren: eine sichere Beilage dazu, z. B. Nudeln, Brot oder Gurke.</p>{% endif %}
+    {% if h.prep %}
+    <div class="prep">
+      <strong>Für morgen vorbereiten{% if h.tomorrow %}: {{ h.tomorrow }}{% endif %}</strong>
+      <ul>{% for p in h.prep %}<li>{{ p }}</li>{% endfor %}</ul>
+    </div>
+    {% endif %}
+    <p class="hero-finding">{{ v.finding }}</p>
+    {% if h.meal %}<a class="btn" href="/rezepte?rezept={{ h.meal.recipe_uid | urlencode }}">Rezept ansehen</a>{% endif %}
+  </div>
+  {% if h.photo %}<a class="hero-photo" href="/rezepte?rezept={{ h.meal.recipe_uid | urlencode }}" tabindex="-1" aria-hidden="true"><img src="/bilder/{{ h.meal.recipe_uid | urlencode }}.jpg" alt="" decoding="async" onerror="this.closest('.hero').classList.remove('has-photo'); this.parentElement.remove()"></a>{% endif %}
 </section>
 
 <div class="grid">
@@ -28,7 +42,7 @@
     {% if v.plan %}
     <div class="days">
       {% for d in v.days %}
-      <article class="day{% if d.free %} is-free{% endif %}">
+      <article class="day{% if d.free %} is-free{% endif %}{% if d.is_today %} is-today{% endif %}">
         <div class="day-when">
           <strong>{{ d.weekday }}</strong>
           <span>{% if d.is_today %}<span class="today">Heute</span> · {% endif %}{{ d.short }} · {{ d.theme }}</span>
@@ -38,9 +52,14 @@
             <strong class="empty">Kein Mittagessen</strong>
             <span>{{ d.free_reason }}</span>
           {% elif d.meal and d.meal.recipe_uid %}
-            <strong><a class="dish-link" href="/rezepte?rezept={{ d.meal.recipe_uid | urlencode }}">{{ d.meal.name }}</a></strong>
-            {% if d.meal.is_new %}<span>Neu ausprobieren: eine sichere Beilage dazu, z. B. Nudeln, Brot oder Gurke.</span>
-            {% elif d.meal.reason and 'Kinder-OK' not in d.meal.reason %}<span>{{ d.meal.reason }}</span>{% endif %}
+            <div class="dish-row">
+              {{ thumb(d.meal.recipe_uid, d.meal.name, d.has_photo) }}
+              <div>
+                <strong><a class="dish-link" href="/rezepte?rezept={{ d.meal.recipe_uid | urlencode }}">{{ d.meal.name }}</a></strong>
+                {% if d.meal.is_new %}<span>Neu ausprobieren: eine sichere Beilage dazu.</span>
+                {% elif d.meal.reason and 'Kinder-OK' not in d.meal.reason %}<span>{{ d.meal.reason }}</span>{% endif %}
+              </div>
+            </div>
           {% elif d.meal %}
             <strong class="empty">{{ d.meal.reason }}</strong>
           {% else %}
@@ -110,7 +129,7 @@
     {% endif %}
   </section>
 
-  <section class="panel s3" aria-labelledby="supply-h">
+  <section class="panel s3 supply-panel" aria-labelledby="supply-h">
     <div class="panel-head"><h2 id="supply-h">Vorrat pro Thema</h2></div>
     <p class="panel-note">Damit sich nichts zu oft wiederholt, braucht jedes Thema {{ v.supply[0].bedarf if v.supply else 3 }} Kinder-OK-Gerichte.</p>
     <div class="supply">

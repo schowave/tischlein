@@ -66,8 +66,9 @@ src/tischlein/
                Einstellungen (Paprika-Login, Kalender), Tags schreiben, Bild-Cache
   tagging.py   Kategorie-Differenzen nach Paprika schreiben (CSV-Befehl und Oberfläche)
   views.py     View-Modelle für die Templates
-  templates/   eine Seite pro Bereich (Jinja, serverseitig gerendert)
+  templates/   eine Seite pro Bereich (Jinja, serverseitig gerendert); _macros.html: Rezeptbild, Einkaufs-Formular
   static/      tischlein.css; rezepte.js, ideen.js = Alpine-Komponenten (Markup im Template);
+               manifest.webmanifest + icons/ für den Home-Bildschirm (display: browser, wegen Cloudflare Access);
                vendor/alpine-<version>.min.js, nur über `mise run vendor:alpine` aktualisieren
   planner.py   reine Funktion plan_week(...) – deterministisch über übergebenen Random
   store.py     SQLite (stdlib sqlite3), einzige Stelle mit SQL
