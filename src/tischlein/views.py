@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import re
 from datetime import date, timedelta
 
+from . import shopping
 from .config import WEEKDAY_NAMES
 from .models import Recipe, WeekPlan
+from .planner import week_start_of
 from .service import Tischlein
 
 MONTHS = [
@@ -108,6 +111,38 @@ def _hero(svc: Tischlein, plans: dict, today: date, recipes: dict, feedback: dic
     }
 
 
+def cook_view(svc: Tischlein, day: date) -> dict:
+    """The dish of `day` for cooking: ingredients scaled to the planned portions, steps, photo."""
+    plan = svc.store.plan(week_start_of(day))
+    meal = next((m for m in plan.meals if m.day == day and m.recipe_uid and not m.skipped), None) if plan else None
+    if meal is None:
+        raise KeyError(f"Am {day:%d.%m.} ist kein Gericht geplant.")
+    entry = svc.store.raw_recipe(meal.recipe_uid)
+    raw = entry[1] if entry else {}
+    p = svc.week_servings(week_start_of(day)).get(day) or {"base": svc.config.portions, "servings": svc.config.portions}
+    factor = p["servings"] / p["base"]
+    ingredients = [
+        {"text": line if head else shopping.scale_line(line, factor), "head": head}
+        for line, head in shopping.ingredient_entries(raw.get("ingredients") or "")
+    ]
+    steps = [s.strip() for s in re.split(r"\n\s*\n|\n(?=\d+[.)]\s)", raw.get("directions") or "") if s.strip()]
+    if len(steps) == 1:
+        steps = [s.strip() for s in steps[0].splitlines() if s.strip()]
+    return {
+        "meal": meal,
+        "date": long_date(day),
+        "servings": p["servings"],
+        "base": p["base"],
+        "scaled": abs(factor - 1) > 1e-9,
+        "ingredients": ingredients,
+        "steps": steps,
+        "time": (raw.get("total_time") or "").strip(),
+        "photo": meal.recipe_uid in svc_photos(svc),
+        "prep": svc.day_info(day).get("vorbereitung", []),
+        "back": "/?woche=naechste" if week_start_of(day) > week_start_of(date.today()) else "/",
+    }
+
+
 def week_view(svc: Tischlein, which: str | None, today: date) -> dict:
     cfg = svc.config
     feedback = svc.store.feedback()
@@ -120,6 +155,7 @@ def week_view(svc: Tischlein, which: str | None, today: date) -> dict:
 
     by_day = {m.day: m for m in shown.meals} if shown else {}
     portions = svc.week_servings(start)
+    quick = svc.store.quickdays(start, start + timedelta(days=6))
     skip = svc.skip_map(start)
     ratings = {(r["uid"], r["day"]): r for r in svc.store.ratings()}
     days = []
@@ -145,6 +181,7 @@ def week_view(svc: Tischlein, which: str | None, today: date) -> dict:
                 "rating": ratings.get((meal.recipe_uid, d)) if meal and meal.recipe_uid else None,
                 "has_photo": bool(meal and meal.recipe_uid and meal.recipe_uid in svc_photos(svc)),
                 "portions": portions.get(d),
+                "quick": d in quick,
             }
         )
     planned = sum(1 for x in days if x["meal"] and x["meal"].recipe_uid)
@@ -202,6 +239,9 @@ def recipes_view(svc: Tischlein) -> dict:
     taken = {t.casefold() for t in family + themes}
     others = [c for c in svc.categories() if c.casefold() not in taken]
     items = [recipe_json(svc, r, feedback) for r in recipes]
+    index = svc.ingredient_index()
+    for i in items:  # ingredient names for "what can I cook with ...?"; no amounts, no headings
+        i["zutaten"] = index.get(i["uid"], [])
     mains = [i for i in items if i["hauptspeise"]]
     return {
         "data": {
@@ -245,6 +285,11 @@ def settings_view(svc: Tischlein, base_url: str) -> dict:
         "account": svc.paprika_account(),
         "llm": svc.llm_settings(),
         "people": svc.people(),
+        "dislikes": ", ".join(svc.dislikes()),
+        "bring_lists": svc.bring_lists(),
+        "bring_list": svc.bring_list(),
+        "ha": bool(svc.webhook_url),
+        "avoided": len(svc.avoided_uids()),
         "sync_minutes": svc.config.sync_minutes,
         "auto_check": svc.store.meta("auto_check"),
         "last_sync": svc.store.meta("last_sync"),
@@ -294,6 +339,8 @@ def shopping_view(svc: Tischlein, week_start: date, which: str) -> dict:
         "count": len(items),
         "open": sum(1 for i in items if not i["done"]),
         "generated": sum(1 for i in items if not i["manual"]),
+        "bring": bool(svc.webhook_url),
+        "bring_name": next((x["name"] for x in svc.bring_lists() if x["entity_id"] == svc.bring_list()), ""),
         "dishes": dishes,
         "has_plan": bool(dishes),
         "llm": svc.llm() is not None,

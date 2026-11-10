@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% from "_macros.html" import thumb %}
+{% block title %}{{ v.meal.name }} · Kochen · Tischlein{% endblock %}
+{% block content %}
+<div class="cook">
+  <a class="btn btn-ghost btn-sm cook-back" href="{{ v.back }}">← Woche</a>
+  <section class="cook-head{% if v.photo %} has-photo{% endif %}">
+    <div>
+      <h1>{{ v.meal.name }}</h1>
+      <p class="hero-sub">{{ v.date }}{% if v.time %} · {{ v.time }}{% endif %}</p>
+      <div class="cook-portions">
+        <div class="portions{% if v.scaled %} is-custom{% endif %}" role="group" aria-label="Portionen">
+          <form method="post" action="/tage/{{ v.meal.day.isoformat() }}/portionen"><input type="hidden" name="portionen" value="{{ v.servings - 1 }}"><input type="hidden" name="ziel" value="kochen"><button class="step" aria-label="Eine Portion weniger" {% if v.servings <= 1 %}disabled{% endif %}>−</button></form>
+          <span class="num">{{ v.servings }}<small> Port.</small></span>
+          <form method="post" action="/tage/{{ v.meal.day.isoformat() }}/portionen"><input type="hidden" name="portionen" value="{{ v.servings + 1 }}"><input type="hidden" name="ziel" value="kochen"><button class="step" aria-label="Eine Portion mehr" {% if v.servings >= 30 %}disabled{% endif %}>+</button></form>
+        </div>
+        <span class="muted">{% if v.scaled %}Mengen umgerechnet, Rezept ist für {{ v.base }}{% else %}Mengen wie im Rezept{% endif %}</span>
+      </div>
+      <p class="wake muted" x-data="wake" x-show="supported" x-cloak x-text="on ? 'Bildschirm bleibt an, solange diese Seite offen ist.' : 'Bildschirm darf ausgehen.'"></p>
+    </div>
+    {% if v.photo %}<div class="hero-photo"><img src="/bilder/{{ v.meal.recipe_uid | urlencode }}.jpg" alt="" decoding="async" onerror="this.closest('.cook-head').classList.remove('has-photo'); this.parentElement.remove()"></div>{% endif %}
+  </section>
+
+  {% if v.prep %}<div class="prep"><strong>Vorbereitung</strong><ul>{% for p in v.prep %}<li>{{ p }}</li>{% endfor %}</ul></div>{% endif %}
+
+  <div class="cook-cols">
+    <section class="panel" aria-labelledby="zut-h">
+      <div class="panel-head"><h2 id="zut-h">Zutaten</h2></div>
+      {% if v.ingredients %}
+      <ul class="cook-ingredients">
+        {% for i in v.ingredients %}
+        {% if i.head %}<li class="kopf">{{ i.text }}</li>
+        {% else %}<li><label><input type="checkbox"> <span>{{ i.text }}</span></label></li>{% endif %}
+        {% endfor %}
+      </ul>
+      {% else %}<div class="empty-frame">Für dieses Rezept sind in Paprika keine Zutaten eingetragen.</div>{% endif %}
+    </section>
+    <section class="panel" aria-labelledby="step-h">
+      <div class="panel-head"><h2 id="step-h">Zubereitung</h2></div>
+      {% if v.steps %}
+      <ol class="cook-steps">{% for s in v.steps %}<li>{{ s }}</li>{% endfor %}</ol>
+      {% else %}<div class="empty-frame">Keine Zubereitung in Paprika. <a href="/rezepte?rezept={{ v.meal.recipe_uid | urlencode }}">Rezept öffnen</a></div>{% endif %}
+    </section>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+  // keep the screen on while cooking (Screen Wake Lock, iOS 16.4+); released when the page is hidden
+  document.addEventListener("alpine:init", () => {
+    Alpine.data("wake", () => ({
+      supported: "wakeLock" in navigator, on: false, lock: null,
+      async init() {
+        if (!this.supported) return;
+        const take = async () => {
+          try { this.lock = await navigator.wakeLock.request("screen"); this.on = true;
+                this.lock.addEventListener("release", () => (this.on = false)); } catch { this.on = false; }
+        };
+        await take();
+        document.addEventListener("visibilitychange", () => document.visibilityState === "visible" && take());
+      },
+    }));
+  });
+</script>
+<script src="/static/vendor/alpine-3.17.5.min.js" defer></script>
+{% endblock %}

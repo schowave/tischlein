@@ -50,27 +50,37 @@ Das Prinzip ist „Sous-Chef“: Tischlein schlägt vor, die Familie gibt frei.
   im Kalender. Feiertage (bundesweit und pro Bundesland), Urlaub oder Kita markieren Tage als frei.
 - **Portionen pro Gericht:** Standard ist eure Familiengröße; mit − und + pro Tag änderbar.
   Rezepte werden umgerechnet („Rezept für 2, Mengen für 4“).
+- **Was die Kinder nicht mögen** (z. B. „Pilze, Oliven“) steht in den Einstellungen; solche
+  Gerichte plant Tischlein nur, wenn nichts anderes übrig ist.
+- **Schnelle Tage:** „Schnell“ an einem vollen Tag wählt ein Gericht bis 30 Minuten.
 
 **Kochen und einkaufen**
 - **Heute auf einen Blick:** das Gericht mit Foto, Kochzeit und was ihr für morgen vorbereiten
   müsst (TK auftauen, Hülsenfrüchte einweichen …).
+- **Kochen:** Zutaten auf eure Portionen umgerechnet und zum Abhaken, die Schritte groß lesbar;
+  der Bildschirm bleibt an.
 - **Einkaufsliste nach Zutaten:** gleiche Zutaten aus allen Rezepten zusammengeführt, Mengen
   addiert und auf die Portionen umgerechnet, sortiert nach Gang im Laden, darunter für welche
   Gerichte. Vorräte wie Salz und Öl bleiben weg. Mit LLM noch genauer, ohne LLM per Regeln.
-- **Gemeinsam abhaken:** eigene Einträge dazuschreiben, alles abhaken, Abgehaktes entfernen.
-  Neue Einträge melden sich über Home Assistant auf dem Handy der anderen.
+- **Gemeinsam abhaken, auch ohne Netz:** Was die andere Person abhakt, erscheint nach wenigen
+  Sekunden; im Laden ohne Empfang wird nachgeholt. Eigene Einträge dazuschreiben, alles abhaken,
+  Abgehaktes entfernen, die Liste mit „An Bring“ (über Home Assistant) oder „Teilen“ weitergeben. Neue Einträge
+  melden sich über Home Assistant auf dem Handy der anderen.
 - **Bewertung nach jedem Essen:** gut, ging so, nie wieder. Lieblingsgerichte kommen öfter.
 
 **Entdecken und zurückblicken**
 - **Ideen:** neue Gerichte vom LLM, passend zu dem, was ihr mögt, mit Fortschrittsanzeige; per
   Klick als „Neu“ und „KI“ nach Paprika.
 - **Rückblick:** was gekocht wurde, Themen, Bewertungen, Lieblinge, die lange nicht dran waren.
+- **Reste verwerten:** Die Rezeptsuche findet auch Zutaten, „Zucchini Feta“ zeigt alles mit beidem.
 - **Rezeptverwaltung** mit Foto, Zutaten und Kinder-OK-Schalter; Kategorien und Papierkorb werden
   sofort nach Paprika zurückgeschrieben.
 
 **Verbinden**
 - **Kalender-Abo** für iPhone und Mac über einen geheimen Link.
-- **Home Assistant:** Sensor „Mittagessen heute“, Plan per Automation, Meldungen per Webhook.
+- **Home Assistant:** Sensor „Mittagessen heute“, Plan per Automation, Meldungen per Webhook
+  (neuer Plan, Freigabe, Vorabend, Einkaufsliste).
+- **Hell und dunkel:** folgt der Einstellung des Geräts.
 - **Paprika** über die Cloud-Synchronisation, alternativ per Export-Datei.
 
 ## Schnellstart
@@ -195,6 +205,8 @@ uv run tischlein serve [--port 8080]                    # Web-Oberfläche und AP
 | `GET` | `/api/einkauf?woche=…` | Einkaufsliste der Woche |
 | `POST` | `/api/einkauf/{woche}/eintrag` | `{"name": "Kaffee", "menge": "500 g"}`, meldet sich bei Home Assistant |
 | `POST` | `/api/einkauf/{woche}/alle-erledigt`, `…/erledigte-entfernen` | Alles abhaken, Abgehakte entfernen |
+| `POST` | `/api/einkauf/{woche}/bring` | Offene Einträge an Home Assistant, von dort auf die Bring-Liste |
+| `POST` | `/api/bring/listen` | Home Assistant meldet seine Bring-Listen (für die Auswahl in den Einstellungen) |
 | `POST` | `/api/ideen/start`, `GET /api/ideen/status` | Rezeptideen im Hintergrund erzeugen, Fortschritt |
 | `GET` | `/api/plan?woche=aktuell\|naechste\|JJJJ-MM-TT` | Wochenplan als JSON |
 | `POST` | `/api/plaene/{woche}/erzeugen` | Paprika abgleichen und einen Entwurf erzeugen |

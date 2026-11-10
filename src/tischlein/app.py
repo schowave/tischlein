@@ -26,6 +26,7 @@ from .paprika_sync import PaprikaError
 from .service import Tischlein, from_env
 from .views import (
     FREE_REASONS,
+    cook_view,
     ideas_view,
     recipe_json,
     recipes_view,
@@ -48,6 +49,10 @@ class ShoppingItem(BaseModel):
 
 class Done(BaseModel):
     erledigt: bool
+
+
+class BringLists(BaseModel):
+    listen: list[dict]
 
 
 class TagEdit(BaseModel):
@@ -163,6 +168,19 @@ def create_app(service: Tischlein | None = None, auto_sync: bool | None = None) 
         service.save_people({k.removeprefix("name:"): str(v) for k, v in form.items() if k.startswith("name:")})
         return RedirectResponse("/einstellungen?ok=personen#personen", status_code=303)
 
+    @app.post("/einstellungen/bring")
+    def settings_bring(liste: str = Form("")):
+        try:
+            service.set_bring_list(liste)
+        except KeyError as e:
+            raise HTTPException(400, e.args[0]) from e
+        return RedirectResponse("/einstellungen?ok=bring#bring", status_code=303)
+
+    @app.post("/einstellungen/abneigungen")
+    def settings_dislikes(abneigungen: str = Form("")):
+        service.save_dislikes(abneigungen)
+        return RedirectResponse("/einstellungen?ok=abneigungen#abneigungen", status_code=303)
+
     # Week: free days and ratings ---------------------------------------------
 
     @app.post("/tage/{day}/frei")
@@ -171,14 +189,33 @@ def create_app(service: Tischlein | None = None, auto_sync: bool | None = None) 
         return back(woche)
 
     @app.post("/tage/{day}/portionen")
-    def ui_day_servings(day: date, portionen: int = Form(...), woche: str | None = Form(None)):
+    def ui_day_servings(
+        day: date, portionen: int = Form(...), woche: str | None = Form(None), ziel: str | None = Form(None)
+    ):
         try:
             service.set_servings(day, portionen)
         except KeyError as e:
             raise HTTPException(404, e.args[0]) from e
+        if ziel == "kochen":
+            return RedirectResponse(f"/kochen/{day.isoformat()}", status_code=303)
         r = back(woche)
         r.headers["location"] += f"#tag-{day.isoformat()}"
         return r
+
+    @app.post("/tage/{day}/schnell")
+    def ui_day_quick(day: date, an: int = Form(...), woche: str | None = Form(None)):
+        service.set_quick(day, bool(an))
+        r = back(woche)
+        r.headers["location"] += f"#tag-{day.isoformat()}"
+        return r
+
+    @app.get("/kochen/{day}", response_class=HTMLResponse)
+    def cook_page(request: Request, day: date):
+        try:
+            v = cook_view(service, day)
+        except KeyError as e:
+            raise HTTPException(404, e.args[0]) from e
+        return render(request, "kochen.html", {"v": v, "nav": "woche"})
 
     @app.post("/tage/{day}/kochen")
     def ui_day_cook(day: date, woche: str | None = Form(None)):
@@ -232,6 +269,18 @@ def create_app(service: Tischlein | None = None, auto_sync: bool | None = None) 
     def api_shopping_all_done(request: Request, which: str, body: Done):
         n = service.store.set_all_shopping_done(week(which), body.erledigt, person_of(request))
         return {"geaendert": n}
+
+    @app.post("/api/bring/listen")
+    def api_bring_lists(body: BringLists):
+        """Home Assistant reports its Bring lists here (rest_command, hourly)."""
+        return {"listen": service.save_bring_lists(body.listen)}
+
+    @app.post("/api/einkauf/{which}/bring")
+    def api_shopping_bring(request: Request, which: str):
+        try:
+            return {"gesendet": service.send_to_bring(week(which), person_of(request))}
+        except LookupError as e:
+            raise HTTPException(409, str(e)) from e
 
     @app.post("/api/einkauf/{which}/erledigte-entfernen")
     def api_shopping_remove_done(which: str):
@@ -327,10 +376,10 @@ def create_app(service: Tischlein | None = None, auto_sync: bool | None = None) 
         return back(which)
 
     @app.post("/plaene/{which}/status")
-    def ui_status(which: str, status: str = Form(...)):
+    def ui_status(request: Request, which: str, status: str = Form(...)):
         if status not in ("entwurf", "freigegeben"):
             raise HTTPException(400, "Status: entwurf oder freigegeben")
-        guard(service.set_status, week(which), status)
+        guard(service.set_status, week(which), status, person_of(request))
         return back(which)
 
     @app.post("/rueckmeldung")
@@ -453,6 +502,13 @@ def create_app(service: Tischlein | None = None, auto_sync: bool | None = None) 
         if not secrets.compare_digest(token, service.calendar_settings()["token"]):
             raise HTTPException(404, "Unbekannter Kalender-Link")
         return Response(service.calendar_ics(), media_type="text/calendar; charset=utf-8")
+
+    @app.get("/sw.js")
+    def service_worker():
+        # served from the root so it may handle /einkauf; never cached itself, so updates arrive
+        return FileResponse(
+            HERE / "static" / "sw.js", media_type="text/javascript", headers={"Cache-Control": "no-cache"}
+        )
 
     @app.get("/healthz")
     def health():

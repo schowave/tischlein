@@ -116,7 +116,7 @@ def test_recipes_page_and_tag_api():
     c = TestClient(create_app(svc))
 
     page = c.get("/rezepte").text
-    assert '"name": "Bowl"' in page and "Rezept suchen" in page
+    assert '"name": "Bowl"' in page and "Rezept oder Zutat suchen" in page and '"zutaten": [' in page
 
     r = c.post("/api/rezepte/R1/tags", json={"hinzufuegen": ["Kinder-OK"], "entfernen": []})
     assert r.status_code == 200 and r.json()["kinder_ok"] is True
@@ -232,6 +232,11 @@ def test_new_pages_render_and_actions_work(client):
     )
 
     assert "Kein LLM" in client.post("/ideen/erzeugen").text or client.get("/ideen").status_code == 200
+    lists = [{"entity_id": "todo.zuhause", "name": "Zuhause"}, {"entity_id": "todo.ikea", "name": "Ikea"}]
+    assert client.post("/api/bring/listen", json={"listen": lists}).json() == {"listen": 2}
+    assert "Ikea" in client.get("/einstellungen").text
+    assert client.post("/einstellungen/bring", data={"liste": "todo.ikea"}, follow_redirects=False).status_code == 303
+    assert client.post("/einstellungen/bring", data={"liste": "todo.x"}).status_code == 400
     assert client.post("/api/ideen/start").status_code == 400
     assert client.get("/api/ideen/status").json()["laeuft"] is False
     assert client.get("/api/morgen").json()["datum"]

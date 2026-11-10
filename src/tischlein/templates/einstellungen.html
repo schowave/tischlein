@@ -7,7 +7,7 @@
     <p>{% if v.account.verbunden %}Paprika verbunden als {{ v.account.email }}{% else %}Paprika ist noch nicht verbunden{% endif %} · Kalender „{{ v.cal.name }}“ um {{ v.cal.uhrzeit }} Uhr</p>
   </div>
   {% if ok %}
-  <p class="saved" role="status">{{ {'paprika': 'Paprika verbunden. Die Rezepte werden im Hintergrund abgeglichen.', 'getrennt': 'Paprika getrennt.', 'kalender': 'Kalender gespeichert.', 'link': 'Neuer Kalender-Link erstellt. Bitte auf dem iPhone neu abonnieren.', 'llm': 'LLM verbunden und gespeichert.', 'llm-weg': 'LLM-Zugang entfernt.', 'personen': 'Namen gespeichert.'}.get(ok, 'Gespeichert.') }}</p>
+  <p class="saved" role="status">{{ {'paprika': 'Paprika verbunden. Die Rezepte werden im Hintergrund abgeglichen.', 'getrennt': 'Paprika getrennt.', 'kalender': 'Kalender gespeichert.', 'link': 'Neuer Kalender-Link erstellt. Bitte auf dem iPhone neu abonnieren.', 'llm': 'LLM verbunden und gespeichert.', 'llm-weg': 'LLM-Zugang entfernt.', 'personen': 'Namen gespeichert.', 'abneigungen': 'Abneigungen gespeichert. Sie gelten ab der nächsten Planung.', 'bring': 'Bring-Liste gespeichert.'}.get(ok, 'Gespeichert.') }}</p>
   {% endif %}
 </section>
 
@@ -142,6 +142,42 @@
         <form class="inline" method="post" action="/einstellungen/llm/entfernen" onsubmit="return confirm('LLM-Zugang aus Tischlein entfernen?')"><button class="btn btn-ghost btn-sm danger">Zugang entfernen</button></form>
       </div>
       {% else %}{{ llm_form }}{% endif %}
+    </div>
+  </section>
+
+  <section class="setting" id="bring" aria-labelledby="bring-h">
+    <div class="setting-label">
+      <h2 id="bring-h">Bring</h2>
+      <p>„An Bring“ in der Einkaufsliste schickt die offenen Einträge über Home Assistant auf diese Bring-Liste. Home Assistant meldet seine Listen jede Stunde.</p>
+    </div>
+    <div class="panel setting-panel">
+      {% if v.bring_lists %}
+      <form method="post" action="/einstellungen/bring" class="form">
+        <label class="lbl" for="bring-list">Liste</label>
+        <select class="input" id="bring-list" name="liste">
+          <option value="" {% if not v.bring_list %}selected{% endif %}>Standard aus Home Assistant</option>
+          {% for l in v.bring_lists %}<option value="{{ l.entity_id }}" {% if l.entity_id == v.bring_list %}selected{% endif %}>{{ l.name }}</option>{% endfor %}
+        </select>
+        <div class="form-actions"><button class="btn btn-primary">Speichern</button></div>
+      </form>
+      {% else %}
+      <div class="empty-frame">{% if v.ha %}Noch keine Listen. Sobald Home Assistant mit der Bring-Integration seine Listen meldet (beim Start und jede Stunde), stehen sie hier zur Auswahl.{% else %}Dafür braucht Tischlein Home Assistant (<code>HA_WEBHOOK_URL</code>) mit der Bring-Integration.{% endif %}</div>
+      {% endif %}
+    </div>
+  </section>
+
+  <section class="setting" id="abneigungen" aria-labelledby="dislike-h">
+    <div class="setting-label">
+      <h2 id="dislike-h">Was die Kinder nicht mögen</h2>
+      <p>Zutaten mit Komma getrennt. Gerichte, die eine davon enthalten, plant Tischlein nur, wenn zum Thema nichts anderes übrig ist; neue Ideen vermeiden sie ganz.</p>
+    </div>
+    <div class="panel setting-panel">
+      <form method="post" action="/einstellungen/abneigungen" class="form">
+        <label class="lbl" for="dislikes">Zutaten</label>
+        <input class="input" id="dislikes" name="abneigungen" value="{{ v.dislikes }}" placeholder="z. B. Pilze, Oliven, Rosenkohl" autocomplete="off">
+        {% if v.dislikes %}<p class="hint">Betrifft {{ v.avoided }} {{ 'Rezept' if v.avoided == 1 else 'Rezepte' }} in eurer Sammlung.</p>{% endif %}
+        <div class="form-actions"><button class="btn btn-primary">Speichern</button></div>
+      </form>
     </div>
   </section>
 

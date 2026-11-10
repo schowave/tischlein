@@ -20,7 +20,7 @@
     </div>
     {% endif %}
     <p class="hero-finding">{{ v.finding }}</p>
-    {% if h.meal %}<a class="btn" href="/rezepte?rezept={{ h.meal.recipe_uid | urlencode }}">Rezept ansehen</a>{% endif %}
+    {% if h.meal %}<div class="hero-actions"><a class="btn btn-primary" href="/kochen/{{ h.meal.day.isoformat() }}">Kochen</a><a class="btn btn-ghost" href="/rezepte?rezept={{ h.meal.recipe_uid | urlencode }}">Rezept in der Sammlung</a></div>{% endif %}
   </div>
   {% if h.photo %}<a class="hero-photo" href="/rezepte?rezept={{ h.meal.recipe_uid | urlencode }}" tabindex="-1" aria-hidden="true"><img src="/bilder/{{ h.meal.recipe_uid | urlencode }}.jpg" alt="" decoding="async" onerror="this.closest('.hero').classList.remove('has-photo'); this.parentElement.remove()"></a>{% endif %}
 </section>
@@ -55,7 +55,7 @@
             <div class="dish-row">
               {{ thumb(d.meal.recipe_uid, d.meal.name, d.has_photo) }}
               <div>
-                <strong><a class="dish-link" href="/rezepte?rezept={{ d.meal.recipe_uid | urlencode }}">{{ d.meal.name }}</a></strong>
+                <strong><a class="dish-link" href="/kochen/{{ d.date.isoformat() }}">{{ d.meal.name }}</a></strong>
                 {% if d.meal.is_new %}<span>Neu ausprobieren: eine sichere Beilage dazu.</span>
                 {% elif d.meal.reason and 'Kinder-OK' not in d.meal.reason %}<span>{{ d.meal.reason }}</span>{% endif %}
                 {% if d.portions and d.portions.base != d.portions.servings %}<span class="scale-note">Rezept für {{ d.portions.base }}, Mengen für {{ d.portions.servings }}</span>{% endif %}
@@ -84,6 +84,10 @@
             <span class="num" title="Portionen für die Einkaufsliste">{{ p.servings }}<small> Port.</small></span>
             <form method="post" action="/tage/{{ d.date.isoformat() }}/portionen"><input type="hidden" name="portionen" value="{{ p.servings + 1 }}"><input type="hidden" name="woche" value="{{ v.which }}"><button class="step" aria-label="Eine Portion mehr" {% if p.servings >= 30 %}disabled{% endif %}>+</button></form>
           </div>
+          {% endif %}
+          {% if v.plan.status == 'entwurf' and d.meal %}
+          <form class="inline" method="post" action="/tage/{{ d.date.isoformat() }}/schnell"><input type="hidden" name="an" value="{{ 0 if d.quick else 1 }}"><input type="hidden" name="woche" value="{{ v.which }}"><button class="btn btn-ghost btn-sm quick-toggle{% if d.quick %} is-on{% endif %}" aria-pressed="{{ 'true' if d.quick else 'false' }}" title="{{ 'Wieder normal planen' if d.quick else 'Wenig Zeit: ein Gericht bis 30 Minuten wählen' }}">Schnell</button></form>
+          {% elif d.quick %}<span class="pill pill-neutral">Schnell</span>
           {% endif %}
           {% if v.plan.status == 'entwurf' and d.meal %}
           <form class="inline" method="post" action="/plaene/{{ v.which }}/tauschen">

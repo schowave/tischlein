@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import random
+import re
 import secrets
 import threading
 import time
@@ -17,13 +18,13 @@ from datetime import time as dtime
 from pathlib import Path
 
 from . import ics, ideas, shopping
-from .config import PlanConfig
+from .config import WEEKDAY_NAMES, PlanConfig
 from .holidays import holidays_between
 from .llm import LLMClient, LLMError
 from .models import Recipe, Verdict, WeekPlan
 from .paprika import recipe_from_json
 from .paprika_sync import CachedRecipe, PaprikaClient, PaprikaError
-from .planner import plan_week, week_start_of
+from .planner import is_quick, plan_week, week_start_of
 from .prep import prep_hints
 from .store import Store
 from .tagging import Change, apply_changes
@@ -533,6 +534,7 @@ class Tischlein:
                 date.today(),
                 theme=focus[n % len(focus)] if focus else None,
                 suggested=open_ideas + suggested,
+                avoid=self.dislikes(),
             )
             try:
                 found = ideas.parse_ideas(client.chat_json(ideas.SYSTEM, prompt, temperature=0.8), themes)[:1]
@@ -663,6 +665,52 @@ class Tischlein:
         self._post_webhook({"titel": "Tischlein", "nachricht": text, "morgen": info})
         return True
 
+    def bring_lists(self) -> list[dict]:
+        """Bring lists as Home Assistant last reported them: [{entity_id, name}]."""
+        try:
+            lists = json.loads(self.store.meta("bring_lists") or "[]")
+        except ValueError:
+            return []
+        return [x for x in lists if isinstance(x, dict) and str(x.get("entity_id", "")).startswith("todo.")]
+
+    def save_bring_lists(self, lists: list[dict]) -> int:
+        clean = [
+            {"entity_id": str(x["entity_id"]), "name": str(x.get("name") or x["entity_id"])}
+            for x in lists
+            if isinstance(x, dict) and str(x.get("entity_id", "")).startswith("todo.")
+        ]
+        self.store.set_meta("bring_lists", json.dumps(clean, ensure_ascii=False))
+        return len(clean)
+
+    def bring_list(self) -> str:
+        """The chosen Bring list (entity id); empty = Home Assistant's default."""
+        chosen = self.store.meta("bring_list") or ""
+        return chosen if any(x["entity_id"] == chosen for x in self.bring_lists()) else ""
+
+    def set_bring_list(self, entity_id: str) -> None:
+        if entity_id and not any(x["entity_id"] == entity_id for x in self.bring_lists()):
+            raise KeyError("Diese Bring-Liste kennt Home Assistant nicht.")
+        self.store.set_meta("bring_list", entity_id)
+
+    def send_to_bring(self, week_start: date, person: str = "") -> int:
+        """Hand the open items to Home Assistant, whose automation puts them on the Bring list. Sent and
+        awaited, so a failure is reported; Bring merges an item that is already on the list."""
+        if not self.webhook_url:
+            raise LookupError("Home Assistant ist nicht verbunden (HA_WEBHOOK_URL fehlt).")
+        items = [i for i in self.store.shopping(week_start) if not i["done"]]
+        if items and not self._post_webhook(
+            {
+                "titel": "Einkaufsliste",
+                "nachricht": f"{len(items)} Einträge an Bring geschickt.",
+                "art": "bring",
+                "von": person,
+                "liste": self.bring_list(),
+                "eintraege": [{"name": i["name"], "menge": i["amount"]} for i in items],
+            }
+        ):
+            raise LookupError("Home Assistant ist nicht erreichbar, Bring wurde nicht aktualisiert.")
+        return len(items)
+
     def add_shopping_item(self, week_start: date, name: str, amount: str = "", person: str = "") -> int:
         """Put something on the list by hand and tell Home Assistant (push to the phones)."""
         item_id = self.store.add_shopping_item(week_start, name, amount)
@@ -677,18 +725,22 @@ class Tischlein:
                 "eintrag": name,
                 "menge": amount,
             }
-            # in the background: the list must not wait for Home Assistant
-            threading.Thread(target=self._post_webhook, args=(payload,), name="ha-webhook", daemon=True).start()
+            self._post_async(payload)
         return item_id
 
-    def _post_webhook(self, payload: dict) -> None:
+    def _post_async(self, payload: dict) -> None:
+        """Send a notification in the background: the page must not wait for Home Assistant."""
+        threading.Thread(target=self._post_webhook, args=(payload,), name="ha-webhook", daemon=True).start()
+
+    def _post_webhook(self, payload: dict) -> bool:
         req = urllib.request.Request(
             self.webhook_url, json.dumps(payload).encode(), {"Content-Type": "application/json"}
         )
         try:
             urllib.request.urlopen(req, timeout=5).close()
+            return True
         except OSError:
-            pass  # best effort
+            return False  # best effort; callers that must know check the result
 
     # Automatic sync -----------------------------------------------------------
 
@@ -826,7 +878,80 @@ class Tischlein:
             exclude=exclude,
             skip=self.skip_map(week_start),
             weights=self.rating_weights(),
+            avoid=self.avoided_uids(),
+            quick=self.store.quickdays(week_start, week_start + timedelta(days=6)),
         )
+
+    # Dislikes and quick days ---------------------------------------------------
+
+    def dislikes(self) -> list[str]:
+        """Ingredients the children don't like, as entered in the settings ("Pilze, Oliven")."""
+        return [w.strip() for w in (self.store.meta("abneigungen") or "").split(",") if w.strip()]
+
+    def save_dislikes(self, text: str) -> None:
+        words = [w.strip() for w in text.replace("\n", ",").split(",") if w.strip()]
+        self.store.set_meta("abneigungen", ", ".join(dict.fromkeys(words)))
+
+    def ingredient_index(self) -> dict[str, list[str]]:
+        """Ingredient names per recipe (no amounts, no headings), rebuilt when the raw cache changes."""
+        key = self.store.cache_generation
+        cached = getattr(self, "_ingredient_index", None)
+        if cached and cached[0] == key:
+            return cached[1]
+        index = {}
+        for uid, (_, raw) in self.store.paprika_cache().items():
+            lines = shopping.ingredient_lines(raw.get("ingredients", ""))
+            index[uid] = list(dict.fromkeys(shopping.parse_line(line)["name"] for line in lines))
+        self._ingredient_index = (key, index)
+        return index
+
+    def avoided_uids(self) -> set[str]:
+        """Recipes whose ingredients name a dislike. A word matches as itself, in a plural form or as
+        the end of a compound ("Pilze" finds "Steinpilze"), never as its start: "Oliven" does not
+        find "Olivenöl", and short words like "Ei" match only themselves ("Eier", not "eine")."""
+        words = [w.casefold() for w in self.dislikes()]
+        if not words:
+            return set()
+        key = (self.store.cache_generation, tuple(words))
+        cached = getattr(self, "_avoided", None)
+        if cached and cached[0] == key:
+            return cached[1]
+        forms = []
+        for w in words:
+            if len(w) <= 3:  # "Ei": only "ei" and "eier", never "ein" or "eis"
+                forms.append(({w, w + "er"}, False))
+                continue
+            stem = w[:-1] if w.endswith(("n", "e", "s")) else w
+            forms.append(({w, stem, stem + "n", stem + "en", stem + "e", stem + "s", stem + "er"}, True))
+        out = set()
+        for uid, names in self.ingredient_index().items():
+            tokens = {t for n in names for t in re.findall(r"[a-zäöüß]+", n.casefold())}
+            if any(t in f or (compound and any(t.endswith(x) for x in f)) for t in tokens for f, compound in forms):
+                out.add(uid)
+        self._avoided = (key, out)
+        return out
+
+    def set_quick(self, day: date, on: bool) -> WeekPlan | None:
+        """Mark a day as short on time. A draft keeps a dish that is already quick, otherwise picks a
+        quick one; if the theme has none, the planned dish stays."""
+        self.store.set_quickday(day, on)
+        plan = self.store.plan(week_start_of(day))
+        if plan is None or plan.status != "entwurf" or not on:
+            return plan
+        current = next((m for m in plan.meals if m.day == day), None)
+        recipes = {r.uid: r for r in self.store.recipes()}
+        if (
+            current is None
+            or current.skipped
+            or (current.recipe_uid in recipes and is_quick(recipes[current.recipe_uid]))
+        ):
+            return plan
+        new = self._replan_day(day)
+        picked = next((m for m in new.meals if m.day == day), None) if new else None
+        if picked is None or picked.recipe_uid not in recipes or not is_quick(recipes[picked.recipe_uid]):
+            self.store.save_plan(plan)  # nothing quick for this theme: keep what was planned
+            return plan
+        return new
 
     def generate(self, week_start: date, notify: bool = False) -> WeekPlan:
         meals = self._plan(week_start)
@@ -853,10 +978,23 @@ class Tischlein:
         self.store.save_plan(plan)
         return plan
 
-    def set_status(self, week_start: date, status: str) -> WeekPlan:
+    def set_status(self, week_start: date, status: str, person: str = "") -> WeekPlan:
         plan = self._require(week_start)
+        before = plan.status
         plan.status = status  # type: ignore[assignment]
         self.store.save_plan(plan)
+        if status == "freigegeben" and before != "freigegeben" and self.webhook_url:
+            days = ", ".join(
+                f"{WEEKDAY_NAMES[m.day.weekday()][:2]} {m.name}" for m in plan.meals if m.recipe_uid and not m.skipped
+            )
+            payload = {
+                "titel": "Tischlein",
+                "nachricht": f"{person or 'Jemand'} hat die Woche ab {week_start:%d.%m.} freigegeben: {days}.",
+                "art": "freigabe",
+                "von": person,
+                "woche": week_start.isoformat(),
+            }
+            self._post_async(payload)
         return plan
 
     def feedback(self, recipe_uid: str, verdict: Verdict) -> None:

@@ -23,20 +23,22 @@ GROUPS = [
 ]
 
 
-def ingredient_lines(text: str) -> list[str]:
-    """Ingredient lines of a Paprika recipe without section headings and separators."""
+def ingredient_entries(text: str) -> list[tuple[str, bool]]:
+    """(line, is_heading) for a Paprika ingredient text, without separators and empty lines."""
     out = []
     for raw in (text or "").splitlines():
         raw = raw.strip()
-        if raw.startswith("**") and raw.rstrip(":").endswith("**"):
-            continue  # **Sauce** is a section heading
+        heading = raw.startswith("**") and raw.rstrip(":").endswith("**")  # **Sauce**
         line = raw.replace("**", "")
         if not line or set(line) <= set("=-_* "):
             continue
-        if line.endswith(":") and len(line) < 40:
-            continue
-        out.append(line)
+        out.append((line, heading or (line.endswith(":") and len(line) < 40)))
     return out
+
+
+def ingredient_lines(text: str) -> list[str]:
+    """Ingredient lines of a Paprika recipe without section headings and separators."""
+    return [line for line, heading in ingredient_entries(text) if not heading]
 
 
 def is_pantry(line: str, pantry: Iterable[str]) -> bool:

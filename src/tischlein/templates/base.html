@@ -3,7 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#efefed">
+<meta name="theme-color" content="#efefed" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#161714" media="(prefers-color-scheme: dark)">
+<meta name="color-scheme" content="light dark">
 <meta name="apple-mobile-web-app-title" content="Tischlein">
 <link rel="manifest" href="/static/manifest.webmanifest" crossorigin="use-credentials">
 <link rel="apple-touch-icon" href="/static/icons/icon-180.png">
@@ -32,10 +34,10 @@
   <header class="side">
     <a class="brand" href="/" aria-label="Tischlein, zur Woche">
       <svg class="brand-mark" viewBox="0 0 28 28" aria-hidden="true">
-        <rect x="3" y="9" width="22" height="3.5" rx="1.75" fill="#1f201d"/>
-        <rect x="6" y="12" width="3" height="12" rx="1.5" fill="#1f201d"/>
-        <rect x="19" y="12" width="3" height="12" rx="1.5" fill="#1f201d"/>
-        <circle cx="14" cy="5.5" r="3" fill="#1b6e66"/>
+        <rect x="3" y="9" width="22" height="3.5" rx="1.75" class="bm-ink"/>
+        <rect x="6" y="12" width="3" height="12" rx="1.5" class="bm-ink"/>
+        <rect x="19" y="12" width="3" height="12" rx="1.5" class="bm-ink"/>
+        <circle cx="14" cy="5.5" r="3" class="bm-dot"/>
       </svg>
       <span class="brand-name">Tischlein<span class="brand-sub">Mittagessen der Familie</span></span>
     </a>
@@ -65,6 +67,7 @@
   {% for key, href, label in sections %}{{ nav_link(key, href, label) }}{% endfor %}
 </nav>
 <script src="/static/sync.js?v={{ version }}" defer></script>
+<script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});</script>
 {% block scripts %}{% endblock %}
 </body>
 </html>

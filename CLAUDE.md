@@ -33,6 +33,8 @@ landen im Kalender.
 | Bewertung | Nach jedem Essen: gut / mittel / schlecht, pro Tag und Person; steuert die Gewichtung | `ratings` |
 | Freier Tag | Kein Mittagessen (Urlaub, Feiertag, Kita …); Feiertage automatisch, „Doch kochen“ überstimmt | `skipdays`, `holidays.py` |
 | Einkaufsliste | Zutaten der Woche ohne Vorräte, auf die Portionen umgerechnet, gleiche Zutaten zusammengeführt und nach Gang sortiert (mit LLM oder per Regeln) | `shopping.py`, `shopping` |
+| Abneigung | Zutat, die die Kinder nicht mögen (Einstellungen); solche Rezepte plant Tischlein zuletzt | `dislikes`, `avoid` |
+| Schneller Tag | Tag mit wenig Zeit: Gerichte bis 30 Minuten zuerst | `quickdays`, `quick` |
 | Portionen | Pro geplantem Gericht, Standard `portionen` aus tischlein.toml; skaliert die Mengen | `config.portions`, `servings` |
 | Idee | Vorschlag des LLM für ein neues Gericht; übernommen landet es mit „Neu“ in Paprika | `ideas.py`, `ideas` |
 
@@ -54,6 +56,10 @@ landen im Kalender.
 8. Bewertungen gewichten: gut = 1, mittel = 0, schlecht = −1, Faktor 1 + 0,6 × Mittelwert
    (0,4 bis 1,6) auf die Wahrscheinlichkeit. „Nie wieder“ setzt die Rückmeldung `nein`; „gut“ für
    ein Neu-Rezept setzt `ok`.
+9. Abneigungen (Einstellungen): Rezepte, deren Zutaten eine davon nennen, nur wenn zum Thema nichts
+   anderes übrig ist; der Grund steht in der Mahlzeit. Neu-Slot und KI-Ideen meiden sie ganz.
+10. Schnelle Tage: zuerst Rezepte bis 30 Minuten (`total_time`) oder mit Kategorie `Schnell`, sonst
+    die normale Regel mit Grund. Ein Entwurf wählt den Tag beim Umschalten neu.
 
 ## Architektur
 
@@ -68,7 +74,8 @@ src/tischlein/
   tagging.py   Kategorie-Differenzen nach Paprika schreiben (CSV-Befehl und Oberfläche)
   views.py     View-Modelle für die Templates
   templates/   eine Seite pro Bereich (Jinja, serverseitig gerendert); _macros.html: Rezeptbild, Einkaufs-Formular
-  static/      tischlein.css; rezepte.js, ideen.js = Alpine-Komponenten (Markup im Template);
+  static/      tischlein.css; rezepte.js, ideen.js, einkauf.js = Alpine-Komponenten (Markup im Template);
+               sw.js = Service Worker (unter /sw.js), nur damit die Einkaufsliste offline öffnet;
                manifest.webmanifest + icons/ für den Home-Bildschirm (display: browser, wegen Cloudflare Access);
                vendor/alpine-<version>.min.js, nur über `mise run vendor:alpine` aktualisieren
   planner.py   reine Funktion plan_week(...) – deterministisch über übergebenen Random

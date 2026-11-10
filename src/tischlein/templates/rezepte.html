@@ -23,9 +23,9 @@
 <div class="filters" role="search">
   <div class="line">
     <label class="search">
-      <span class="sr-only">Rezept suchen</span>
+      <span class="sr-only">Rezept oder Zutat suchen</span>
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14"/></svg>
-      <input class="field" type="search" placeholder="Rezept suchen" autocomplete="off" x-model="q">
+      <input class="field" type="search" placeholder="Rezept oder Zutaten, z. B. Zucchini Feta" autocomplete="off" x-model="q">
     </label>
     <div class="seg" role="group" aria-label="Umfang">
       <button type="button" :aria-pressed="scope === 'main'" @click="scope = 'main'">Hauptspeisen</button>
@@ -59,6 +59,7 @@
           <template x-if="!r.bild"><span class="thumb ph" aria-hidden="true" x-text="initial(r)"></span></template>
           <div>
             <div class="nm" x-text="r.name"></div>
+            <div class="hit" x-show="hits(r).length" x-text="'mit ' + hits(r).join(', ')"></div>
             <div class="tg">
               <template x-for="(t, i) in r.themen" :key="t"><span><span x-show="i" x-text="' · '"></span><span class="th" x-text="t"></span></span></template><span x-text="otherTags(r)"></span>
             </div>

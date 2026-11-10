@@ -204,17 +204,31 @@ def test_ideas_in_background_report_state(svc):
 
 def test_shopping_item_added_by_hand_notifies_home_assistant(svc, monkeypatch):
     sent = []
-    monkeypatch.setattr(svc, "_post_webhook", sent.append)
+    monkeypatch.setattr(svc, "_post_webhook", lambda p: sent.append(p) is None)  # delivered
     svc.add_shopping_item(MONDAY, "Kaffee", "500 g", "Julia")
     assert sent == []  # no webhook configured
     svc.webhook_url = "http://ha/hook"
-    monkeypatch.setattr(
-        "tischlein.service.threading.Thread",
-        lambda target, args, **kw: type("T", (), {"start": lambda self: target(*args)})(),
-    )
+    monkeypatch.setattr(svc, "_post_async", sent.append)
     svc.add_shopping_item(MONDAY, "Kaffee", "500 g", "Julia")
     assert sent[0]["nachricht"] == "Julia hat Kaffee (500 g) auf die Liste gesetzt." and sent[0]["art"] == "einkauf"
     assert len(svc.store.shopping(MONDAY)) == 2
+    assert svc.send_to_bring(MONDAY, "Julia") == 2
+    assert sent[-1]["art"] == "bring" and sent[-1]["eintraege"][0] == {"name": "Kaffee", "menge": "500 g"}
+    assert sent[-1]["liste"] == ""  # no list chosen: Home Assistant's default
+    assert svc.save_bring_lists([{"entity_id": "todo.ikea", "name": "Ikea"}, {"entity_id": "light.x"}]) == 1
+    svc.set_bring_list("todo.ikea")
+    svc.send_to_bring(MONDAY)
+    assert sent[-1]["liste"] == "todo.ikea"
+    with pytest.raises(KeyError):
+        svc.set_bring_list("todo.unbekannt")
+    svc.save_bring_lists([])  # list gone in Home Assistant: back to the default
+    assert svc.bring_list() == ""
+    monkeypatch.setattr(svc, "_post_webhook", lambda p: False)  # Home Assistant down: say so
+    with pytest.raises(LookupError):
+        svc.send_to_bring(MONDAY)
+    svc.webhook_url = ""
+    with pytest.raises(LookupError):
+        svc.send_to_bring(MONDAY)
 
 
 def test_day_info_and_reminder(svc, monkeypatch):
@@ -229,13 +243,15 @@ def test_day_info_and_reminder(svc, monkeypatch):
     sent = []
     svc.webhook_url = "http://ha/webhook"
     monkeypatch.setattr(svc, "_post_webhook", sent.append)
+    monkeypatch.setattr(svc, "_post_async", sent.append)
     sunday_evening = datetime(2026, 11, 15, 18, 5)
     assert svc.reminder_tick(sunday_evening) is False  # plan is only a draft
     svc.set_status(MONDAY, "freigegeben")
     svc.store.set_meta("erinnert_am", "")
     assert svc.reminder_tick(datetime(2026, 11, 15, 17, 0)) is False  # too early
+    assert sent[0]["art"] == "freigabe" and "freigegeben" in sent[0]["nachricht"]  # the approval itself
     assert svc.reminder_tick(sunday_evening) is True
-    assert "Morgen gibt's" in sent[0]["nachricht"] and "Tiefkühlware" in sent[0]["nachricht"]
+    assert "Morgen gibt's" in sent[1]["nachricht"] and "Tiefkühlware" in sent[1]["nachricht"]
     assert svc.reminder_tick(sunday_evening) is False  # once a day
 
 
@@ -263,6 +279,36 @@ def test_week_hero_names_the_next_dish_and_tomorrows_preparation(svc):
 
     empty = week_view(svc, None, MONDAY + timedelta(days=30))["hero"]
     assert empty["meal"] is None
+
+
+def test_dislikes_quick_days_and_cooking_view(svc):
+    from tischlein.views import cook_view
+
+    svc.fake.recipes["R2"].update(ingredients="1 kg Kartoffeln\n200 g Steinpilze", hash="pilz")
+    svc.fake.recipes["R1"].update(total_time="20 Min.", hash="schnell")
+    svc.sync_paprika()
+    svc.save_dislikes("Pilze, Pilze,\nOliven, Ei")
+    assert svc.avoided_uids() == svc.avoided_uids()  # cached until the raw cache or the dislikes change
+    assert svc.dislikes() == ["Pilze", "Oliven", "Ei"] and svc.avoided_uids() == {"R2"}  # Steinpilze
+    svc.fake.recipes["R1"].update(ingredients="400 g Hähnchen\n2 EL Olivenöl\neine Zwiebel\nEis", hash="oel")
+    svc.sync_paprika()
+    assert svc.avoided_uids() == {"R2"}  # no "Oliven" in Olivenöl, no "Ei" in "eine" or "Eis"
+
+    svc.set_quick(MONDAY, True)  # only the 20-minute Bowl is quick
+    for seed in range(5):
+        svc.rng.seed(seed)
+        assert svc.generate(MONDAY).meals[0].name == "Bowl"
+    assert svc.store.quickdays(MONDAY, MONDAY + timedelta(days=6)) == {MONDAY}
+    tuesday = MONDAY + timedelta(days=1)
+    svc.set_quick(tuesday, True)  # nothing quick left for Tuesday (the Bowl is taken): Püree stays
+    assert next(m for m in svc.store.plan(MONDAY).meals if m.day == tuesday).name == "Püree"
+    assert tuesday in svc.store.quickdays(MONDAY, MONDAY + timedelta(days=6))
+
+    svc.set_servings(tuesday, 8)
+    v = cook_view(svc, tuesday)
+    assert v["servings"] == 8 and v["scaled"] and v["ingredients"][0]["text"] == "2 kg Kartoffeln"  # Püree, doubled
+    with pytest.raises(KeyError):
+        cook_view(svc, MONDAY + timedelta(days=5))
 
 
 def test_people_names(svc):

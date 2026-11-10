@@ -33,6 +33,7 @@ class Store:
     def __init__(self, path: Path | str):
         self.path = str(path)
         self._lock = threading.RLock()
+        self.cache_generation = 0  # bumped on every change of the raw recipe cache (for derived indexes)
         if str(path) != ":memory:":
             Path(path).parent.mkdir(parents=True, exist_ok=True)
         self.db = sqlite3.connect(path, check_same_thread=False)
@@ -66,6 +67,7 @@ class Store:
     @_locked
     def upsert_recipe(self, r: Recipe, raw_hash: str, raw: dict) -> None:
         """Replace one recipe (and its raw Paprika data) after an edit."""
+        self.cache_generation += 1
         now = datetime.now().isoformat(timespec="seconds")
         with self.db:
             self.db.execute("DELETE FROM recipes WHERE uid = ?", (r.uid,))
@@ -95,6 +97,7 @@ class Store:
 
     @_locked
     def set_raw_recipe(self, uid: str, raw_hash: str, raw: dict) -> None:
+        self.cache_generation += 1
         with self.db:
             self.db.execute(
                 "INSERT INTO paprika_cache VALUES (?, ?, ?) ON CONFLICT(uid) DO UPDATE SET "
@@ -109,6 +112,7 @@ class Store:
 
     @_locked
     def replace_paprika_cache(self, cache: dict[str, tuple[str, dict]]) -> None:
+        self.cache_generation += 1
         with self.db:
             self.db.execute("DELETE FROM paprika_cache")
             self.db.executemany(
@@ -228,6 +232,23 @@ class Store:
             "SELECT day, reason FROM skipdays WHERE day BETWEEN ? AND ?", (start.isoformat(), end.isoformat())
         ).fetchall()
         return {date.fromisoformat(d): r for d, r in rows}
+
+    # Quick days --------------------------------------------------------------
+
+    @_locked
+    def set_quickday(self, day: date, on: bool) -> None:
+        with self.db:
+            if on:
+                self.db.execute("INSERT OR IGNORE INTO quickdays VALUES (?)", (day.isoformat(),))
+            else:
+                self.db.execute("DELETE FROM quickdays WHERE day = ?", (day.isoformat(),))
+
+    @_locked
+    def quickdays(self, start: date, end: date) -> set[date]:
+        rows = self.db.execute(
+            "SELECT day FROM quickdays WHERE day BETWEEN ? AND ?", (start.isoformat(), end.isoformat())
+        ).fetchall()
+        return {date.fromisoformat(d) for (d,) in rows}
 
     # Portions ----------------------------------------------------------------
 

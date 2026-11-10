@@ -43,6 +43,7 @@ def build_prompt(
     today: date,
     theme: str | None = None,
     suggested: list[str] | None = None,
+    avoid: list[str] | None = None,
 ) -> str:
     """`theme` pins this request to one theme; `suggested` are ideas already made in this round."""
     focus = [theme] if theme else focus_themes(supply, themes)
@@ -54,6 +55,8 @@ def build_prompt(
         "Das kam nicht gut an: " + ("; ".join(disliked[:20]) or "nichts"),
         "Schon in der Sammlung (nicht noch einmal vorschlagen): " + "; ".join(existing[:250]),
     ]
+    if avoid:
+        lines.append("Diese Zutaten mögen die Kinder nicht, bitte nicht verwenden: " + ", ".join(avoid))
     if suggested:
         lines.append("Gerade schon vorgeschlagen (etwas deutlich anderes wählen): " + "; ".join(suggested))
     return "\n".join(

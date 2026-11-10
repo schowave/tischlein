@@ -35,6 +35,11 @@
   um `[erinnerung] uhrzeit` „Morgen gibt's …“ samt Vorbereitung (nur freigegebene Pläne, einmal
   am Tag). Trägt jemand von Hand etwas in die Einkaufsliste ein, kommt
   „<Name> hat Kaffee (500 g) auf die Liste gesetzt.“ mit `art: einkauf`, `von`, `eintrag`, `menge`.
+  Gibt jemand eine Woche frei, kommt „<Name> hat die Woche ab 16.11. freigegeben: Mo …“ mit `art: freigabe`.
+  „An Bring“ schickt `art: bring` mit `eintraege` [{name, menge}]; die Automation `notify_tischlein`
+  im homelab-Repo legt sie per `todo.add_item` auf die Bring-Liste (Integration Bring!, in HA eingerichtet).
+  Welche Liste, wählt ihr unter Einstellungen → Bring (`liste` im JSON); die Auswahl kennt Tischlein,
+  weil Home Assistant beim Start und stündlich seine Bring-Listen an `POST /api/bring/listen` meldet.
   Fürs iPhone: Automation mit Webhook-Trigger, Aktion `notify.mobile_app_<gerät>` mit
   `message: "{{ trigger.json.nachricht }}"` (Companion-App). Wer den Eintrag selbst gemacht hat,
   lässt sich über `trigger.json.von` ausfiltern.
@@ -43,3 +48,6 @@
 - **iPhone-Home-Bildschirm:** In Safari „Teilen → Zum Home-Bildschirm“ legt Tischlein mit eigenem Symbol
   ab. Das Manifest nutzt `display: browser`: eine eigenständige Web-App hätte einen eigenen Cookie-Speicher
   und käme nicht durch die Anmeldung von Cloudflare Access.
+- **Offline:** Ein Service Worker (`/sw.js`) hält die Einkaufsliste und die Stildateien vor; ohne Netz
+  abgehakte Einträge stehen im Browser in einer Warteschlange und gehen beim nächsten Netz raus.
+  Hinter Cloudflare Access wird nur eine echte Antwort (kein Umleiten zur Anmeldung) zwischengespeichert.

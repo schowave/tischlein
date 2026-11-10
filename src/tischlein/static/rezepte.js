@@ -74,14 +74,22 @@ document.addEventListener("alpine:init", () => {
     get base() {
       return this.recipes.filter((r) => this.scope !== "main" || hasTag(r, this.mainTag));
     },
+    get words() {
+      return fold(this.q).split(/[\s,]+/).filter(Boolean);
+    },
+    inIngredients: (r, w) => (r.zutaten || []).some((z) => fold(z).includes(w)),
+    // ingredients that a search word found, shown under the name ("mit Zucchini, Feta")
+    hits(r) {
+      if (!this.words.length) return [];
+      return (r.zutaten || []).filter((z) => this.words.some((w) => fold(z).includes(w) && !fold(r.name).includes(w)));
+    },
     get visible() {
-      const q = fold(this.q.trim());
       return this.base.filter((r) => {
         if (this.onlyOpen && r.kinder_ok) return false;
         if (this.theme === "__none" && r.themen.length) return false;
         if (this.theme && this.theme !== "__none" && !hasTag(r, this.theme)) return false;
-        if (q && !fold(r.name).includes(q) && !r.tags.some((t) => fold(t).includes(q))) return false;
-        return true;
+        // every word must match the name, a category or an ingredient: "zucchini feta"
+        return this.words.every((w) => fold(r.name).includes(w) || r.tags.some((t) => fold(t).includes(w)) || this.inIngredients(r, w));
       });
     },
     countTheme(t) {

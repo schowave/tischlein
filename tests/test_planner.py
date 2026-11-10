@@ -157,3 +157,43 @@ def test_rating_weights_shift_the_choice():
         for s in range(200)
     ]
     assert picks.count("loved") > 150
+
+
+def test_avoided_recipes_stay_out_unless_nothing_else_is_left():
+    recipes = [r("pilz", "Fisch", "Kinder-OK"), r("ok", "Fisch", "Kinder-OK")]
+    for seed in range(20):
+        meal = plan_week(MONDAY, recipes, cfg("Fisch"), rng=random.Random(seed), avoid={"pilz"})[0]
+        assert meal.recipe_uid == "ok"
+    only = plan_week(MONDAY, [recipes[0]], cfg("Fisch"), rng=random.Random(0), avoid={"pilz"})[0]
+    assert only.recipe_uid == "pilz" and "mögen" in only.reason
+
+
+def test_quick_days_prefer_dishes_up_to_30_minutes():
+    slow = Recipe(uid="slow", name="Gulasch", tags=("Fleisch", "Kinder-OK"), total_time="2 Std.")
+    fast = Recipe(uid="fast", name="Wraps", tags=("Fleisch", "Kinder-OK"), total_time="25 Min.")
+    tagged = Recipe(uid="tag", name="Toast", tags=("Fleisch", "Kinder-OK", "Schnell"))
+    for seed in range(20):
+        meal = plan_week(MONDAY, [slow, fast], cfg("Fleisch"), rng=random.Random(seed), quick={MONDAY})[0]
+        assert meal.recipe_uid == "fast"
+    assert (
+        plan_week(MONDAY, [slow, tagged], cfg("Fleisch"), rng=random.Random(0), quick={MONDAY})[0].recipe_uid == "tag"
+    )
+    fallback = plan_week(MONDAY, [slow], cfg("Fleisch"), rng=random.Random(0), quick={MONDAY})[0]
+    assert fallback.recipe_uid == "slow" and "schnell" in fallback.reason.casefold()
+
+
+def test_minutes_reads_paprika_times():
+    from tischlein.planner import minutes
+
+    assert minutes("25 Min.") == 25 and minutes("1 Std. 15 Min.") == 75 and minutes("1:30") == 90
+    assert minutes("45 mins") == 45 and minutes("2 Stunden") == 120 and minutes("") is None
+    assert minutes("1h30") == 90 and minutes("1 1/2 Std.") == 90 and minutes("1,5 Std.") == 90
+    assert minutes("1½ Std.") == 90 and minutes("1 ½ Std.") == 90 and minutes("½ Std.") == 30
+    assert minutes("10 Min. + 20 Min. Backzeit") == 30
+
+
+def test_quick_new_slot_day_takes_only_a_quick_new_dish():
+    slow_new = Recipe(uid="sn", name="Schmorbraten", tags=("Fleisch", "Neu"), total_time="2 Std.")
+    regular = Recipe(uid="q", name="Wraps", tags=("Fleisch", "Kinder-OK"), total_time="20 Min.")
+    meal = plan_week(MONDAY, [slow_new, regular], cfg("Fleisch", new_slot=0), rng=random.Random(0), quick={MONDAY})[0]
+    assert meal.recipe_uid == "q" and not meal.is_new
