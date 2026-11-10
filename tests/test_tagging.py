@@ -41,6 +41,7 @@ class WritablePaprika:
             },
         }
         self.ignore_category_create = ignore_category_create
+        self.counters = {"recipes": 10, "categories": 3, "meals": 1}
         self.posts: list[tuple[str, object]] = []
 
     @staticmethod
@@ -66,6 +67,8 @@ class WritablePaprika:
         if method == "GET":
             if path == "categories/":
                 return ok(self.cats)
+            if path == "status/":
+                return ok(self.counters)
             if path == "recipes/":
                 return ok([{"uid": u, "hash": r["hash"]} for u, r in self.recipes.items()])
             return ok(self.recipes[path.split("/")[1]])

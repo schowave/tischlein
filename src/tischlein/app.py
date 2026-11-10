@@ -6,6 +6,7 @@ import io
 import os
 import secrets
 import zipfile
+from contextlib import asynccontextmanager
 from datetime import date
 from importlib.metadata import version as package_version
 from pathlib import Path
@@ -55,10 +56,20 @@ def _plan_json(plan: WeekPlan | None) -> dict:
     }
 
 
-def create_app(service: Tischlein | None = None) -> FastAPI:
+def create_app(service: Tischlein | None = None, auto_sync: bool | None = None) -> FastAPI:
+    if auto_sync is None:
+        auto_sync = service is None  # the real server checks Paprika by itself, tests do not
     if service is None:
         service = from_env()
-    app = FastAPI(title="Tischlein")
+
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI):
+        if auto_sync:
+            service.start_auto_sync()
+        yield
+        service.stop_auto_sync()
+
+    app = FastAPI(title="Tischlein", lifespan=lifespan)
     app.state.service = service
     TEMPLATES.env.globals["version"] = VERSION
     app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")

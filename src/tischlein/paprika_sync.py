@@ -189,6 +189,10 @@ class PaprikaClient:
         )
         return self._check(path, status, raw)
 
+    def change_counters(self) -> dict[str, int]:
+        """Paprika's change counters (one cheap request); they grow whenever something changes."""
+        return dict(self._get("sync/status/"))
+
     def categories(self) -> dict[str, str]:
         return {c["uid"]: c["name"] for c in self.categories_raw() if not c.get("deleted") and c.get("name")}
 

@@ -75,6 +75,9 @@ class Tischlein:
         self._state_lock = threading.Lock()
         self._sync_state = {"laeuft": False, "phase": "", "fertig": 0, "gesamt": 0, "ergebnis": None, "fehler": None}
         self._sync_thread: threading.Thread | None = None
+        self._counters_after_sync: str | None = None
+        self._auto_thread: threading.Thread | None = None
+        self._auto_stop = threading.Event()
         self._user_agent = user_agent
 
         # A login entered in the settings wins over PAPRIKA_EMAIL/PAPRIKA_PASSWORD.
@@ -348,6 +351,8 @@ class Tischlein:
         result: dict = {}
         try:
             result["ergebnis"] = self.sync_paprika(progress=progress)
+            if self._counters_after_sync:  # remember what this sync covered, so the next check can skip
+                self.store.set_meta("paprika_counters", self._counters_after_sync)
         except PaprikaError as e:
             self.store.set_meta("last_sync_error", f"{datetime.now():%d.%m.%Y %H:%M} – {e}")
             result["fehler"] = str(e)
@@ -355,8 +360,51 @@ class Tischlein:
             result["fehler"] = f"Unerwarteter Fehler: {e}"
             raise
         finally:
+            self._counters_after_sync = None
             with self._state_lock:
                 self._sync_state.update(laeuft=False, phase="fertig", **result)
+
+    # Automatic sync -----------------------------------------------------------
+
+    def auto_sync_tick(self) -> bool:
+        """Ask Paprika's change counters and start a background sync if recipes or categories changed."""
+        if self.paprika is None or self.sync_status()["laeuft"]:
+            return False
+        try:
+            counters = self.paprika.change_counters()
+        except PaprikaError as e:
+            self.store.set_meta("auto_check", f"{datetime.now():%d.%m.%Y %H:%M} – {e}")
+            return False
+        key = json.dumps({k: counters.get(k) for k in ("recipes", "categories")}, sort_keys=True)
+        self.store.set_meta("auto_check", f"{datetime.now():%d.%m.%Y %H:%M}")
+        if key == self.store.meta("paprika_counters") and self.store.meta("last_sync"):
+            return False
+        self._counters_after_sync = key
+        self.start_sync()
+        return True
+
+    def start_auto_sync(self) -> None:
+        """Check Paprika every config.sync_minutes in a daemon thread (0 = off)."""
+        minutes = self.config.sync_minutes
+        if minutes <= 0 or self._auto_thread is not None:
+            return
+
+        def loop() -> None:
+            if self._auto_stop.wait(20):  # let the server come up first
+                return
+            while True:
+                try:
+                    self.auto_sync_tick()
+                except Exception:  # noqa: BLE001 - never let the scheduler die
+                    pass
+                if self._auto_stop.wait(minutes * 60):
+                    return
+
+        self._auto_thread = threading.Thread(target=loop, name="paprika-auto-sync", daemon=True)
+        self._auto_thread.start()
+
+    def stop_auto_sync(self) -> None:
+        self._auto_stop.set()
 
     def try_sync_paprika(self) -> str | None:
         """Sync if configured; on failure keep the existing recipes and return the error."""

@@ -26,3 +26,9 @@ def test_empty_config_uses_defaults_and_empty_new_slot_disables_it():
 def test_rejects_unknown_weekday():
     with pytest.raises(ValueError, match="Wochentag"):
         parse_config({"tage": [{"tag": "xx", "thema": "Fisch"}]})
+
+
+def test_sync_interval_from_config():
+    assert PlanConfig().sync_minutes == 15
+    assert parse_config({"abgleich": {"alle_minuten": 0}}).sync_minutes == 0
+    assert parse_config({"abgleich": {"alle_minuten": 30}}).sync_minutes == 30

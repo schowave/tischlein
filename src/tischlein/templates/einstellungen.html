@@ -29,6 +29,8 @@
       </div>
       {% if v.account.verbunden %}
       <p class="muted small">{{ v.recipe_count }} Rezepte · zuletzt abgeglichen {{ (v.last_sync or 'noch nie').split(' – ')[0] }}</p>
+      <p class="muted small">{% if v.sync_minutes > 0 %}Automatisch: Tischlein prüft alle {{ v.sync_minutes }} Minuten, ob sich in Paprika Rezepte oder Kategorien geändert haben, und gleicht nur dann ab{% if v.auto_check %} · zuletzt geprüft {{ v.auto_check.split(' – ')[0] }}{% endif %}.{% else %}Automatischer Abgleich ist aus (<code>alle_minuten = 0</code> in tischlein.toml).{% endif %}</p>
+      {% if v.auto_check and ' – ' in v.auto_check %}<p class="error-line">Letzte automatische Prüfung fehlgeschlagen: {{ v.auto_check.split(' – ', 1)[1] }}</p>{% endif %}
       {% if v.sync_error %}<p class="error-line">Letzter Abgleich fehlgeschlagen: {{ v.sync_error.split(' – ', 1)[-1] }}</p>{% endif %}
       {% endif %}
 {% set paprika_form %}

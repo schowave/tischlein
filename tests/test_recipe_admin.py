@@ -147,3 +147,28 @@ def test_background_sync_reports_errors(svc):
     svc._sync_thread.join(5)
     assert svc.sync_status()["fehler"] == "Paprika nicht erreichbar"
     assert "nicht erreichbar" in svc.store.meta("last_sync_error")
+
+
+def test_auto_sync_only_runs_when_paprika_counters_change(svc):
+    # first check after a manual sync: counters unknown -> sync once and remember them
+    assert svc.auto_sync_tick() is True
+    svc._sync_thread.join(5)
+    assert json.loads(svc.store.meta("paprika_counters")) == {"categories": 3, "recipes": 10}
+
+    assert svc.auto_sync_tick() is False  # nothing changed in Paprika
+    svc.fake.counters["meals"] = 2
+    assert svc.auto_sync_tick() is False  # a meal plan change does not matter to Tischlein
+
+    svc.fake.counters["recipes"] = 11
+    svc.fake.recipes["R9"] = {"uid": "R9", "name": "Neu", "categories": [], "hash": "n"}
+    assert svc.auto_sync_tick() is True
+    svc._sync_thread.join(5)
+    assert svc.store.recipe("R9") is not None
+    assert svc.store.meta("auto_check")
+
+
+def test_auto_sync_tick_without_paprika_does_nothing():
+    from tischlein.config import PlanConfig as PC
+
+    s = Tischlein(Store(":memory:"), PC())
+    assert s.auto_sync_tick() is False

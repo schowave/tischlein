@@ -10,6 +10,9 @@ mittag_uhrzeit = "12:00"
 mittag_minuten = 45
 weitere_themen = ["Fleisch"]   # Themen ohne eigenen Tag, erscheinen in der Rezeptverwaltung
 
+[abgleich]
+alle_minuten = 15            # so oft fragt Tischlein Paprika nach Änderungen; 0 = nur von Hand
+
 [[tage]]
 tag = "mo"
 thema = "Hähnchen"

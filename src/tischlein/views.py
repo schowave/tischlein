@@ -215,6 +215,8 @@ def settings_view(svc: Tischlein, base_url: str) -> dict:
     end = start + cal["minuten"]
     return {
         "account": svc.paprika_account(),
+        "sync_minutes": svc.config.sync_minutes,
+        "auto_check": svc.store.meta("auto_check"),
         "last_sync": svc.store.meta("last_sync"),
         "sync_error": svc.store.meta("last_sync_error"),
         "recipe_count": len(svc.store.recipes()),

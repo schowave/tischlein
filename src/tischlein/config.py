@@ -36,6 +36,7 @@ class PlanConfig:
     lunch_time: time = time(12, 0)
     lunch_minutes: int = 45
     extra_themes: tuple[str, ...] = ()
+    sync_minutes: int = 15  # automatic Paprika check interval, 0 = off
 
     @property
     def themes(self) -> tuple[str, ...]:
@@ -69,6 +70,7 @@ def parse_config(data: dict) -> PlanConfig:
         cooldown_weeks=int(plan.get("cooldown_wochen", default.cooldown_weeks)),
         lunch_time=time(hour, minute),
         lunch_minutes=int(plan.get("mittag_minuten", default.lunch_minutes)),
+        sync_minutes=int(data.get("abgleich", {}).get("alle_minuten", default.sync_minutes)),
         extra_themes=tuple(plan.get("weitere_themen", ())),
     )
 
