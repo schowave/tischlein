@@ -5,6 +5,7 @@ from datetime import date, datetime, timedelta
 import pytest
 from test_tagging import WritablePaprika, client
 
+from tischlein import service as service_mod
 from tischlein.config import DayRule, PlanConfig
 from tischlein.llm import LLMError
 from tischlein.service import Tischlein
@@ -384,3 +385,37 @@ def test_regenerating_the_list_keeps_ticks_and_bring_state(svc, monkeypatch):
     rows = {i["name"]: i for i in svc.store.shopping(MONDAY)}
     assert rows["Zwiebel"]["done"] and rows["Zwiebel"]["bring"] == 2
     assert all(not p["offen"] and not p["erledigt"] for p in sent[n:] if p["art"] == "bring_sync")
+
+
+def test_a_deleted_ingredient_stays_off_when_collecting_again(svc, monkeypatch):
+    sent = []
+    monkeypatch.setattr(svc, "_post_async", lambda p, ok=None: (sent.append(p), ok and ok()))
+    svc.webhook_url = "http://ha/hook"
+    svc.set_bring_sync(True)
+    svc.generate(MONDAY)
+    svc.generate_shopping(MONDAY)
+    rows = {i["name"]: i for i in svc.store.shopping(MONDAY)}
+    svc.delete_item(rows["Zwiebel"]["id"])
+    assert "Zwiebel" in sent[-1]["erledigt"]  # it leaves Bring too
+    # Bring reports its list before it got the removal: Zwiebel does not come back as "Aus Bring"
+    svc.apply_bring_state("", [{"summary": "Zwiebel", "status": "needs_action"}], today=MONDAY)
+    svc.generate_shopping(MONDAY)
+    assert "Zwiebel" not in {i["name"] for i in svc.store.shopping(MONDAY)}
+    assert not svc.store.removed_shopping(MONDAY + timedelta(days=7))  # next week collects it again
+
+
+def test_a_deleted_ingredient_comes_back_when_another_dish_needs_it():
+    removed = {"zwiebel": "Chili"}
+    assert service_mod._removed_by_hand(removed, {"name": "Zwiebeln", "recipes": "Chili"})
+    assert not service_mod._removed_by_hand(removed, {"name": "Zwiebel", "recipes": "Chili, Gulasch"})
+    assert not service_mod._removed_by_hand(removed, {"name": "Paprika", "recipes": "Chili"})
+
+
+def test_removing_bought_items_keeps_them_off_when_collecting_again(svc):
+    svc.generate(MONDAY)
+    svc.generate_shopping(MONDAY)
+    rows = {i["name"]: i for i in svc.store.shopping(MONDAY)}
+    svc.set_item_done(rows["Zwiebel"]["id"], True)
+    svc.remove_done(MONDAY)
+    svc.generate_shopping(MONDAY)
+    assert "Zwiebel" not in {i["name"] for i in svc.store.shopping(MONDAY)}

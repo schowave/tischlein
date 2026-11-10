@@ -340,7 +340,8 @@ def shopping_view(svc: Tischlein, week_start: date, which: str) -> dict:
         "groups": [{"name": g, "items": lst} for g, lst in groups.items()],
         "count": len(items),
         "open": sum(1 for i in items if not i["done"]),
-        "generated": sum(1 for i in items if not i["manual"]),
+        # also when every collected ingredient was deleted: then collecting again is "Neu sammeln"
+        "generated": any(not i["manual"] for i in items) or bool(svc.store.removed_shopping(week_start)),
         "bring": bool(svc.webhook_url),
         "bring_sync": svc.bring_sync_on(),
         "bring_name": next((x["name"] for x in svc.bring_lists() if x["entity_id"] == svc.bring_list()), ""),

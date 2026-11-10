@@ -359,6 +359,22 @@ class Store:
             self.db.execute("DELETE FROM shopping WHERE id = ?", (item_id,))
 
     @_locked
+    def remember_removed_shopping(self, week_start: date, removed: dict[str, str]) -> None:
+        """{item_key: recipes} deleted by hand: collecting again leaves them out (see generate_shopping)."""
+        with self.db:
+            self.db.executemany(
+                "INSERT OR REPLACE INTO shopping_removed (week_start, item_key, recipes) VALUES (?, ?, ?)",
+                [(week_start.isoformat(), k, r) for k, r in removed.items()],
+            )
+
+    @_locked
+    def removed_shopping(self, week_start: date) -> dict[str, str]:
+        rows = self.db.execute(
+            "SELECT item_key, recipes FROM shopping_removed WHERE week_start = ?", (week_start.isoformat(),)
+        ).fetchall()
+        return dict(rows)
+
+    @_locked
     def shopping(self, week_start: date) -> list[dict]:
         rows = self.db.execute(
             "SELECT id, name, amount, grp, recipes, manual, done, done_by, bring, bring_menge FROM shopping "

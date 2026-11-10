@@ -40,6 +40,18 @@ def _download(url: str) -> bytes:
         return resp.read()
 
 
+def _removed_by_hand(removed: dict[str, str], item: dict) -> bool:
+    """Deleted from this week's list and needed by no dish other than back then ({item_key: recipes})."""
+    was_for = removed.get(shopping.item_key(item["name"]))
+    if was_for is None:
+        return False
+    return _dish_set(item.get("recipes", "")) <= _dish_set(was_for)
+
+
+def _dish_set(recipes: str) -> set[str]:
+    return {d.strip() for d in recipes.split(",") if d.strip()}
+
+
 def from_env() -> Tischlein:
     """Build the service from environment variables (shared by web app and CLI)."""
     from .config import load_config
@@ -491,6 +503,8 @@ class Tischlein:
                 how = f"einfach (LLM-Fehler: {e})"
         if not result:
             result = shopping.merge(items)
+        removed = self.store.removed_shopping(week_start)
+        result = [r for r in result if not _removed_by_hand(removed, r)]
         before = self.store.shopping(week_start)
         old = {shopping.item_key(i["name"]): i for i in before if not i["manual"]}
         for r in result:  # an ingredient still on the list keeps its tick and its Bring state
@@ -792,7 +806,8 @@ class Tischlein:
                     bought.append(i["id"])
         self.store.bought_in_bring(bought)
         ticked = len(bought)
-        known = {shopping.item_key(i["name"]) for i in items}
+        # deleted here while Bring still had it open (the removal is still on its way): not back in
+        known = {shopping.item_key(i["name"]) for i in items} | set(self.store.removed_shopping(week_start))
         new = 0
         for key, e in by_key.items():
             if e["open"] and key not in known:
@@ -807,12 +822,23 @@ class Tischlein:
         self.push_bring(week_start)
         return True
 
+    def _remember_removed(self, week_start: date, items: list[dict]) -> None:
+        """Collected ingredients deleted here stay off the week's list (see _removed_by_hand)."""
+        removed = {shopping.item_key(i["name"]): i["recipes"] for i in items if not i["manual"]}
+        if removed:
+            self.store.remember_removed_shopping(week_start, removed)
+
     def delete_item(self, item_id: int) -> None:
         week_start = self.store.shopping_week(item_id)
-        items = {i["id"]: i for i in self.store.shopping(week_start)} if week_start else {}
+        if week_start is None:
+            return
+        item = next((i for i in self.store.shopping(week_start) if i["id"] == item_id), None)
+        if item is None:
+            return
+        self._remember_removed(week_start, [item])
         self.store.delete_shopping_item(item_id)
-        if week_start and item_id in items and items[item_id]["bring"] == 1:
-            self.push_bring(week_start, [items[item_id]["name"]])
+        if item["bring"] == 1:
+            self.push_bring(week_start, [item["name"]])
 
     def set_all_done(self, week_start: date, done: bool, person: str = "") -> int:
         n = self.store.set_all_shopping_done(week_start, done, person)
@@ -820,7 +846,9 @@ class Tischlein:
         return n
 
     def remove_done(self, week_start: date) -> int:
-        gone = [i["name"] for i in self.store.shopping(week_start) if i["done"] and i["bring"] == 1]
+        done = [i for i in self.store.shopping(week_start) if i["done"]]
+        gone = [i["name"] for i in done if i["bring"] == 1]
+        self._remember_removed(week_start, done)  # bought: collecting again must not bring it back open
         n = self.store.delete_done_shopping(week_start)
         self.push_bring(week_start, gone)
         return n

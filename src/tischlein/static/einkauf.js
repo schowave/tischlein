@@ -132,8 +132,11 @@ document.addEventListener("alpine:init", () => {
 
     async remove(id, el) {
       const res = await fetch(`/api/einkauf/${id}/loeschen`, { method: "POST" }).catch(() => null);
-      if (res && res.ok) el.remove();
-      else this.error = "Keine Verbindung. Bitte noch einmal versuchen.";
+      if (res && res.ok) {
+        const group = el.closest(".shop-group");
+        el.remove();
+        if (group && !group.querySelector("li[data-id]")) group.remove();  // no empty heading left behind
+      } else this.error = "Keine Verbindung. Bitte noch einmal versuchen.";
     },
 
     // open items to the Bring list (Home Assistant puts them there); ticked ones stay here

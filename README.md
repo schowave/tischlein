@@ -62,6 +62,7 @@ Das Prinzip ist „Sous-Chef“: Tischlein schlägt vor, die Familie gibt frei.
 - **Einkaufsliste nach Zutaten:** gleiche Zutaten aus allen Rezepten zusammengeführt, Mengen
   addiert und auf die Portionen umgerechnet, sortiert nach Gang im Laden, darunter für welche
   Gerichte. Vorräte wie Salz und Öl bleiben weg. Mit LLM noch genauer, ohne LLM per Regeln.
+  Was man schon hat, löscht man; „Neu sammeln“ holt es nur zurück, wenn ein anderes Gericht es braucht.
 - **Gemeinsam abhaken, auch ohne Netz:** Was die andere Person abhakt, erscheint nach wenigen
   Sekunden; im Laden ohne Empfang wird nachgeholt. Eigene Einträge dazuschreiben, alles abhaken,
   Abgehaktes entfernen, „Teilen“ als Text.

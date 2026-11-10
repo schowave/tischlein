@@ -32,7 +32,7 @@ landen im Kalender.
 | Rückmeldung | Nach einem Neu-Rezept: `ok` (in die Rotation) oder `nein` (nie wieder) | `Feedback` |
 | Bewertung | Nach jedem Essen: gut / mittel / schlecht, pro Tag und Person; steuert die Gewichtung | `ratings` |
 | Freier Tag | Kein Mittagessen (Urlaub, Feiertag, Kita …); Feiertage automatisch, „Doch kochen“ überstimmt | `skipdays`, `holidays.py` |
-| Einkaufsliste | Zutaten der Woche ohne Vorräte, auf die Portionen umgerechnet, gleiche Zutaten zusammengeführt und nach Gang sortiert (mit LLM oder per Regeln) | `shopping.py`, `shopping` |
+| Einkaufsliste | Zutaten der Woche ohne Vorräte, auf die Portionen umgerechnet, gleiche Zutaten zusammengeführt und nach Gang sortiert (mit LLM oder per Regeln); gelöschte Zutaten bleiben für die Woche weg, solange kein anderes Gericht sie braucht | `shopping.py`, `shopping`, `shopping_removed` |
 | Bring-Abgleich | Einkaufsliste ↔ Bring über Home Assistant; pro Eintrag `bring` 0/1/2 (nicht drin, offen, abgehakt), nur Änderungen werden geschickt | `push_bring`, `apply_bring_state` |
 | Abneigung | Zutat, die die Kinder nicht mögen (Einstellungen); solche Rezepte plant Tischlein zuletzt | `dislikes`, `avoid` |
 | Schneller Tag | Tag mit wenig Zeit: Gerichte bis 30 Minuten zuerst | `quickdays`, `quick` |

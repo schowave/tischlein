@@ -59,7 +59,7 @@
             <span x-show="done && by" x-text="'abgehakt von ' + by"></span>
             {% if i.recipes and not i.manual %}<span x-show="!done">für {{ i.recipes }}</span>{% endif %}
           </span>
-          {% if i.manual %}<button type="button" class="btn btn-ghost btn-sm" @click="remove({{ i.id }}, $el.closest('li'))" aria-label="{{ i.name }} löschen">Löschen</button>{% endif %}
+          <button type="button" class="btn btn-ghost btn-sm" @click="remove({{ i.id }}, $el.closest('li'))" aria-label="{{ i.name }} löschen">Löschen</button>
         </li>
         {% endfor %}
       </ul>
@@ -68,7 +68,7 @@
     <div class="list-actions">
       <button type="button" class="btn btn-sm" @click="allDone({{ 'true' if v.open else 'false' }})">{{ 'Alle abhaken' if v.open else 'Alle wieder offen' }}</button>
       <button type="button" class="btn btn-ghost btn-sm danger" @click="removeDone()">Abgehakte entfernen</button>
-      {% if v.generated %}{{ collect_form(v.which, 'Neu sammeln', 'btn btn-ghost btn-sm', 'Zutaten neu aus dem Plan sammeln? Was schon abgehakt ist, bleibt abgehakt; eigene Einträge bleiben.') }}{% endif %}
+      {% if v.generated %}{{ collect_form(v.which, 'Neu sammeln', 'btn btn-ghost btn-sm', 'Zutaten neu aus dem Plan sammeln? Was schon abgehakt ist, bleibt abgehakt; eigene Einträge bleiben. Gelöschte Zutaten kommen nur zurück, wenn ein anderes Gericht sie braucht.') }}{% endif %}
     </div>
     {% elif v.has_plan %}
     <div class="empty-frame shop-empty">
