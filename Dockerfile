@@ -11,6 +11,7 @@ ENV MISE_DATA_DIR=/opt/mise \
     MISE_CACHE_DIR=/tmp/mise-cache \
     MISE_YES=1 \
     MISE_LOCKED=1 \
+    MISE_DISABLE_TOOLS=node,ruff,shellcheck \
     UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
     UV_PYTHON_DOWNLOADS=never
