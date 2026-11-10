@@ -138,3 +138,22 @@ def test_new_slot_only_picks_lunch_dishes():
         assert meal.recipe_uid == "std" and not meal.is_new
         meal = plan_week(MONDAY, [bread, cake, main_new, themed_new, std], cfg_, rng=random.Random(seed))[0]
         assert meal.recipe_uid in {"haupt", "fisch"} and meal.is_new
+
+
+def test_skipped_days_get_no_meal_and_keep_their_reason():
+    recipes = [r("a", "Fisch", "Kinder-OK"), r("b", "Fisch", "Kinder-OK")]
+    meals = plan_week(
+        MONDAY, recipes, cfg("Fisch", "Fisch"), skip={MONDAY: "Feiertag: Pfingstmontag"}, rng=random.Random(0)
+    )
+    assert meals[0].skipped and meals[0].recipe_uid is None
+    assert meals[0].reason == "Feiertag: Pfingstmontag"
+    assert meals[1].recipe_uid in {"a", "b"} and not meals[1].skipped
+
+
+def test_rating_weights_shift_the_choice():
+    recipes = [r("loved", "Fisch", "Kinder-OK"), r("meh", "Fisch", "Kinder-OK")]
+    picks = [
+        plan_week(MONDAY, recipes, cfg("Fisch"), weights={"loved": 3.0, "meh": 0.2}, rng=random.Random(s))[0].recipe_uid
+        for s in range(200)
+    ]
+    assert picks.count("loved") > 150

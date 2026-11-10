@@ -18,7 +18,14 @@ def make_export(recipes: list[dict]) -> bytes:
 def export_bytes() -> bytes:
     return make_export(
         [
-            {"uid": "A1", "name": "Hähnchen-Bowl", "categories": ["Hähnchen", "Kinder-OK"], "rating": 5},
+            {
+                "uid": "A1",
+                "name": "Hähnchen-Bowl",
+                "categories": ["Hähnchen", "Kinder-OK"],
+                "rating": 5,
+                "ingredients": "400 g Hähnchenbrust\n200 g Reis\nSalz",
+                "photo_data": "AAAA",
+            },
             {"uid": "B2", "name": "Fischstäbchen", "categories": ["Fisch", "Kinder-OK"], "rating": None},
             {"uid": "C3", "name": "Linsen-Dal", "categories": ["Hülsenfrüchte", "Neu"], "rating": 3},
         ]

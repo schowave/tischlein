@@ -77,6 +77,8 @@ def week_view(svc: Tischlein, which: str | None, today: date) -> dict:
     shown, start = plans[which], starts[which]
 
     by_day = {m.day: m for m in shown.meals} if shown else {}
+    skip = svc.skip_map(start)
+    ratings = {(r["uid"], r["day"]): r for r in svc.store.ratings()}
     days = []
     for rule in cfg.days:
         d = start + timedelta(days=rule.weekday)
@@ -93,13 +95,17 @@ def week_view(svc: Tischlein, which: str | None, today: date) -> dict:
                 "kinder_ok": is_kid_ok(svc, r, feedback),
                 "needs_feedback": bool(meal and meal.is_new and meal.recipe_uid and meal.recipe_uid not in feedback),
                 "feedback": feedback.get(meal.recipe_uid) if meal and meal.recipe_uid else None,
+                "free": bool(meal and meal.skipped) or (meal is None and d in skip),
+                "free_reason": (meal.reason if meal and meal.skipped else skip.get(d, "")),
+                "is_holiday": skip.get(d, "").startswith("Feiertag"),
+                "can_rate": bool(meal and meal.recipe_uid and not meal.skipped and d <= today),
+                "rating": ratings.get((meal.recipe_uid, d)) if meal and meal.recipe_uid else None,
+                "has_photo": bool(meal and meal.recipe_uid and meal.recipe_uid in svc_photos(svc)),
             }
         )
     planned = sum(1 for x in days if x["meal"] and x["meal"].recipe_uid)
     kid_in_plan = sum(1 for x in days if x["meal"] and x["kinder_ok"])
 
-    mains = [r for r in recipes.values() if r.has_tag(svc.config.main_tag)]
-    kid_mains = sum(1 for r in mains if is_kid_ok(svc, r, feedback))
 
     today_meal = next((m for p in plans.values() if p for m in p.meals if m.day == today), None)
     headline = (
@@ -117,16 +123,6 @@ def week_view(svc: Tischlein, which: str | None, today: date) -> dict:
     if shown and planned and kid_in_plan == 0 and shown.status == "entwurf":
         finding += " Keines der Gerichte ist bisher Kinder-OK."
 
-    def week_tile(key: str) -> dict:
-        p = plans[key]
-        n = sum(1 for m in p.meals if m.recipe_uid) if p else 0
-        state = (
-            "freigegeben"
-            if p and p.status == "freigegeben"
-            else ("Entwurf, wartet auf Freigabe" if p else "noch nicht geplant")
-        )
-        return {"value": f"{n} von {len(cfg.days)}", "caption": state}
-
     supply = svc.theme_supply()
 
     def lunch(r: Recipe) -> bool:  # same rule as the planner's new slot
@@ -142,16 +138,6 @@ def week_view(svc: Tischlein, which: str | None, today: date) -> dict:
         "headline": headline,
         "today_line": long_date(today),
         "finding": finding,
-        "tiles": [
-            {"label": "Diese Woche", **week_tile("aktuell")},
-            {"label": "Nächste Woche", **week_tile("naechste")},
-            {
-                "label": "Kinder-OK im Plan",
-                "value": f"{kid_in_plan} von {planned}" if planned else "–",
-                "caption": "Gerichte der gezeigten Woche" if planned else "kein Plan in dieser Woche",
-            },
-            {"label": "Kinder-OK-Rezepte", "value": str(kid_mains), "caption": f"von {len(mains)} Hauptspeisen"},
-        ],
         "supply": supply,
         "trial": sorted(trial, key=lambda r: r.name.casefold())[:4],
         "trial_count": len(trial),
@@ -215,6 +201,8 @@ def settings_view(svc: Tischlein, base_url: str) -> dict:
     end = start + cal["minuten"]
     return {
         "account": svc.paprika_account(),
+        "llm": svc.llm_settings(),
+        "people": svc.people(),
         "sync_minutes": svc.config.sync_minutes,
         "auto_check": svc.store.meta("auto_check"),
         "last_sync": svc.store.meta("last_sync"),
@@ -229,4 +217,109 @@ def settings_view(svc: Tischlein, base_url: str) -> dict:
             "dish": preview.name if preview else "Gericht aus dem Plan",
             "theme": preview.theme if preview else "",
         },
+    }
+
+
+FREE_REASONS = ["Urlaub", "Auswärts essen", "Kita / Schule", "Reste", "Kein Mittagessen"]
+
+
+def shopping_view(svc: Tischlein, week_start: date, which: str) -> dict:
+    items = svc.store.shopping(week_start)
+    groups: dict[str, list[dict]] = {}
+    for i in items:
+        groups.setdefault("Eigene Einträge" if i["manual"] else i["group"], []).append(i)
+    plan = svc.store.plan(week_start)
+    dishes = [m.name for m in plan.meals if m.recipe_uid and not m.skipped] if plan else []
+    return {
+        "which": which,
+        "start": week_start,
+        "range": span(week_start, week_start + timedelta(days=4)),
+        "groups": [{"name": g, "items": lst} for g, lst in groups.items()],
+        "count": len(items),
+        "open": sum(1 for i in items if not i["done"]),
+        "dishes": dishes,
+        "has_plan": bool(dishes),
+        "llm": svc.llm() is not None,
+    }
+
+
+def ideas_view(svc: Tischlein) -> dict:
+    return {
+        "ideas": svc.store.ideas("neu"),
+        "accepted": svc.store.ideas("uebernommen")[:6],
+        "llm": svc.llm() is not None,
+        "can_write": svc.paprika is not None,
+        "supply": svc.theme_supply(),
+    }
+
+
+def review_view(svc: Tischlein, today: date, weeks: int) -> dict:
+    """What was cooked in the last `weeks` approved weeks, and what to cook again."""
+    since = today - timedelta(weeks=weeks)
+    recipes = {r.uid: r for r in svc.store.recipes()}
+    feedback = svc.store.feedback()
+    plans = [p for p in svc.store.approved_plans() if since <= p.week_start <= today]
+    meals = [m for p in plans for m in p.meals if m.recipe_uid and not m.skipped and m.day <= today]
+    ratings = [r for r in svc.store.ratings() if r["day"] >= since]
+    verdict_of = {(r["uid"], r["day"]): r["verdict"] for r in ratings}
+
+    themes: dict[str, int] = {}
+    for m in meals:
+        themes[m.theme] = themes.get(m.theme, 0) + 1
+    top = max(themes.values(), default=0)
+
+    counts = {"gut": 0, "mittel": 0, "schlecht": 0}
+    for r in ratings:
+        counts[r["verdict"]] += 1
+
+    last = svc.store.last_cooked(today + timedelta(days=1))
+    loved = {r["uid"] for r in svc.store.ratings() if r["verdict"] == "gut"}
+    favourites = [
+        recipes[u]
+        for u in recipes
+        if (u in loved or is_kid_ok(svc, recipes[u], feedback))
+        and recipes[u].has_tag(svc.config.main_tag)
+        and feedback.get(u) != "nein"
+        and (u not in last or (today - last[u]).days > 28)
+    ]
+    favourites.sort(key=lambda r: (last.get(r.uid, date.min), r.name.casefold()))
+
+    weeks_out = []
+    for p in sorted(plans, key=lambda p: p.week_start, reverse=True):
+        weeks_out.append(
+            {
+                "range": span(p.week_start, p.week_start + timedelta(days=4)),
+                "meals": [
+                    {
+                        "day": WEEKDAY_NAMES[m.day.weekday()][:2],
+                        "name": m.name,
+                        "theme": m.theme,
+                        "skipped": m.skipped,
+                        "reason": m.reason,
+                        "is_new": m.is_new,
+                        "verdict": verdict_of.get((m.recipe_uid, m.day)),
+                    }
+                    for m in p.meals
+                ],
+            }
+        )
+    return {
+        "weeks": weeks,
+        "cooked": len(meals),
+        "distinct": len({m.recipe_uid for m in meals}),
+        "kid_share": round(
+            100 * sum(1 for m in meals if is_kid_ok(svc, recipes.get(m.recipe_uid), feedback)) / len(meals)
+        )
+        if meals
+        else 0,
+        "new_tried": [m for m in meals if m.is_new],
+        "themes": [
+            {"name": t, "count": c, "pct": round(100 * c / top) if top else 0}
+            for t, c in sorted(themes.items(), key=lambda x: -x[1])
+        ],
+        "ratings": counts,
+        "favourites": favourites[:8],
+        "last": last,
+        "week_list": weeks_out,
+        "today": today,
     }

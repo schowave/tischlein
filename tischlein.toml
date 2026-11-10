@@ -8,10 +8,19 @@ neu_slot = "do"              # Tag für das Neu-Rezept; "" schaltet den Neu-Slot
 cooldown_wochen = 2          # Rezept frühestens nach so vielen Wochen wieder
 mittag_uhrzeit = "12:00"
 mittag_minuten = 45
-weitere_themen = ["Fleisch"]   # Themen ohne eigenen Tag, erscheinen in der Rezeptverwaltung
+weitere_themen = ["Fleisch"]
+feiertage_land = ""          # Bundesland für Landesfeiertage, z. B. "BW" oder "BY"; leer = nur bundesweite   # Themen ohne eigenen Tag, erscheinen in der Rezeptverwaltung
 
 [abgleich]
 alle_minuten = 15            # so oft fragt Tischlein Paprika nach Änderungen; 0 = nur von Hand
+
+[einkauf]
+# Vorräte, die nicht auf die Einkaufsliste kommen
+vorrat = ["Salz", "Pfeffer", "Zucker", "Mehl", "Öl", "Olivenöl", "Rapsöl", "Sonnenblumenöl", "Wasser",
+          "Essig", "Paprikapulver", "Currypulver", "Gemüsebrühe", "Brühe"]
+
+[erinnerung]
+uhrzeit = "18:00"            # Vorabend-Meldung an Home Assistant (HA_WEBHOOK_URL); "" = aus
 
 [[tage]]
 tag = "mo"

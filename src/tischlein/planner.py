@@ -45,6 +45,7 @@ def _pick(
     last_cooked: Mapping[str, date],
     cooldown_weeks: int,
     rng: random.Random,
+    weights: Mapping[str, float] | None = None,
 ) -> tuple[Recipe | None, str]:
     pool = [r for r in candidates if r.uid not in taken]
     if not pool:
@@ -52,8 +53,9 @@ def _pick(
     cutoff = day - timedelta(weeks=cooldown_weeks)
     fresh = [r for r in pool if last_cooked.get(r.uid, date.min) <= cutoff]
     if fresh:
-        weights = [r.rating + 1 for r in fresh]
-        return rng.choices(fresh, weights=weights, k=1)[0], ""
+        factors = weights or {}
+        w = [(r.rating + 1) * factors.get(r.uid, 1.0) for r in fresh]
+        return rng.choices(fresh, weights=w, k=1)[0], ""
     oldest = min(pool, key=lambda r: (last_cooked.get(r.uid, date.min), r.name))
     return oldest, "Cooldown gelockert: zu wenige Rezepte für dieses Thema"
 
@@ -65,6 +67,7 @@ def plan_day(
     taken: set[str],
     last_cooked: Mapping[str, date],
     rng: random.Random,
+    weights: Mapping[str, float] | None = None,
 ) -> Meal:
     cfg = view.config
     themed = view.with_theme(rule.theme)
@@ -73,7 +76,7 @@ def plan_day(
         new = [r for r in view.recipes if view.is_new(r) and view.is_lunch(r)]
         new_themed = [r for r in new if r in themed]
         for pool in (new_themed, new):
-            recipe, _ = _pick(pool, day, taken, last_cooked, 0, rng)
+            recipe, _ = _pick(pool, day, taken, last_cooked, 0, rng, weights)
             if recipe:
                 return Meal(day, recipe.uid, recipe.name, rule.theme, is_new=True, reason=SAFE_HINT)
 
@@ -84,7 +87,7 @@ def plan_day(
     if not kid_ok:
         pool = regular
         reason = f"Kein {cfg.kid_tag}-Rezept zum Thema {rule.theme}"
-    recipe, pick_reason = _pick(pool, day, taken, last_cooked, cfg.cooldown_weeks, rng)
+    recipe, pick_reason = _pick(pool, day, taken, last_cooked, cfg.cooldown_weeks, rng, weights)
     if recipe is None:
         return Meal(
             day,
@@ -105,11 +108,15 @@ def plan_week(
     rng: random.Random | None = None,
     keep: Mapping[date, Meal] | None = None,
     exclude: Iterable[str] = (),
+    skip: Mapping[date, str] | None = None,
+    weights: Mapping[str, float] | None = None,
 ) -> list[Meal]:
     """Plan lunches for the week starting on week_start (a Monday).
 
     Meals in `keep` stay as they are; only the other days are (re)planned.
     Recipes in `exclude` are not picked (used when swapping a single day).
+    Days in `skip` (date -> reason) get no lunch. `weights` multiplies a recipe's chance
+    (from the family's ratings; 1.0 = neutral).
     """
     if week_start.weekday() != 0:
         raise ValueError("week_start muss ein Montag sein")
@@ -122,7 +129,10 @@ def plan_week(
     meals: list[Meal] = []
     for rule in config.days:
         day = week_start + timedelta(days=rule.weekday)
-        meal = keep.get(day) or plan_day(day, rule, view, taken, last_cooked, rng)
+        if skip and day in skip:
+            meal = Meal(day, None, "Kein Mittagessen", rule.theme, reason=skip[day], skipped=True)
+        else:
+            meal = keep.get(day) or plan_day(day, rule, view, taken, last_cooked, rng, weights)
         if meal.recipe_uid:
             taken.add(meal.recipe_uid)
         meals.append(meal)

@@ -7,7 +7,7 @@
     <p>{% if v.account.verbunden %}Paprika verbunden als {{ v.account.email }}{% else %}Paprika ist noch nicht verbunden{% endif %} · Kalender „{{ v.cal.name }}“ um {{ v.cal.uhrzeit }} Uhr</p>
   </div>
   {% if ok %}
-  <p class="saved" role="status">{{ {'paprika': 'Paprika verbunden. Die Rezepte werden im Hintergrund abgeglichen.', 'getrennt': 'Paprika getrennt.', 'kalender': 'Kalender gespeichert.', 'link': 'Neuer Kalender-Link erstellt. Bitte auf dem iPhone neu abonnieren.'}.get(ok, 'Gespeichert.') }}</p>
+  <p class="saved" role="status">{{ {'paprika': 'Paprika verbunden. Die Rezepte werden im Hintergrund abgeglichen.', 'getrennt': 'Paprika getrennt.', 'kalender': 'Kalender gespeichert.', 'link': 'Neuer Kalender-Link erstellt. Bitte auf dem iPhone neu abonnieren.', 'llm': 'LLM verbunden und gespeichert.', 'llm-weg': 'LLM-Zugang entfernt.', 'personen': 'Namen gespeichert.'}.get(ok, 'Gespeichert.') }}</p>
   {% endif %}
 </section>
 
@@ -109,6 +109,59 @@
       <div class="sub-actions">
         <form class="inline" method="post" action="/einstellungen/kalender/neu" onsubmit="return confirm('Neuen Link erstellen? Bestehende Abos auf iPhone und Mac funktionieren danach nicht mehr und müssen neu abonniert werden.')"><button class="btn btn-ghost btn-sm danger">Neuen geheimen Link erstellen</button></form>
       </div>
+    </div>
+  </section>
+
+  <section class="setting" id="llm" aria-labelledby="llm-h">
+    <div class="setting-label">
+      <h2 id="llm-h">LLM</h2>
+      <p>Mit einem Sprachmodell fasst Tischlein die Einkaufsliste zusammen und schlägt neue Gerichte vor. Jeder Dienst mit OpenAI-kompatibler Schnittstelle passt, zum Beispiel ein LiteLLM-Proxy. Gesendet werden nur Rezeptnamen, Zutaten und eure Vorlieben.</p>
+    </div>
+    <div class="panel setting-panel">
+      <div class="state-row">
+        {% if v.llm.aktiv %}<span class="pill pill-kid"><span class="pill-dot"></span>Verbunden</span><span>{{ v.llm.model }} · {{ v.llm.base_url }}</span>
+        {% else %}<span class="pill pill-neutral"><span class="pill-dot"></span>Nicht eingerichtet</span><span class="muted">Ohne LLM gibt es eine einfache Einkaufsliste und keine Vorschläge.</span>{% endif %}
+      </div>
+      {% set llm_form %}
+      <form method="post" action="/einstellungen/llm" class="form">
+        <label class="lbl" for="llm-base">Basis-URL</label>
+        <input class="input" id="llm-base" name="basis" type="url" required placeholder="https://litellm.example.de/v1" value="{{ llm_input.basis if llm_input is defined else v.llm.base_url }}" aria-describedby="llm-base-hint">
+        <p class="hint" id="llm-base-hint">Tischlein ruft <code>&lt;Basis-URL&gt;/chat/completions</code> auf.</p>
+        <label class="lbl" for="llm-key">API-Schlüssel</label>
+        <input class="input" id="llm-key" name="schluessel" type="password" autocomplete="off" {% if not v.llm.hat_schluessel %}required{% endif %} aria-describedby="llm-key-hint">
+        <p class="hint" id="llm-key-hint">{% if v.llm.hat_schluessel %}Leer lassen, um den gespeicherten Schlüssel zu behalten.{% else %}Wird nur in der Datenbank auf eurem Server gespeichert.{% endif %}</p>
+        <label class="lbl" for="llm-model">Modell</label>
+        <input class="input" id="llm-model" name="modell" required placeholder="z. B. claude-sonnet-5-5" value="{{ llm_input.modell if llm_input is defined else v.llm.model }}">
+        {% if llm_error is defined %}<p class="error-line" role="alert">{{ llm_error }}</p>{% endif %}
+        <div class="form-actions"><button class="btn btn-primary">Verbinden und prüfen</button></div>
+      </form>
+      {% endset %}
+      {% if v.llm.aktiv %}
+      <details class="change-login" {% if llm_error is defined %}open{% endif %}><summary>Zugang ändern</summary>{{ llm_form }}</details>
+      <div class="sub-actions">
+        <form class="inline" method="post" action="/einstellungen/llm/entfernen" onsubmit="return confirm('LLM-Zugang aus Tischlein entfernen?')"><button class="btn btn-ghost btn-sm danger">Zugang entfernen</button></form>
+      </div>
+      {% else %}{{ llm_form }}{% endif %}
+    </div>
+  </section>
+
+  <section class="setting" id="personen" aria-labelledby="people-h">
+    <div class="setting-label">
+      <h2 id="people-h">Personen</h2>
+      <p>Wer sich über Cloudflare anmeldet, taucht hier auf. Mit einem Namen zeigt Tischlein „Angemeldet als …“ und merkt sich, wer bewertet oder abgehakt hat.</p>
+    </div>
+    <div class="panel setting-panel">
+      {% if v.people %}
+      <form method="post" action="/einstellungen/personen" class="form people-form">
+        {% for email, name in v.people.items() %}
+        <label class="lbl" for="p-{{ loop.index }}">{{ email }}</label>
+        <input class="input" id="p-{{ loop.index }}" name="name:{{ email }}" value="{{ name }}" placeholder="Name">
+        {% endfor %}
+        <div class="form-actions"><button class="btn btn-primary">Namen speichern</button></div>
+      </form>
+      {% else %}
+      <div class="empty-frame">Noch niemand. Sobald ihr Tischlein über <code>tischlein.schowalter.co</code> öffnet, erscheinen eure Adressen hier. Im Heimnetz ohne Cloudflare ist niemand angemeldet.</div>
+      {% endif %}
     </div>
   </section>
 </div>

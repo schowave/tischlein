@@ -65,6 +65,8 @@ button, input, select { font: inherit; color: inherit; }
 .side-foot { padding: 0 10px; font-size: 12px; line-height: 16px; color: var(--muted); }
 .side-foot strong { display: block; color: var(--text); font-weight: 500; }
 .side-version { margin: 0; padding: 0 10px; font-size: 12px; color: var(--muted); }
+.side-person { margin: 0; padding: 0 10px; font-size: 12px; color: var(--muted); }
+.side-person strong { color: var(--text); font-weight: 500; }
 
 
 .sheet {
@@ -155,6 +157,18 @@ form.inline { display: inline; margin: 0; }
 .dish-link:hover, .dish-link:focus-visible { text-decoration-color: currentColor; }
 .day-act { min-width: 84px; display: flex; justify-content: flex-end; }
 .day-feedback { grid-column: 2 / -1; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; color: var(--muted); font-size: 12px; }
+.day.is-free { background: var(--surface); border-style: dashed; }
+.free-menu { position: relative; }
+.free-menu summary { list-style: none; }
+.free-menu summary::-webkit-details-marker { display: none; }
+.free-options {
+  position: absolute; right: 0; top: calc(100% + 6px); z-index: 4; display: grid; gap: 6px; padding: 10px;
+  background: var(--raised); border: 1px solid var(--border); border-radius: var(--radius-row);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.12); /* floats */ min-width: 180px;
+}
+.free-options form { margin: 0; }
+.free-options .chip { width: 100%; justify-content: flex-start; }
+.btn.is-chosen { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-ink); }
 .week-empty { border: 1px dashed var(--control); border-radius: var(--radius-row); padding: 18px; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; background: var(--raised); }
 
 /* ---------- signature: supply per theme ---------- */
@@ -357,6 +371,12 @@ details[open] summary { color: var(--text); }
   .detail { position: static; max-height: none; overflow: visible; }
   .setting { grid-template-columns: 1fr; }
 }
+@media (max-width: 900px) {
+  .nav { gap: 0; }
+  .nav a { width: 44px; height: 44px; padding: 0; justify-content: center; }
+  .nav a span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .nav svg { width: 20px; height: 20px; }
+}
 @media (max-width: 640px) {
   .sheet { margin: 0; border-radius: 16px 16px 0 0; border-width: 1px 0 0; padding: 16px 16px 32px; }
   .greet { padding-top: 12px; margin-bottom: 24px; }
@@ -393,3 +413,57 @@ details[open] summary { color: var(--text); }
 }
 
 [x-cloak] { display: none !important; }
+
+/* ---------- shopping ---------- */
+.notice { margin: 0 0 16px; padding: 10px 14px; border-radius: var(--radius-row); background: var(--pill-warning-bg); color: var(--pill-warning-ink); font-size: 14px; }
+.toggle-line { display: inline-flex; gap: 8px; align-items: center; font-size: 13px; color: var(--muted); cursor: pointer; }
+.shop-group { margin-bottom: 18px; }
+.shop-group h3 { font-size: 13px; font-weight: 600; margin: 0 0 6px; color: var(--muted); }
+.shop-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.shop-item {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 2px 12px; min-height: 52px;
+  padding: 8px 12px; background: var(--raised); border: 1px solid var(--border); border-radius: var(--radius-row);
+}
+.shop-item label { display: flex; align-items: center; gap: 12px; cursor: pointer; min-width: 0; }
+.shop-item input[type="checkbox"] { width: 22px; height: 22px; accent-color: var(--accent); flex: none; }
+.shop-name { font-weight: 500; overflow-wrap: anywhere; }
+.shop-amount { color: var(--muted); white-space: nowrap; }
+.shop-meta { grid-column: 1 / -1; padding-left: 34px; color: var(--muted); font-size: 12px; line-height: 16px; }
+.shop-meta:empty { display: none; }
+.shop-item.is-done .shop-name { text-decoration: line-through; color: var(--muted); }
+.shop-item .btn { grid-row: 1; grid-column: 2; }
+.add-form .btn { justify-self: start; }
+
+/* ---------- ideas ---------- */
+.idea-list { display: grid; gap: var(--gap); }
+.idea-head { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; flex-wrap: wrap; }
+.idea h3 { margin: 0; font-size: 18px; line-height: 24px; font-weight: 600; }
+.idea-meta { display: flex; gap: 8px; align-items: center; color: var(--muted); font-size: 13px; }
+.idea-why { margin: 8px 0 0; }
+.idea-kids { margin: 6px 0 0; color: var(--muted); font-size: 14px; }
+.idea-details { margin-top: 10px; }
+.idea-details summary { cursor: pointer; font-size: 14px; font-weight: 500; width: fit-content; }
+.idea-cols { display: grid; grid-template-columns: 1fr 1.4fr; gap: 16px; margin-top: 10px; font-size: 14px; }
+.idea-cols ul, .idea-cols ol { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+.idea-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+.supply-row { display: flex; justify-content: space-between; gap: 8px; padding: 6px 0; }
+.supply-row .ratio b { font-weight: 400; color: var(--text); }
+.supply-row .ratio.ok b { color: var(--accent); }
+.plain-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.plain-list a { font-weight: 500; text-decoration: none; }
+.plain-list a:hover { text-decoration: underline; }
+
+/* ---------- review ---------- */
+.bars { display: grid; gap: 10px; }
+.bar-row { display: grid; grid-template-columns: 120px minmax(0, 1fr) 32px; gap: 12px; align-items: center; font-size: 14px; }
+.bar-row .num { text-align: right; }
+.bar { height: 10px; border-radius: 999px; background: var(--active); overflow: hidden; }
+.bar span { display: block; height: 100%; border-radius: 999px; background: var(--accent); }
+.review-weeks { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: var(--gap); }
+.review-week { background: var(--raised); border: 1px solid var(--border); border-radius: var(--radius-row); padding: 12px 14px; }
+.review-week h3 { margin: 0 0 8px; font-size: 13px; color: var(--muted); font-weight: 600; }
+.review-week ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 14px; }
+.rw-day { display: inline-block; width: 24px; color: var(--muted); }
+.rw-verdict { color: var(--muted); font-size: 12px; }
+@media (max-width: 640px) { .idea-cols { grid-template-columns: 1fr; } .bar-row { grid-template-columns: 96px minmax(0, 1fr) 28px; } }
+.supply + .panel-note { margin: 14px 0 0; }

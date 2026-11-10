@@ -38,7 +38,7 @@ def test_full_flow_generate_swap_approve_calendar(client):
     assert cal.text.count("BEGIN:VEVENT") == 5
 
     page = client.get("/").text
-    assert "Hähnchen-Bowl" in page and "freigegeben" in page
+    assert "Hähnchen-Bowl" in page and "Freigegeben, im Kalender" in page
 
 
 def test_feedback_moves_new_recipe_into_rotation(client):
@@ -183,3 +183,47 @@ def test_sync_start_and_status_endpoints():
     assert c.get("/api/sync/status").json()["ergebnis"] == "2 Rezepte, 2 geladen, 0 entfernt"
     svc.paprika = None
     assert c.post("/api/sync/start").status_code == 502
+
+
+def test_new_pages_render_and_actions_work(client):
+    plan = client.post("/api/plaene/naechste/erzeugen").json()
+    monday = plan["mahlzeiten"][0]["datum"]
+    for path in ["/einkauf?woche=naechste", "/ideen", "/rueckblick", "/einstellungen"]:
+        r = client.get(path)
+        assert r.status_code == 200, path
+    assert "Aus dem Plan erstellen" in client.get("/einkauf?woche=naechste").text
+
+    assert client.post(f"/tage/{monday}/frei", data={"grund": "Urlaub", "woche": "naechste"}).status_code == 200
+    page = client.get("/?woche=naechste").text
+    assert "Kein Mittagessen" in page and "Urlaub" in page and "Doch kochen" in page
+    client.post(f"/tage/{monday}/kochen", data={"woche": "naechste"})
+    assert "Doch kochen" not in client.get("/?woche=naechste").text
+
+    uid = client.get("/api/plan", params={"woche": "naechste"}).json()["mahlzeiten"][0]["rezept_uid"]
+    r = client.post(
+        "/bewertung",
+        data={"rezept_uid": uid, "tag": monday, "urteil": "gut"},
+        headers={"cf-access-authenticated-user-email": "julia@example.com"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 303
+    assert client.app.state.service.store.ratings()[0]["person"] == "julia@example.com"
+    assert client.post("/bewertung", data={"rezept_uid": uid, "tag": monday, "urteil": "x"}).status_code == 400
+
+    client.post("/einkauf/naechste/erzeugen")
+    items = client.get("/api/einkauf", params={"woche": "naechste"}).json()
+    assert items
+    assert client.post(f"/api/einkauf/{items[0]['id']}/erledigt", json={"erledigt": True}).json()["ok"]
+    new = client.post("/api/einkauf/naechste/eintrag", json={"name": "Kaffee"}).json()["id"]
+    assert client.post(f"/api/einkauf/{new}/loeschen").json()["ok"]
+
+    page = client.get("/einstellungen", headers={"cf-access-authenticated-user-email": "julia@example.com"}).text
+    assert "julia@example.com" in page
+    client.post("/einstellungen/personen", data={"name:julia@example.com": "Julia"})
+    assert (
+        "Angemeldet als <strong>Julia</strong>"
+        in client.get("/", headers={"cf-access-authenticated-user-email": "julia@example.com"}).text
+    )
+
+    assert "Kein LLM" in client.post("/ideen/erzeugen").text or client.get("/ideen").status_code == 200
+    assert client.get("/api/morgen").json()["datum"]

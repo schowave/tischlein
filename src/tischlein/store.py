@@ -10,48 +10,12 @@ from collections.abc import Iterable
 from datetime import date, datetime
 from pathlib import Path
 
-from .models import Meal, Recipe, Verdict, WeekPlan
+from alembic import command
+from alembic.config import Config as AlembicConfig
+from sqlalchemy import create_engine
+from sqlalchemy.pool import StaticPool
 
-SCHEMA = """
-CREATE TABLE IF NOT EXISTS recipes (
-    uid TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    tags TEXT NOT NULL,
-    rating INTEGER NOT NULL DEFAULT 0,
-    source_url TEXT NOT NULL DEFAULT '',
-    total_time TEXT NOT NULL DEFAULT '',
-    imported_at TEXT NOT NULL
-);
-CREATE TABLE IF NOT EXISTS plans (
-    week_start TEXT PRIMARY KEY,
-    status TEXT NOT NULL CHECK (status IN ('entwurf', 'freigegeben')),
-    updated_at TEXT NOT NULL
-);
-CREATE TABLE IF NOT EXISTS meals (
-    week_start TEXT NOT NULL REFERENCES plans(week_start) ON DELETE CASCADE,
-    day TEXT NOT NULL,
-    recipe_uid TEXT,
-    name TEXT NOT NULL,
-    theme TEXT NOT NULL,
-    is_new INTEGER NOT NULL DEFAULT 0,
-    reason TEXT NOT NULL DEFAULT '',
-    PRIMARY KEY (week_start, day)
-);
-CREATE TABLE IF NOT EXISTS paprika_cache (
-    uid TEXT PRIMARY KEY,
-    hash TEXT NOT NULL,
-    data TEXT NOT NULL
-);
-CREATE TABLE IF NOT EXISTS meta (
-    key TEXT PRIMARY KEY,
-    value TEXT NOT NULL
-);
-CREATE TABLE IF NOT EXISTS feedback (
-    recipe_uid TEXT PRIMARY KEY,
-    verdict TEXT NOT NULL CHECK (verdict IN ('ok', 'nein')),
-    at TEXT NOT NULL
-);
-"""
+from .models import Meal, Recipe, Verdict, WeekPlan
 
 
 def _locked(method):
@@ -72,9 +36,9 @@ class Store:
         if str(path) != ":memory:":
             Path(path).parent.mkdir(parents=True, exist_ok=True)
         self.db = sqlite3.connect(path, check_same_thread=False)
-        self.db.row_factory = sqlite3.Row
         self.db.execute("PRAGMA foreign_keys = ON")
-        self.db.executescript(SCHEMA)
+        self._migrate()
+        self.db.row_factory = sqlite3.Row
 
     # Recipes ---------------------------------------------------------------
 
@@ -178,8 +142,12 @@ class Store:
             )
             self.db.execute("DELETE FROM meals WHERE week_start = ?", (ws,))
             self.db.executemany(
-                "INSERT INTO meals VALUES (?, ?, ?, ?, ?, ?, ?)",
-                [(ws, m.day.isoformat(), m.recipe_uid, m.name, m.theme, int(m.is_new), m.reason) for m in plan.meals],
+                "INSERT INTO meals (week_start, day, recipe_uid, name, theme, is_new, reason, skipped) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                [
+                    (ws, m.day.isoformat(), m.recipe_uid, m.name, m.theme, int(m.is_new), m.reason, int(m.skipped))
+                    for m in plan.meals
+                ],
             )
 
     @_locked
@@ -210,10 +178,159 @@ class Store:
     @staticmethod
     def _meal(m: sqlite3.Row) -> Meal:
         return Meal(
-            date.fromisoformat(m["day"]), m["recipe_uid"], m["name"], m["theme"], bool(m["is_new"]), m["reason"]
+            date.fromisoformat(m["day"]),
+            m["recipe_uid"],
+            m["name"],
+            m["theme"],
+            bool(m["is_new"]),
+            m["reason"],
+            bool(m["skipped"]),
         )
 
+    def _migrate(self) -> None:
+        """Bring the schema to the latest Alembic revision (src/tischlein/migrations)."""
+        engine = create_engine("sqlite://", creator=lambda: self.db, poolclass=StaticPool)
+        cfg = AlembicConfig()
+        cfg.set_main_option("script_location", str(Path(__file__).parent / "migrations"))
+        with engine.begin() as conn:
+            cfg.attributes["connection"] = conn
+            tables = {row[0] for row in conn.exec_driver_sql("SELECT name FROM sqlite_master WHERE type = 'table'")}
+            if "alembic_version" not in tables and "recipes" in tables:
+                command.stamp(cfg, "0001")  # database created before Alembic (up to 0.2.0)
+            command.upgrade(cfg, "head")
+
     # Feedback --------------------------------------------------------------
+
+    # Skip days ---------------------------------------------------------------
+
+    @_locked
+    def set_skipday(self, day: date, reason: str) -> None:
+        with self.db:
+            self.db.execute(
+                "INSERT INTO skipdays VALUES (?, ?) ON CONFLICT(day) DO UPDATE SET reason = excluded.reason",
+                (day.isoformat(), reason),
+            )
+
+    @_locked
+    def remove_skipday(self, day: date) -> None:
+        with self.db:
+            self.db.execute("DELETE FROM skipdays WHERE day = ?", (day.isoformat(),))
+
+    @_locked
+    def skipdays(self, start: date, end: date) -> dict[date, str]:
+        rows = self.db.execute(
+            "SELECT day, reason FROM skipdays WHERE day BETWEEN ? AND ?", (start.isoformat(), end.isoformat())
+        ).fetchall()
+        return {date.fromisoformat(d): r for d, r in rows}
+
+    # Ratings -----------------------------------------------------------------
+
+    @_locked
+    def set_rating(self, recipe_uid: str, day: date, verdict: str, person: str = "") -> None:
+        with self.db:
+            self.db.execute(
+                "INSERT INTO ratings VALUES (?, ?, ?, ?, ?) ON CONFLICT(recipe_uid, day) DO UPDATE SET "
+                "verdict = excluded.verdict, person = excluded.person, at = excluded.at",
+                (recipe_uid, day.isoformat(), verdict, person, datetime.now().isoformat(timespec="seconds")),
+            )
+
+    @_locked
+    def ratings(self) -> list[dict]:
+        rows = self.db.execute("SELECT recipe_uid, day, verdict, person FROM ratings ORDER BY day").fetchall()
+        return [{"uid": u, "day": date.fromisoformat(d), "verdict": v, "person": p} for u, d, v, p in rows]
+
+    # Shopping list -----------------------------------------------------------
+
+    @_locked
+    def replace_generated_shopping(self, week_start: date, items: list[dict]) -> None:
+        """Replace the generated items of a week; manual items and their state stay."""
+        ws = week_start.isoformat()
+        with self.db:
+            self.db.execute("DELETE FROM shopping WHERE week_start = ? AND manual = 0", (ws,))
+            self.db.executemany(
+                "INSERT INTO shopping (week_start, name, amount, grp, recipes, manual, position) "
+                "VALUES (?, ?, ?, ?, ?, 0, ?)",
+                [
+                    (ws, i["name"], i.get("amount", ""), i.get("group", "Sonstiges"), i.get("recipes", ""), n)
+                    for n, i in enumerate(items)
+                ],
+            )
+
+    @_locked
+    def add_shopping_item(self, week_start: date, name: str, amount: str = "", group: str = "Sonstiges") -> int:
+        with self.db:
+            cur = self.db.execute(
+                "INSERT INTO shopping (week_start, name, amount, grp, manual, position) VALUES (?, ?, ?, ?, 1, 9999)",
+                (week_start.isoformat(), name, amount, group),
+            )
+        return cur.lastrowid
+
+    @_locked
+    def set_shopping_done(self, item_id: int, done: bool, person: str = "") -> bool:
+        with self.db:
+            cur = self.db.execute(
+                "UPDATE shopping SET done = ?, done_by = ? WHERE id = ?", (int(done), person if done else "", item_id)
+            )
+        return cur.rowcount == 1
+
+    @_locked
+    def delete_shopping_item(self, item_id: int) -> None:
+        with self.db:
+            self.db.execute("DELETE FROM shopping WHERE id = ?", (item_id,))
+
+    @_locked
+    def shopping(self, week_start: date) -> list[dict]:
+        rows = self.db.execute(
+            "SELECT id, name, amount, grp, recipes, manual, done, done_by FROM shopping WHERE week_start = ? "
+            "ORDER BY position, id",
+            (week_start.isoformat(),),
+        ).fetchall()
+        return [
+            {
+                "id": i,
+                "name": n,
+                "amount": a,
+                "group": g,
+                "recipes": r,
+                "manual": bool(m),
+                "done": bool(d),
+                "done_by": b,
+            }
+            for i, n, a, g, r, m, d, b in rows
+        ]
+
+    # Ideas -------------------------------------------------------------------
+
+    @_locked
+    def add_ideas(self, ideas: list[dict]) -> None:
+        now = datetime.now().isoformat(timespec="seconds")
+        with self.db:
+            self.db.executemany(
+                "INSERT INTO ideas (created, data) VALUES (?, ?)",
+                [(now, json.dumps(i, ensure_ascii=False)) for i in ideas],
+            )
+
+    @_locked
+    def ideas(self, status: str = "neu") -> list[dict]:
+        rows = self.db.execute(
+            "SELECT id, created, data, status, paprika_uid FROM ideas WHERE status = ? ORDER BY id DESC", (status,)
+        ).fetchall()
+        return [{"id": i, "created": c, "status": s, "paprika_uid": p, **json.loads(d)} for i, c, d, s, p in rows]
+
+    @_locked
+    def idea(self, idea_id: int) -> dict | None:
+        row = self.db.execute(
+            "SELECT id, created, data, status, paprika_uid FROM ideas WHERE id = ?", (idea_id,)
+        ).fetchone()
+        if not row:
+            return None
+        i, c, d, s, p = row
+        return {"id": i, "created": c, "status": s, "paprika_uid": p, **json.loads(d)}
+
+    @_locked
+    def set_idea_status(self, idea_id: int, status: str, paprika_uid: str = "") -> None:
+        with self.db:
+            self.db.execute("UPDATE ideas SET status = ?, paprika_uid = ? WHERE id = ?", (status, paprika_uid, idea_id))
 
     @_locked
     def set_feedback(self, recipe_uid: str, verdict: Verdict) -> None:

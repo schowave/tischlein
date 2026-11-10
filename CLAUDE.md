@@ -43,6 +43,10 @@ Seite **Einstellungen** (liegt in der Tabelle `meta`, gewinnt gegen die Umgebung
 | Plan | Eine Woche Mittagessen, Status `entwurf` oder `freigegeben` | `WeekPlan` |
 | Mahlzeit | Ein geplanter Tag im Plan | `Meal` |
 | Rückmeldung | Nach einem Neu-Rezept: `ok` (in die Rotation) oder `nein` (nie wieder) | `Feedback` |
+| Bewertung | Nach jedem Essen: gut / mittel / schlecht, pro Tag und Person; steuert die Gewichtung | `ratings` |
+| Freier Tag | Kein Mittagessen (Urlaub, Feiertag, Kita …); Feiertage automatisch, „Doch kochen“ überstimmt | `skipdays`, `holidays.py` |
+| Einkaufsliste | Zutaten der Woche ohne Vorräte, mit LLM zusammengefasst und nach Gang sortiert | `shopping.py`, `shopping` |
+| Idee | Vorschlag des LLM für ein neues Gericht; übernommen landet es mit „Neu“ in Paprika | `ideas.py`, `ideas` |
 
 ## Planungsregeln
 
@@ -58,6 +62,10 @@ Seite **Einstellungen** (liegt in der Tabelle `meta`, gewinnt gegen die Umgebung
    gilt die normale Regel. Der Hinweis „sichere Komponente dazu“ steht in der Mahlzeit.
 6. Rückmeldungen überlagern Paprika-Tags lokal: `ok` macht ein Rezept Kinder-OK und nicht mehr
    neu, `nein` schließt es aus. Rückmeldungen überleben einen erneuten Import.
+7. Freie Tage (Feiertage aus `feiertage_land`, von Hand markierte Tage) bekommen kein Gericht.
+8. Bewertungen gewichten: gut = 1, mittel = 0, schlecht = −1, Faktor 1 + 0,6 × Mittelwert
+   (0,4 bis 1,6) auf die Wahrscheinlichkeit. „Nie wieder“ setzt die Rückmeldung `nein`; „gut“ für
+   ein Neu-Rezept setzt `ok`.
 
 ## Architektur
 
@@ -77,6 +85,12 @@ src/tischlein/
   planner.py   reine Funktion plan_week(...) – deterministisch über übergebenen Random
   store.py     SQLite (stdlib sqlite3), einzige Stelle mit SQL
   ics.py       ICS-Feed erzeugen (ohne Fremdbibliothek, floating local time)
+  holidays.py  Feiertage bundesweit + pro Bundesland (Ostern selbst berechnet)
+  prep.py      Vorbereitungshinweise aus Zutaten (Regeln: TK auftauen, einweichen, marinieren …)
+  shopping.py  Einkaufsliste: Zutaten sammeln, Vorräte filtern, LLM-Prompt und -Antwort
+  ideas.py     Rezeptideen: LLM-Prompt, Antwort prüfen, neues Paprika-Rezept bauen
+  llm.py       Client für OpenAI-kompatible Chat-API (z. B. LiteLLM), Transport injizierbar
+  migrations/  Alembic-Revisionen; Store._migrate hebt die DB beim Start auf head
   app.py       FastAPI: Web-UI (Jinja), JSON-API, /kalender.ics
   cli.py       import | plan | serve
 ```
@@ -85,6 +99,10 @@ Regeln für den Code:
 - Frontend ohne Build-Schritt: Jinja für alles, Alpine.js nur wo Zustand im Browser nötig ist
   (Rezepte-Seite). Kein CDN; Version und npm-Prüfsumme stehen im Task `vendor:alpine`.
 - `Store` ist threadsicher (eine Sperre um jede Methode), weil der Server parallel anfragt.
+- Schemaänderungen nur als Alembic-Revision (`mise run db:revision -- -m "…"`), SQL im Store bleibt
+  sqlite3. Datenbanken von vor Alembic (≤ 0.2.0) stempelt `_migrate` auf `0001`.
+- LLM-Aufrufe sind optional: ohne LLM einfache Einkaufsliste, keine Ideen. Gesendet werden nur
+  Rezeptnamen, Zutaten und Vorlieben an die konfigurierte URL.
 - `planner.py` und `paprika.py` bleiben frei von Datenbank und HTTP, damit sie direkt testbar sind.
 - Neue Planungsregeln immer zuerst als Test in `tests/test_planner.py`.
 - Bezeichner im Code englisch, Texte in UI, Kalender und Konfiguration deutsch.
@@ -97,7 +115,10 @@ Regeln für den Code:
   macht alte Abos ungültig. `/kalender.ics` ohne Token nur im LAN bzw. hinter Access nutzen.
 - **Home Assistant:**
   - Kalender: Integration „Remote Calendar“ mit derselben ICS-URL.
-  - Sensor: REST-Sensor auf `/api/heute` (Feld `gericht`).
+  - Sensor: REST-Sensor auf `/api/heute` bzw. `/api/morgen` (Felder `gericht`, `vorbereitung`,
+    `frei`, `grund`).
+  - Vorabend-Meldung: Tischlein schickt um `[erinnerung] uhrzeit` (Standard 18:00) „Morgen gibt's …“
+    samt Vorbereitung an `HA_WEBHOOK_URL`, nur für freigegebene Pläne, einmal pro Tag.
   - Wöchentlicher Entwurf: HA-Automation ruft `POST /api/plaene/naechste/erzeugen` auf,
     Tischlein ruft danach optional `HA_WEBHOOK_URL` auf („Mahlzeit: Plan für nächste Woche ist da“).
 - **Paprika:** Primär Sync über die inoffizielle Cloud-API (`paprika_sync.py`):
@@ -124,6 +145,9 @@ Regeln für den Code:
   `tischlein-update.timer` alle 5 Minuten → `tischlein-update.sh` zieht `latest`, startet nur bei
   neuem Image neu, prüft `/healthz` auf die neue Version und rollt sonst zurück. Pull statt Push:
   kein offener Port, kein Zugang von GitHub ins Heimnetz.
+- Wer angemeldet ist, kommt aus dem Header `Cf-Access-Authenticated-User-Email` (nur Anzeige und
+  Zuordnung, keine Berechtigung; im LAN ohne Cloudflare ist niemand angemeldet). Namen unter
+  Einstellungen → Personen.
 - Keine eigene Authentifizierung. Von außen nur über Cloudflare Tunnel **mit Cloudflare Access**
   erreichbar machen. Für den Pfad `/kalender/*` eine Access-Bypass-Regel anlegen: Der
   iPhone-Kalender kann sich nicht anmelden, der Link ist durch seinen geheimen Schlüssel geschützt.
@@ -137,6 +161,5 @@ Regeln für den Code:
 - Rückschreiben freigegebener Pläne in den Paprika Meal Planner: `POST /api/v1/sync/meals/`,
   multipart-Feld `data` = gzip-JSON-Liste von `{uid, recipe_uid, date "YYYY-MM-DD 00:00:00",
   type, name, deleted, order_flag}`. Welcher `type` Mittagessen ist, vorher prüfen.
-- Vorschläge für neue Rezepte (z. B. per Claude API anhand von Kinder-OK-Rezepten) – erst wenn
-  die Rotation im Alltag läuft.
+- Einkaufsliste nach Bring (Home-Assistant-Integration, `todo.add_item`) oder Paprika übertragen.
 - Vorlieben und Abneigungen der Jungs als Ausschluss-Zutaten.

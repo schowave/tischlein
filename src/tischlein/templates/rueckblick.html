@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Rückblick · Tischlein{% endblock %}
+{% block content %}
+<section class="title">
+  <div>
+    <h1>Rückblick</h1>
+    <p>Die letzten {{ v.weeks }} Wochen, nur freigegebene Pläne bis heute.</p>
+  </div>
+  <nav class="seg" aria-label="Zeitraum">
+    {% for n in [4, 8, 12] %}<a href="/rueckblick?wochen={{ n }}" {% if v.weeks == n %}aria-current="true"{% endif %}>{{ n }} Wochen</a>{% endfor %}
+  </nav>
+</section>
+
+<div class="grid">
+  <div class="tile s3"><span class="tile-label">Gekocht</span><span class="tile-value num">{{ v.cooked }}</span><span class="tile-cap">Mittagessen</span></div>
+  <div class="tile s3"><span class="tile-label">Verschiedene Gerichte</span><span class="tile-value num">{{ v.distinct }}</span><span class="tile-cap">von {{ v.cooked }}</span></div>
+  <div class="tile s3{% if v.kid_share %} is-accent{% endif %}"><span class="tile-label">Kinder-OK</span><span class="tile-value num">{{ v.kid_share }} %</span><span class="tile-cap">der gekochten Gerichte</span></div>
+  <div class="tile s3"><span class="tile-label">Bewertungen</span><span class="tile-value num">{{ v.ratings.gut }} · {{ v.ratings.mittel }} · {{ v.ratings.schlecht }}</span><span class="tile-cap">gut · ging so · kam nicht an</span></div>
+
+  <section class="panel s6" aria-labelledby="themes-h">
+    <div class="panel-head"><h2 id="themes-h">Themen</h2></div>
+    {% if v.themes %}
+    <div class="bars">
+      {% for t in v.themes %}
+      <div class="bar-row"><span>{{ t.name }}</span><span class="bar"><span style="width: {{ t.pct }}%"></span></span><span class="num">{{ t.count }}</span></div>
+      {% endfor %}
+    </div>
+    {% else %}<div class="empty-frame">Noch keine freigegebenen Wochen in diesem Zeitraum.</div>{% endif %}
+  </section>
+
+  <section class="panel s6" aria-labelledby="fav-h">
+    <div class="panel-head"><h2 id="fav-h">Lange nicht mehr gegessen</h2></div>
+    {% if v.favourites %}
+    <ul class="plain-list">
+      {% for r in v.favourites %}
+      <li><a href="/rezepte?rezept={{ r.uid | urlencode }}">{{ r.name }}</a> <span class="muted small">{% if r.uid in v.last %}zuletzt {{ v.last[r.uid].strftime('%d.%m.') }}{% else %}noch nie geplant{% endif %}</span></li>
+      {% endfor %}
+    </ul>
+    {% else %}<div class="empty-frame">Sobald Gerichte als Kinder-OK markiert oder gut bewertet sind, stehen hier die, die lange nicht dran waren.</div>{% endif %}
+  </section>
+
+  <section class="panel s12" aria-labelledby="weeks-h">
+    <div class="panel-head"><h2 id="weeks-h">Wochen</h2></div>
+    {% if v.week_list %}
+    <div class="review-weeks">
+      {% for w in v.week_list %}
+      <div class="review-week">
+        <h3>{{ w.range }}</h3>
+        <ul>
+          {% for m in w.meals %}
+          <li class="{% if m.skipped %}muted{% endif %}"><span class="rw-day">{{ m.day }}</span> {% if m.skipped %}{{ m.reason or 'frei' }}{% else %}{{ m.name }}{% if m.is_new %} <span class="pill pill-new">Neu</span>{% endif %}{% if m.verdict %} <span class="rw-verdict">{{ {'gut': 'gut', 'mittel': 'ging so', 'schlecht': 'kam nicht an'}[m.verdict] }}</span>{% endif %}{% endif %}</li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}<div class="empty-frame">Noch keine freigegebenen Wochen. Der Rückblick füllt sich, sobald ihr Wochen freigebt und kocht.</div>{% endif %}
+  </section>
+</div>
+{% endblock %}

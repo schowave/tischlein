@@ -57,3 +57,61 @@ def test_store_is_safe_under_concurrent_reads(tmp_path):
     for t in threads:
         t.join()
     assert errors == []
+
+
+def test_old_database_gets_new_columns(tmp_path):
+    import sqlite3
+
+    path = tmp_path / "old.db"
+    db = sqlite3.connect(path)
+    db.executescript(
+        "CREATE TABLE plans (week_start TEXT PRIMARY KEY, status TEXT NOT NULL, updated_at TEXT NOT NULL);"
+        "CREATE TABLE meals (week_start TEXT NOT NULL, day TEXT NOT NULL, recipe_uid TEXT, name TEXT NOT NULL,"
+        " theme TEXT NOT NULL, is_new INTEGER NOT NULL DEFAULT 0, reason TEXT NOT NULL DEFAULT '',"
+        " PRIMARY KEY (week_start, day));"
+        "INSERT INTO plans VALUES ('2026-11-16', 'entwurf', 'x');"
+        "INSERT INTO meals VALUES ('2026-11-16', '2026-11-16', 'a', 'Bowl', 'Hähnchen', 0, '');"
+    )
+    db.commit()
+    db.close()
+    s = Store(path)
+    plan = s.plan(MONDAY)
+    assert plan.meals[0].name == "Bowl" and plan.meals[0].skipped is False
+
+
+def test_skipdays_ratings_shopping_ideas_roundtrip():
+    s = Store(":memory:")
+    s.set_skipday(MONDAY, "Urlaub")
+    assert s.skipdays(MONDAY, MONDAY) == {MONDAY: "Urlaub"}
+    s.remove_skipday(MONDAY)
+    assert s.skipdays(MONDAY, MONDAY) == {}
+
+    s.set_rating("a", MONDAY, "gut", "David")
+    s.set_rating("a", MONDAY, "mittel", "Julia")
+    assert s.ratings() == [{"uid": "a", "day": MONDAY, "verdict": "mittel", "person": "Julia"}]
+
+    s.replace_generated_shopping(MONDAY, [{"name": "Lachs", "amount": "600 g", "group": "Fisch"}])
+    manual = s.add_shopping_item(MONDAY, "Kaffee")
+    s.set_shopping_done(manual, True, "David")
+    s.replace_generated_shopping(MONDAY, [{"name": "Hähnchen", "amount": "400 g", "group": "Fleisch"}])
+    items = s.shopping(MONDAY)
+    assert [(i["name"], i["manual"], i["done"]) for i in items] == [("Hähnchen", False, False), ("Kaffee", True, True)]
+
+    s.add_ideas([{"name": "Fischcurry"}])
+    idea = s.ideas()[0]
+    s.set_idea_status(idea["id"], "uebernommen", "UID1")
+    assert s.idea(idea["id"])["paprika_uid"] == "UID1" and s.ideas() == []
+
+
+def test_fresh_database_is_at_alembic_head(tmp_path):
+    import sqlite3
+
+    from alembic.config import Config
+    from alembic.script import ScriptDirectory
+
+    Store(tmp_path / "neu.db")
+    cfg = Config()
+    cfg.set_main_option("script_location", "src/tischlein/migrations")
+    head = ScriptDirectory.from_config(cfg).get_current_head()
+    version = sqlite3.connect(tmp_path / "neu.db").execute("SELECT version_num FROM alembic_version").fetchone()[0]
+    assert version == head

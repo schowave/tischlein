@@ -38,7 +38,17 @@ Das Prinzip ist „Sous-Chef“: Tischlein schlägt vor, die Familie gibt frei.
   setzen, Rezepte in den Papierkorb legen. Alles wird sofort nach Paprika zurückgeschrieben.
 - **Kalender-Abo** für iPhone und Mac über einen geheimen Link, dazu **Home Assistant**
   (Sensor „Mittagessen heute“, Plan per Automation).
-- **Einstellungen im Browser:** Paprika-Konto verbinden, Kalendername, Uhrzeit und Dauer.
+- **Freie Tage:** Feiertage (bundesweit und pro Bundesland) automatisch, dazu Urlaub, Kita oder
+  Auswärtsessen pro Tag.
+- **Bewertung nach jedem Essen:** gut, ging so, nie wieder. Lieblingsgerichte kommen öfter.
+- **Einkaufsliste:** aus dem Wochenplan, ohne Vorräte, mit LLM zusammengefasst und nach Gang
+  sortiert, zum Abhaken am Handy.
+- **Ideen:** neue Gerichte vom LLM, passend zu dem, was ihr mögt; per Klick nach Paprika.
+- **Vorbereitung:** „Morgen gibt's Lachs, Tiefkühlware in den Kühlschrank“ am Vorabend über Home
+  Assistant.
+- **Rückblick:** was gekocht wurde, Themen, Bewertungen, Lieblinge, die lange nicht dran waren.
+- **Einstellungen im Browser:** Paprika-Konto, LLM (OpenAI-kompatibel, z. B. LiteLLM), Kalender,
+  Namen der angemeldeten Personen.
 
 ## Schnellstart mit Docker
 
@@ -102,6 +112,10 @@ Import/Export im Paprika-Format exportieren und die Datei auf der Startseite hoc
 | `plan.neu_slot` | `do` | Wochentag des Neu-Slots, `""` schaltet ihn ab |
 | `plan.cooldown_wochen` | `2` | Mindestabstand, bevor ein Gericht wiederkommt |
 | `plan.weitere_themen` | `["Fleisch"]` | Themen ohne eigenen Tag, für die Rezeptverwaltung |
+| `plan.feiertage_land` | `""` | Bundesland für Landesfeiertage, z. B. `"BW"`; leer = nur bundesweite |
+| `abgleich.alle_minuten` | `15` | Automatische Prüfung auf Änderungen in Paprika, `0` = aus |
+| `einkauf.vorrat` | Salz, Pfeffer, Öl … | Was nie auf die Einkaufsliste kommt |
+| `erinnerung.uhrzeit` | `"18:00"` | Vorabend-Meldung an Home Assistant, `""` = aus |
 | `[[tage]]` | Mo–Fr | Ein Eintrag pro Thementag: `tag = "mo"`, `thema = "Hähnchen"` |
 
 Kalendername, Uhrzeit und Dauer stellt ihr unter **Einstellungen** ein.
@@ -136,7 +150,8 @@ uv run tischlein serve [--port 8080]                    # Web-Oberfläche und AP
 
 | Methode | Pfad | Zweck |
 |---|---|---|
-| `GET` | `/api/heute` | Heutiges Gericht, für den Home-Assistant-Sensor |
+| `GET` | `/api/heute`, `/api/morgen` | Gericht, Vorbereitung, freier Tag, für Home Assistant |
+| `GET` | `/api/einkauf?woche=…` | Einkaufsliste der Woche |
 | `GET` | `/api/plan?woche=aktuell\|naechste\|JJJJ-MM-TT` | Wochenplan als JSON |
 | `POST` | `/api/plaene/{woche}/erzeugen` | Paprika abgleichen und einen Entwurf erzeugen |
 | `POST` | `/api/sync` | Nur abgleichen |

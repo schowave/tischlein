@@ -37,6 +37,24 @@ class PlanConfig:
     lunch_minutes: int = 45
     extra_themes: tuple[str, ...] = ()
     sync_minutes: int = 15  # automatic Paprika check interval, 0 = off
+    holiday_state: str = ""  # Bundesland for Landesfeiertage, e.g. "BW"; "" = nur bundesweite
+    pantry: tuple[str, ...] = (
+        "Salz",
+        "Pfeffer",
+        "Zucker",
+        "Mehl",
+        "Öl",
+        "Olivenöl",
+        "Rapsöl",
+        "Sonnenblumenöl",
+        "Wasser",
+        "Essig",
+        "Paprikapulver",
+        "Currypulver",
+        "Gemüsebrühe",
+        "Brühe",
+    )
+    reminder_time: str = "18:00"  # Vorabend-Erinnerung an Home Assistant, "" = aus
 
     @property
     def themes(self) -> tuple[str, ...]:
@@ -71,6 +89,9 @@ def parse_config(data: dict) -> PlanConfig:
         lunch_time=time(hour, minute),
         lunch_minutes=int(plan.get("mittag_minuten", default.lunch_minutes)),
         sync_minutes=int(data.get("abgleich", {}).get("alle_minuten", default.sync_minutes)),
+        holiday_state=str(plan.get("feiertage_land", default.holiday_state)),
+        pantry=tuple(data.get("einkauf", {}).get("vorrat", default.pantry)),
+        reminder_time=str(data.get("erinnerung", {}).get("uhrzeit", default.reminder_time)),
         extra_themes=tuple(plan.get("weitere_themen", ())),
     )
 

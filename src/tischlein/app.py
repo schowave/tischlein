@@ -7,9 +7,10 @@ import os
 import secrets
 import zipfile
 from contextlib import asynccontextmanager
-from datetime import date
+from datetime import date, timedelta
 from importlib.metadata import version as package_version
 from pathlib import Path
+from urllib.parse import quote
 
 from fastapi import FastAPI, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
@@ -19,15 +20,34 @@ from pydantic import BaseModel
 
 from . import paprika
 from .config import WEEKDAY_NAMES
+from .llm import LLMError
 from .models import WeekPlan
 from .paprika_sync import PaprikaError
 from .service import Tischlein, from_env
-from .views import recipe_json, recipes_view, settings_view, week_view
+from .views import (
+    FREE_REASONS,
+    ideas_view,
+    recipe_json,
+    recipes_view,
+    review_view,
+    settings_view,
+    shopping_view,
+    week_view,
+)
 
 HERE = Path(__file__).parent
 # Set by the release build (Docker build arg); local runs show the package version.
 VERSION = os.environ.get("TISCHLEIN_VERSION") or package_version("tischlein")
 TEMPLATES = Jinja2Templates(directory=HERE / "templates")
+
+
+class ShoppingItem(BaseModel):
+    name: str
+    menge: str = ""
+
+
+class Done(BaseModel):
+    erledigt: bool
 
 
 class TagEdit(BaseModel):
@@ -88,19 +108,28 @@ def create_app(service: Tischlein | None = None, auto_sync: bool | None = None) 
 
     # Web UI ----------------------------------------------------------------
 
+    def render(request: Request, template: str, ctx: dict):
+        email = request.headers.get("cf-access-authenticated-user-email")
+        person = service.person_name(email) if email else ""
+        return TEMPLATES.TemplateResponse(request, template, {**ctx, "person": person})
+
+    def person_of(request: Request) -> str:
+        email = request.headers.get("cf-access-authenticated-user-email")
+        return service.person_name(email) if email else ""
+
     @app.get("/", response_class=HTMLResponse)
     def index(request: Request, woche: str | None = None):
         v = week_view(service, woche, date.today())
-        return TEMPLATES.TemplateResponse(request, "woche.html", {"v": v, "nav": "woche"})
+        return render(request, "woche.html", {"v": v, "nav": "woche", "free_reasons": FREE_REASONS})
 
     @app.get("/rezepte", response_class=HTMLResponse)
     def recipes_page(request: Request):
         v = recipes_view(service)
-        return TEMPLATES.TemplateResponse(request, "rezepte.html", {"v": v, "nav": "rezepte"})
+        return render(request, "rezepte.html", {"v": v, "nav": "rezepte"})
 
     def settings_page(request: Request, **extra):
         v = settings_view(service, str(request.base_url).rstrip("/"))
-        return TEMPLATES.TemplateResponse(request, "einstellungen.html", {"v": v, "nav": "einstellungen", **extra})
+        return render(request, "einstellungen.html", {"v": v, "nav": "einstellungen", **extra})
 
     @app.get("/einstellungen", response_class=HTMLResponse)
     def settings(request: Request, ok: str | None = None):
@@ -114,6 +143,127 @@ def create_app(service: Tischlein | None = None, auto_sync: bool | None = None) 
             return settings_page(request, paprika_error=str(e), email_input=email)
         service.start_sync()
         return RedirectResponse("/einstellungen?ok=paprika", status_code=303)
+
+    @app.post("/einstellungen/llm", response_class=HTMLResponse)
+    def settings_llm(request: Request, basis: str = Form(""), schluessel: str = Form(""), modell: str = Form("")):
+        try:
+            service.save_llm(basis, schluessel, modell)
+        except (ValueError, LLMError) as e:
+            return settings_page(request, llm_error=str(e), llm_input={"basis": basis, "modell": modell})
+        return RedirectResponse("/einstellungen?ok=llm#llm", status_code=303)
+
+    @app.post("/einstellungen/llm/entfernen")
+    def settings_llm_clear():
+        service.clear_llm()
+        return RedirectResponse("/einstellungen?ok=llm-weg#llm", status_code=303)
+
+    @app.post("/einstellungen/personen")
+    async def settings_people(request: Request):
+        form = await request.form()
+        service.save_people({k.removeprefix("name:"): str(v) for k, v in form.items() if k.startswith("name:")})
+        return RedirectResponse("/einstellungen?ok=personen#personen", status_code=303)
+
+    # Week: free days and ratings ---------------------------------------------
+
+    @app.post("/tage/{day}/frei")
+    def ui_day_free(day: date, grund: str = Form(""), woche: str | None = Form(None)):
+        service.set_day_free(day, grund)
+        return back(woche)
+
+    @app.post("/tage/{day}/kochen")
+    def ui_day_cook(day: date, woche: str | None = Form(None)):
+        service.set_day_cooking(day)
+        return back(woche)
+
+    @app.post("/bewertung")
+    def ui_rate(
+        request: Request,
+        rezept_uid: str = Form(...),
+        tag: date = Form(...),
+        urteil: str = Form(...),
+        woche: str | None = Form(None),
+    ):
+        try:
+            service.rate(rezept_uid, tag, urteil, person_of(request))
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from e
+        return back(woche)
+
+    # Shopping list ---------------------------------------------------------------
+
+    @app.get("/einkauf", response_class=HTMLResponse)
+    def shopping_page(request: Request, woche: str = "aktuell", hinweis: str | None = None):
+        v = shopping_view(service, week(woche), woche)
+        return render(request, "einkauf.html", {"v": v, "nav": "einkauf", "hinweis": hinweis})
+
+    @app.post("/einkauf/{which}/erzeugen")
+    def shopping_generate(which: str):
+        try:
+            how = service.generate_shopping(week(which))
+        except KeyError as e:
+            return RedirectResponse(f"/einkauf?woche={which}&hinweis={quote(str(e.args[0]))}", status_code=303)
+        note = "" if how in ("llm", "einfach") else how
+        return RedirectResponse(
+            f"/einkauf?woche={which}" + (f"&hinweis={quote(note)}" if note else ""), status_code=303
+        )
+
+    @app.get("/api/einkauf")
+    def api_shopping(woche: str = "aktuell"):
+        return service.store.shopping(week(woche))
+
+    @app.post("/api/einkauf/{which}/eintrag")
+    def api_shopping_add(which: str, body: ShoppingItem):
+        if not body.name.strip():
+            raise HTTPException(400, "Bitte etwas eintragen.")
+        item_id = service.store.add_shopping_item(week(which), body.name.strip(), body.menge.strip())
+        return {"id": item_id}
+
+    @app.post("/api/einkauf/{item_id}/erledigt")
+    def api_shopping_done(request: Request, item_id: int, body: Done):
+        if not service.store.set_shopping_done(item_id, body.erledigt, person_of(request)):
+            raise HTTPException(404, "Eintrag nicht gefunden")
+        return {"ok": True, "von": person_of(request) if body.erledigt else ""}
+
+    @app.post("/api/einkauf/{item_id}/loeschen")
+    def api_shopping_delete(item_id: int):
+        service.store.delete_shopping_item(item_id)
+        return {"ok": True}
+
+    # Ideas -------------------------------------------------------------------------
+
+    @app.get("/ideen", response_class=HTMLResponse)
+    def ideas_page(request: Request, hinweis: str | None = None):
+        return render(request, "ideen.html", {"v": ideas_view(service), "nav": "ideen", "hinweis": hinweis})
+
+    @app.post("/ideen/erzeugen")
+    def ideas_generate():
+        try:
+            n = service.generate_ideas()
+        except LLMError as e:
+            return RedirectResponse(f"/ideen?hinweis={quote(str(e))}", status_code=303)
+        msg = "" if n else "Das Modell hat keine brauchbaren Vorschläge geliefert. Bitte noch einmal versuchen."
+        return RedirectResponse("/ideen" + (f"?hinweis={quote(msg)}" if msg else ""), status_code=303)
+
+    @app.post("/ideen/{idea_id}/uebernehmen")
+    def ideas_accept(idea_id: int):
+        try:
+            recipe = service.accept_idea(idea_id)
+        except (KeyError, PaprikaError) as e:
+            text = e.args[0] if isinstance(e, KeyError) else str(e)
+            return RedirectResponse(f"/ideen?hinweis={quote(text)}", status_code=303)
+        return RedirectResponse(f"/rezepte?rezept={quote(recipe.uid)}", status_code=303)
+
+    @app.post("/ideen/{idea_id}/verwerfen")
+    def ideas_dismiss(idea_id: int):
+        service.dismiss_idea(idea_id)
+        return RedirectResponse("/ideen", status_code=303)
+
+    # Review ------------------------------------------------------------------------
+
+    @app.get("/rueckblick", response_class=HTMLResponse)
+    def review_page(request: Request, wochen: int = 8):
+        v = review_view(service, date.today(), max(1, min(wochen, 52)))
+        return render(request, "rueckblick.html", {"v": v, "nav": "rueckblick"})
 
     @app.post("/einstellungen/paprika/trennen")
     def settings_paprika_disconnect():
@@ -171,10 +321,12 @@ def create_app(service: Tischlein | None = None, auto_sync: bool | None = None) 
     @app.post("/import")
     async def ui_import(datei: UploadFile):
         try:
-            recipes = paprika.read_export(io.BytesIO(await datei.read()))
-        except (zipfile.BadZipFile, ValueError, KeyError):
+            entries = paprika.read_export_raw(io.BytesIO(await datei.read()))
+        except zipfile.BadZipFile, ValueError, KeyError:
             raise HTTPException(400, "Keine gültige .paprikarecipes-Datei") from None
-        service.store.replace_recipes(recipes)
+        service.store.replace_recipes([r for r, _ in entries])
+        # raw data gives ingredients for the recipe page and the shopping list
+        service.store.replace_paprika_cache({r.uid: (raw.get("hash", ""), raw) for r, raw in entries})
         return back()
 
     # API -------------------------------------------------------------------
@@ -256,18 +408,11 @@ def create_app(service: Tischlein | None = None, auto_sync: bool | None = None) 
 
     @app.get("/api/heute")
     def api_today():
-        today = date.today()
-        plan = service.store.plan(service.resolve_week("aktuell"))
-        meal = next((m for m in plan.meals if m.day == today), None) if plan else None
-        if meal is None:
-            return {"gericht": "nichts geplant", "datum": today.isoformat()}
-        return {
-            "gericht": meal.name,
-            "datum": today.isoformat(),
-            "thema": meal.theme,
-            "neu": meal.is_new,
-            "freigegeben": plan.status == "freigegeben",
-        }
+        return service.day_info(date.today())
+
+    @app.get("/api/morgen")
+    def api_tomorrow():
+        return service.day_info(date.today() + timedelta(days=1))
 
     @app.get("/kalender.ics")
     def calendar():

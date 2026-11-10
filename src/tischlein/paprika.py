@@ -29,7 +29,12 @@ def recipe_from_json(data: dict, category_names: dict[str, str] | None = None) -
 
 
 def read_export(source: Path | BinaryIO) -> list[Recipe]:
-    recipes: list[Recipe] = []
+    return [recipe for recipe, _ in read_export_raw(source)]
+
+
+def read_export_raw(source: Path | BinaryIO) -> list[tuple[Recipe, dict]]:
+    """Recipes with their raw data (ingredients, directions ...); embedded photos are dropped."""
+    out: list[tuple[Recipe, dict]] = []
     with zipfile.ZipFile(source) as archive:
         for entry in archive.infolist():
             if entry.is_dir() or not entry.filename.endswith(".paprikarecipe"):
@@ -39,5 +44,7 @@ def read_export(source: Path | BinaryIO) -> list[Recipe]:
                 raw = gzip.decompress(raw)
             except gzip.BadGzipFile:
                 pass  # some exports store plain JSON
-            recipes.append(recipe_from_json(json.loads(raw)))
-    return recipes
+            data = json.loads(raw)
+            data.pop("photo_data", None)
+            out.append((recipe_from_json(data), data))
+    return out

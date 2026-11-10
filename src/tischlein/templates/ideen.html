@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}Ideen · Tischlein{% endblock %}
+{% block content %}
+<section class="title">
+  <div>
+    <h1>Neue Ideen</h1>
+    <p>Gerichte, die zu dem passen, was ihr mögt, und Abwechslung dort bringen, wo die Rotation dünn ist.</p>
+  </div>
+  {% if v.llm %}
+  <form class="inline" method="post" action="/ideen/erzeugen" x-data="{ busy: false }" @submit="busy = true">
+    <button class="btn btn-primary" :disabled="busy" x-text="busy ? 'Überlegt …' : 'Neue Vorschläge'">Neue Vorschläge</button>
+  </form>
+  {% else %}
+  <a class="btn" href="/einstellungen#llm">LLM einrichten</a>
+  {% endif %}
+</section>
+
+{% if hinweis %}<p class="notice" role="status">{{ hinweis }}</p>{% endif %}
+
+<div class="grid">
+  <section class="s8" aria-labelledby="ideas-h">
+    <h2 id="ideas-h" class="sr-only">Vorschläge</h2>
+    {% if v.ideas %}
+    <div class="idea-list">
+      {% for i in v.ideas %}
+      <article class="panel idea">
+        <div class="idea-head">
+          <h3>{{ i.name }}</h3>
+          <span class="idea-meta">{% if i.thema %}<span class="pill pill-neutral">{{ i.thema }}</span>{% endif %}{% if i.zeit %}<span>{{ i.zeit }}</span>{% endif %}</span>
+        </div>
+        {% if i.warum %}<p class="idea-why">{{ i.warum }}</p>{% endif %}
+        {% if i.kinder_tipp %}<p class="idea-kids"><strong>Für die Kinder:</strong> {{ i.kinder_tipp }}</p>{% endif %}
+        <details class="idea-details">
+          <summary>Zutaten und Zubereitung</summary>
+          <div class="idea-cols">
+            <ul>{% for z in i.zutaten %}<li>{{ z }}</li>{% endfor %}</ul>
+            <ol>{% for s in i.zubereitung %}<li>{{ s }}</li>{% endfor %}</ol>
+          </div>
+        </details>
+        <div class="idea-actions">
+          {% if v.can_write %}
+          <form class="inline" method="post" action="/ideen/{{ i.id }}/uebernehmen" x-data="{ busy: false }" @submit="busy = true">
+            <button class="btn btn-primary btn-sm" :disabled="busy" x-text="busy ? 'Wird angelegt …' : 'Nach Paprika übernehmen'">Nach Paprika übernehmen</button>
+          </form>
+          {% endif %}
+          <form class="inline" method="post" action="/ideen/{{ i.id }}/verwerfen"><button class="btn btn-ghost btn-sm">Nicht interessant</button></form>
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="panel"><div class="empty-frame">{% if v.llm %}Noch keine Vorschläge. „Neue Vorschläge“ fragt das LLM nach Gerichten, die zu euren Kinder-OK-Rezepten und Bewertungen passen.{% else %}Für Vorschläge braucht Tischlein ein LLM. In den Einstellungen Basis-URL, API-Schlüssel und Modell eintragen.{% endif %}</div></div>
+    {% endif %}
+  </section>
+
+  <aside class="s4">
+    <section class="panel" aria-labelledby="focus-h">
+      <div class="panel-head"><h2 id="focus-h">Wo Abwechslung fehlt</h2></div>
+      <div class="supply">
+        {% for s in v.supply %}
+        <div class="supply-row">
+          <span class="name">{{ s.thema }}</span>
+          <span class="ratio num{% if s.kinder_ok >= s.bedarf %} ok{% endif %}"><b>{{ s.kinder_ok }}</b> von {{ s.bedarf }} Kinder-OK</span>
+        </div>
+        {% endfor %}
+      </div>
+      <p class="panel-note">Übernommene Ideen landen mit der Kategorie „Neu“ in Paprika und kommen in den Neu-Slot. Nach dem Essen entscheidet ihr: Gut nimmt sie in die Rotation.</p>
+    </section>
+    {% if v.accepted %}
+    <section class="panel" aria-labelledby="acc-h" style="margin-top: var(--gap)">
+      <div class="panel-head"><h2 id="acc-h">Zuletzt übernommen</h2></div>
+      <ul class="plain-list">{% for i in v.accepted %}<li><a href="/rezepte?rezept={{ i.paprika_uid | urlencode }}">{{ i.name }}</a></li>{% endfor %}</ul>
+    </section>
+    {% endif %}
+  </aside>
+</div>
+{% endblock %}
+{% block scripts %}<script src="/static/vendor/alpine-3.17.5.min.js" defer></script>{% endblock %}

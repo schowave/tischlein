@@ -32,6 +32,7 @@ class Meal:
     theme: str
     is_new: bool = False
     reason: str = ""
+    skipped: bool = False  # a day without lunch (holiday, away, ...)
 
 
 @dataclass
