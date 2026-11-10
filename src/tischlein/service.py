@@ -568,13 +568,13 @@ class Tischlein:
         return uids
 
     def accept_idea(self, idea_id: int) -> Recipe:
-        """Create the idea as a new recipe in Paprika (categories: theme, main dish, new)."""
+        """Create the idea as a new recipe in Paprika (categories: theme, main dish, new, AI)."""
         if self.paprika is None:
             raise PaprikaError("Paprika-Sync ist nicht eingerichtet.")
         idea = self.store.idea(idea_id)
         if idea is None or idea["status"] != "neu":
             raise KeyError("Diesen Vorschlag gibt es nicht mehr.")
-        names = [n for n in (idea.get("thema"), self.config.main_tag, self.config.new_tag) if n]
+        names = [n for n in (idea.get("thema"), self.config.main_tag, self.config.new_tag, self.config.ai_tag) if n]
         uid = str(uuid.uuid4()).upper()
         with self._paprika_lock:
             data = ideas.paprika_recipe(
@@ -634,6 +634,24 @@ class Tischlein:
             text += " Vorbereitung: " + "; ".join(info["vorbereitung"]) + "."
         self._post_webhook({"titel": "Tischlein", "nachricht": text, "morgen": info})
         return True
+
+    def add_shopping_item(self, week_start: date, name: str, amount: str = "", person: str = "") -> int:
+        """Put something on the list by hand and tell Home Assistant (push to the phones)."""
+        item_id = self.store.add_shopping_item(week_start, name, amount)
+        if self.webhook_url:
+            what = f"{name} ({amount})" if amount else name
+            who = person or "Jemand"
+            payload = {
+                "titel": "Einkaufsliste",
+                "nachricht": f"{who} hat {what} auf die Liste gesetzt.",
+                "art": "einkauf",
+                "von": person,
+                "eintrag": name,
+                "menge": amount,
+            }
+            # in the background: the list must not wait for Home Assistant
+            threading.Thread(target=self._post_webhook, args=(payload,), name="ha-webhook", daemon=True).start()
+        return item_id
 
     def _post_webhook(self, payload: dict) -> None:
         req = urllib.request.Request(

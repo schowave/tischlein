@@ -433,6 +433,7 @@ details[open] summary { color: var(--text); }
 .shop-item.is-done .shop-name { text-decoration: line-through; color: var(--muted); }
 .shop-item .btn { grid-row: 1; grid-column: 2; }
 .add-form .btn { justify-self: start; }
+.add-form + .panel-note { margin: 16px 0 0; }
 
 /* ---------- ideas ---------- */
 .idea-list { display: grid; gap: var(--gap); }

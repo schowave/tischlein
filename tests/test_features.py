@@ -134,6 +134,7 @@ def test_ideas_generate_and_accept_into_paprika(svc):
     idea = svc.store.ideas()[0]
     recipe = svc.accept_idea(idea["id"])
     assert recipe.name == "Fisch-Tacos" and "Neu" in recipe.tags and "Hauptspeisen" in recipe.tags
+    assert "KI" in recipe.tags
     created = svc.fake.recipes[recipe.uid]
     assert created["ingredients"] == "400 g Seelachs" and created["hash"]
     assert svc.store.idea(idea["id"])["status"] == "uebernommen"
@@ -177,6 +178,21 @@ def test_ideas_in_background_report_state(svc):
     assert state["laeuft"] and state["gesamt"] == 2
     svc._ideas_thread.join(5)
     assert svc.ideas_status() == {"laeuft": False, "fertig": 2, "gesamt": 2, "ergebnis": 2, "fehler": None}
+
+
+def test_shopping_item_added_by_hand_notifies_home_assistant(svc, monkeypatch):
+    sent = []
+    monkeypatch.setattr(svc, "_post_webhook", sent.append)
+    svc.add_shopping_item(MONDAY, "Kaffee", "500 g", "Julia")
+    assert sent == []  # no webhook configured
+    svc.webhook_url = "http://ha/hook"
+    monkeypatch.setattr(
+        "tischlein.service.threading.Thread",
+        lambda target, args, **kw: type("T", (), {"start": lambda self: target(*args)})(),
+    )
+    svc.add_shopping_item(MONDAY, "Kaffee", "500 g", "Julia")
+    assert sent[0]["nachricht"] == "Julia hat Kaffee (500 g) auf die Liste gesetzt." and sent[0]["art"] == "einkauf"
+    assert len(svc.store.shopping(MONDAY)) == 2
 
 
 def test_day_info_and_reminder(svc, monkeypatch):

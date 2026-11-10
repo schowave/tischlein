@@ -33,6 +33,10 @@
   `/api/heute` und `/api/morgen` (`gericht`, `vorbereitung`, `frei`, `grund`); Automation ruft
   `POST /api/plaene/naechste/erzeugen` auf. Mit `HA_WEBHOOK_URL` meldet Tischlein neue Pläne und
   um `[erinnerung] uhrzeit` „Morgen gibt's …“ samt Vorbereitung (nur freigegebene Pläne, einmal
-  am Tag).
+  am Tag). Trägt jemand von Hand etwas in die Einkaufsliste ein, kommt
+  „<Name> hat Kaffee (500 g) auf die Liste gesetzt.“ mit `art: einkauf`, `von`, `eintrag`, `menge`.
+  Fürs iPhone: Automation mit Webhook-Trigger, Aktion `notify.mobile_app_<gerät>` mit
+  `message: "{{ trigger.json.nachricht }}"` (Companion-App). Wer den Eintrag selbst gemacht hat,
+  lässt sich über `trigger.json.von` ausfiltern.
 - **LLM:** OpenAI-kompatibel (z. B. LiteLLM), in den Einstellungen; Tischlein ruft
   `<Basis-URL>/chat/completions` mit `response_format: json_object`.

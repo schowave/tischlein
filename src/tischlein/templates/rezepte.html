@@ -157,6 +157,6 @@
 <script type="application/json" id="data">{{ v.data | tojson }}</script>
 {% endblock %}
 {% block scripts %}
-<script src="/static/rezepte.js" defer></script>
+<script src="/static/rezepte.js?v={{ version }}" defer></script>
 <script src="/static/vendor/alpine-3.17.5.min.js" defer></script>
 {% endblock %}

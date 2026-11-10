@@ -212,10 +212,10 @@ def create_app(service: Tischlein | None = None, auto_sync: bool | None = None) 
         return service.store.shopping(week(woche))
 
     @app.post("/api/einkauf/{which}/eintrag")
-    def api_shopping_add(which: str, body: ShoppingItem):
+    def api_shopping_add(request: Request, which: str, body: ShoppingItem):
         if not body.name.strip():
             raise HTTPException(400, "Bitte etwas eintragen.")
-        item_id = service.store.add_shopping_item(week(which), body.name.strip(), body.menge.strip())
+        item_id = service.add_shopping_item(week(which), body.name.strip(), body.menge.strip(), person_of(request))
         return {"id": item_id}
 
     @app.post("/api/einkauf/{item_id}/erledigt")

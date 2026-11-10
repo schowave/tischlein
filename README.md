@@ -108,6 +108,7 @@ Import/Export im Paprika-Format exportieren und die Datei auf der Startseite hoc
 |---|---|---|
 | `plan.kinder_tag` | `Kinder-OK` | Kategorie für Gerichte, die die Kinder essen |
 | `plan.neu_tag` | `Neu` | Kategorie für Rezepte zum Ausprobieren |
+| `plan.ki_tag` | `KI` | Kategorie für Rezepte, die aus einer übernommenen KI-Idee stammen |
 | `plan.hauptspeise_tag` | `Hauptspeisen` | Nur solche Gerichte (oder mit Thema) kommen in den Neu-Slot |
 | `plan.neu_slot` | `do` | Wochentag des Neu-Slots, `""` schaltet ihn ab |
 | `plan.cooldown_wochen` | `2` | Mindestabstand, bevor ein Gericht wiederkommt |

@@ -70,7 +70,7 @@
         </div>
         {% endfor %}
       </div>
-      <p class="panel-note">Übernommene Ideen landen mit der Kategorie „Neu“ in Paprika und kommen in den Neu-Slot. Nach dem Essen entscheidet ihr: Gut nimmt sie in die Rotation.</p>
+      <p class="panel-note">Übernommene Ideen landen mit den Kategorien „Neu“ und „KI“ in Paprika und kommen in den Neu-Slot. Nach dem Essen entscheidet ihr: Gut nimmt sie in die Rotation.</p>
     </section>
     {% if v.accepted %}
     <section class="panel" aria-labelledby="acc-h" style="margin-top: var(--gap)">
@@ -82,4 +82,4 @@
 </div>
 </div>
 {% endblock %}
-{% block scripts %}<script src="/static/ideen.js"></script><script src="/static/vendor/alpine-3.17.5.min.js" defer></script>{% endblock %}
+{% block scripts %}<script src="/static/ideen.js?v={{ version }}"></script><script src="/static/vendor/alpine-3.17.5.min.js" defer></script>{% endblock %}
