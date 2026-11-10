@@ -110,6 +110,7 @@ Import/Export im Paprika-Format exportieren und die Datei auf der Startseite hoc
 | `plan.neu_tag` | `Neu` | Kategorie für Rezepte zum Ausprobieren |
 | `plan.ki_tag` | `KI` | Kategorie für Rezepte, die aus einer übernommenen KI-Idee stammen |
 | `plan.hauptspeise_tag` | `Hauptspeisen` | Nur solche Gerichte (oder mit Thema) kommen in den Neu-Slot |
+| `plan.portionen` | `4` | So viele Portionen plant Tischlein pro Gericht; die Einkaufsliste rechnet die Rezepte darauf um, pro Tag änderbar |
 | `plan.neu_slot` | `do` | Wochentag des Neu-Slots, `""` schaltet ihn ab |
 | `plan.cooldown_wochen` | `2` | Mindestabstand, bevor ein Gericht wiederkommt |
 | `plan.weitere_themen` | `["Fleisch"]` | Themen ohne eigenen Tag, für die Rezeptverwaltung |

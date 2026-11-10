@@ -155,7 +155,7 @@ form.inline { display: inline; margin: 0; }
 /* ---------- the week ---------- */
 .days { display: grid; gap: 8px; }
 .day {
-  display: grid; grid-template-columns: 156px minmax(0, 1fr) auto auto; align-items: center; gap: 16px;
+  display: grid; grid-template-columns: 112px minmax(0, 1fr) auto auto; align-items: center; gap: 14px;
   min-height: 63px; padding: 10px 12px 10px 16px; background: var(--raised); border: 1px solid var(--border);
   border-radius: var(--radius-row);
 }
@@ -167,7 +167,7 @@ form.inline { display: inline; margin: 0; }
 .dish-row > div { min-width: 0; }
 .dish-row .thumb { width: 44px; height: 44px; flex: none; }
 .day.is-today { border-color: var(--accent); }
-.day-dish strong { display: block; font-size: 16px; line-height: 22px; font-weight: 500; overflow-wrap: anywhere; }
+.day-dish strong { display: block; font-size: 16px; line-height: 22px; font-weight: 500; overflow-wrap: break-word; hyphens: auto; }
 .day-dish span { display: block; color: var(--muted); font-size: 12px; line-height: 16px; margin-top: 2px; }
 .day-dish .empty { color: var(--faint); font-weight: 400; font-size: 14px; }
 .day-status { min-width: 104px; display: flex; justify-content: flex-end; }
@@ -175,7 +175,17 @@ form.inline { display: inline; margin: 0; }
 .day-status .not:hover { color: var(--accent); text-decoration: underline; }
 .dish-link { text-decoration: underline; text-decoration-color: transparent; text-underline-offset: 3px; text-decoration-thickness: 1px; transition: text-decoration-color var(--t); }
 .dish-link:hover, .dish-link:focus-visible { text-decoration-color: currentColor; }
-.day-act { min-width: 84px; display: flex; justify-content: flex-end; }
+.day-act { min-width: 84px; display: flex; justify-content: flex-end; align-items: center; gap: 4px; }
+.portions { display: inline-flex; align-items: center; gap: 2px; margin-right: 6px; height: 32px; padding: 0 2px; border-radius: 999px; background: var(--surface); }
+.portions form { margin: 0; display: inline; }
+.portions .step { width: 28px; height: 28px; border: 0; border-radius: 50%; background: transparent; cursor: pointer; font-size: 16px; line-height: 1; color: var(--text); transition: background var(--t); }
+.portions .step:hover { background: var(--active); }
+.portions .step[disabled] { color: var(--faint); cursor: not-allowed; }
+.portions .num { min-width: 52px; text-align: center; font-size: 13px; }
+.portions small { font-size: 12px; color: var(--muted); }
+.portions.is-custom { background: var(--accent-soft); }
+.day-dish .scale-note { color: var(--muted); }
+.portions.is-custom .num { color: var(--accent-ink); font-weight: 600; }
 .day-feedback { grid-column: 2 / -1; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; color: var(--muted); font-size: 12px; }
 .day.is-free { background: var(--surface); border-style: dashed; }
 .free-menu { position: relative; }

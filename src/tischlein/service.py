@@ -436,14 +436,42 @@ class Tischlein:
 
     # Shopping list -------------------------------------------------------------
 
-    def _week_recipes(self, week_start: date) -> list[dict]:
+    def _planned(self, week_start: date) -> list[tuple]:
+        """(meal, raw recipe, its own portions, planned portions, changed?) per cooked day of the week."""
         plan = self.store.plan(week_start)
+        chosen = self.store.servings(week_start, week_start + timedelta(days=6))
         out = []
         for m in plan.meals if plan else []:
-            entry = self.store.raw_recipe(m.recipe_uid) if m.recipe_uid and not m.skipped else None
-            if entry:
-                out.append({"name": m.name, "ingredients": entry[1].get("ingredients", "")})
+            if not m.recipe_uid or m.skipped:
+                continue
+            entry = self.store.raw_recipe(m.recipe_uid)
+            raw = entry[1] if entry else {}
+            base = shopping.base_servings(raw.get("servings")) or self.config.portions  # unknown: as written
+            n = chosen.get((m.day, m.recipe_uid), self.config.portions)
+            out.append((m, raw, base, n, (m.day, m.recipe_uid) in chosen))
         return out
+
+    def week_servings(self, week_start: date) -> dict[date, dict]:
+        """Per cooked day: the recipe's own portions, the planned ones (the family's by default)
+        and whether they were changed for that day."""
+        return {m.day: {"base": b, "servings": n, "custom": c} for m, _, b, n, c in self._planned(week_start)}
+
+    def set_servings(self, day: date, servings: int) -> int:
+        """Portions for the dish cooked on `day` (1-30). Returns what is now planned."""
+        plan = self.store.plan(week_start_of(day))
+        meal = next((m for m in plan.meals if m.day == day and m.recipe_uid and not m.skipped), None) if plan else None
+        if meal is None:
+            raise KeyError(f"Am {day:%d.%m.} ist kein Gericht geplant.")
+        servings = max(1, min(30, servings))
+        self.store.set_servings(day, meal.recipe_uid, None if servings == self.config.portions else servings)
+        return servings
+
+    def _week_recipes(self, week_start: date) -> list[dict]:
+        return [
+            {"name": m.name, "ingredients": raw.get("ingredients", ""), "factor": n / base}
+            for m, raw, base, n, _ in self._planned(week_start)
+            if raw
+        ]
 
     def generate_shopping(self, week_start: date) -> str:
         """Build the week's list. Returns how: "llm", "einfach" or "einfach (LLM-Fehler: ...)"."""
@@ -461,7 +489,7 @@ class Tischlein:
             except LLMError as e:
                 how = f"einfach (LLM-Fehler: {e})"
         if not result:
-            result = shopping.fallback_list(items)
+            result = shopping.merge(items)
         self.store.replace_generated_shopping(week_start, result)
         return how
 

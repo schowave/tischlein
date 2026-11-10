@@ -92,8 +92,30 @@ def test_llm_settings_are_tested_before_saving(svc):
 def test_shopping_list_with_and_without_llm(svc):
     svc.generate(MONDAY)
     assert svc.generate_shopping(MONDAY) == "einfach"
-    names = [i["name"] for i in svc.store.shopping(MONDAY)]
-    assert "1 Zwiebel" in names and "Salz" not in names and "2 EL Öl" not in names
+    rows = {i["name"]: i for i in svc.store.shopping(MONDAY)}
+    assert "Salz" not in rows and "Öl" not in rows
+    assert rows["Zwiebel"]["amount"] == "2" and set(rows["Zwiebel"]["recipes"].split(", ")) == {"Bowl", "Püree"}
+    assert rows["Hähnchen"]["group"] == "Fleisch & Fisch" and rows["Hähnchen"]["amount"] == "400 g"
+
+    bowl_day = next(m.day for m in svc.store.plan(MONDAY).meals if m.name == "Bowl")
+    assert svc.week_servings(MONDAY)[bowl_day] == {"base": 4, "servings": 4, "custom": False}
+    assert svc.set_servings(bowl_day, 6) == 6  # the Bowl for six instead of four
+    svc.generate_shopping(MONDAY)
+    rows = {i["name"]: i for i in svc.store.shopping(MONDAY)}
+    assert rows["Hähnchen"]["amount"] == "600 g" and rows["Zwiebel"]["amount"] == "2½"
+    svc.set_servings(bowl_day, 7)
+    svc.generate(MONDAY)  # re-rolled: an override whose dish moved or left the day is dropped
+    kept = svc.store.servings(MONDAY, MONDAY + timedelta(days=6))
+    assert all(any(m.day == d and m.recipe_uid == u for m in svc.store.plan(MONDAY).meals) for d, u in kept)
+    bowl_day = next(m.day for m in svc.store.plan(MONDAY).meals if m.name == "Bowl")
+    svc.set_servings(bowl_day, 4)  # back to the family's portions removes the override
+    assert svc.store.servings(MONDAY, MONDAY + timedelta(days=6)) == {}
+
+    svc.fake.recipes["R1"].update(servings="2 Portion/en", hash="zwei")  # a recipe written for two
+    svc.sync_paprika()
+    assert svc.week_servings(MONDAY)[bowl_day] == {"base": 2, "servings": 4, "custom": False}
+    svc.generate_shopping(MONDAY)
+    assert {i["name"]: i for i in svc.store.shopping(MONDAY)}["Hähnchen"]["amount"] == "800 g"  # doubled for four
 
     svc.store.set_meta("llm_base_url", "u")
     svc.store.set_meta("llm_api_key", "k")
@@ -103,7 +125,7 @@ def test_shopping_list_with_and_without_llm(svc):
     )
     svc._llm_transport = fake
     assert svc.generate_shopping(MONDAY) == "llm"
-    assert "1 Zwiebel  (für: Bowl)" in fake.calls[0]["messages"][1]["content"]
+    assert "800 g Hähnchen  (für: Bowl)" in fake.calls[0]["messages"][1]["content"]  # scaled lines go to the LLM
     assert [(i["name"], i["amount"]) for i in svc.store.shopping(MONDAY)] == [("Zwiebeln", "2")]
 
     svc._llm_transport = FakeLLM([500])

@@ -119,6 +119,7 @@ def week_view(svc: Tischlein, which: str | None, today: date) -> dict:
     shown, start = plans[which], starts[which]
 
     by_day = {m.day: m for m in shown.meals} if shown else {}
+    portions = svc.week_servings(start)
     skip = svc.skip_map(start)
     ratings = {(r["uid"], r["day"]): r for r in svc.store.ratings()}
     days = []
@@ -143,6 +144,7 @@ def week_view(svc: Tischlein, which: str | None, today: date) -> dict:
                 "can_rate": bool(meal and meal.recipe_uid and not meal.skipped and d <= today),
                 "rating": ratings.get((meal.recipe_uid, d)) if meal and meal.recipe_uid else None,
                 "has_photo": bool(meal and meal.recipe_uid and meal.recipe_uid in svc_photos(svc)),
+                "portions": portions.get(d),
             }
         )
     planned = sum(1 for x in days if x["meal"] and x["meal"].recipe_uid)

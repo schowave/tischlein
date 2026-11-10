@@ -55,7 +55,7 @@
           </label>
           <span class="shop-meta">
             <span x-show="done && by" x-text="'abgehakt von ' + by"></span>
-            {% if i.recipes and not i.manual %}<span x-show="!done">{{ i.recipes }}</span>{% endif %}
+            {% if i.recipes and not i.manual %}<span x-show="!done">für {{ i.recipes }}</span>{% endif %}
           </span>
           {% if i.manual %}<button type="button" class="btn btn-ghost btn-sm" @click="remove({{ i.id }}, $el.closest('li'))" aria-label="{{ i.name }} löschen">Löschen</button>{% endif %}
         </li>

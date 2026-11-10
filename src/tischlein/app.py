@@ -170,6 +170,16 @@ def create_app(service: Tischlein | None = None, auto_sync: bool | None = None) 
         service.set_day_free(day, grund)
         return back(woche)
 
+    @app.post("/tage/{day}/portionen")
+    def ui_day_servings(day: date, portionen: int = Form(...), woche: str | None = Form(None)):
+        try:
+            service.set_servings(day, portionen)
+        except KeyError as e:
+            raise HTTPException(404, e.args[0]) from e
+        r = back(woche)
+        r.headers["location"] += f"#tag-{day.isoformat()}"
+        return r
+
     @app.post("/tage/{day}/kochen")
     def ui_day_cook(day: date, woche: str | None = Form(None)):
         service.set_day_cooking(day)

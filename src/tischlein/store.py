@@ -7,7 +7,7 @@ import json
 import sqlite3
 import threading
 from collections.abc import Iterable
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from alembic import command
@@ -149,6 +149,12 @@ class Store:
                     for m in plan.meals
                 ],
             )
+            # portions belong to the dish on that day: a swapped or re-rolled day starts again
+            self.db.execute(
+                "DELETE FROM servings WHERE day BETWEEN ? AND ? AND NOT EXISTS (SELECT 1 FROM meals m WHERE "
+                "m.week_start = ? AND m.day = servings.day AND m.recipe_uid = servings.recipe_uid AND m.skipped = 0)",
+                (ws, (plan.week_start + timedelta(days=6)).isoformat(), ws),
+            )
 
     @_locked
     def plan(self, week_start: date) -> WeekPlan | None:
@@ -222,6 +228,29 @@ class Store:
             "SELECT day, reason FROM skipdays WHERE day BETWEEN ? AND ?", (start.isoformat(), end.isoformat())
         ).fetchall()
         return {date.fromisoformat(d): r for d, r in rows}
+
+    # Portions ----------------------------------------------------------------
+
+    @_locked
+    def set_servings(self, day: date, recipe_uid: str, servings: int | None) -> None:
+        """None removes the override, so the configured family portions apply again."""
+        with self.db:
+            if servings is None:
+                self.db.execute("DELETE FROM servings WHERE day = ? AND recipe_uid = ?", (day.isoformat(), recipe_uid))
+            else:
+                self.db.execute(
+                    "INSERT INTO servings VALUES (?, ?, ?) ON CONFLICT(day, recipe_uid) DO UPDATE SET "
+                    "servings = excluded.servings",
+                    (day.isoformat(), recipe_uid, servings),
+                )
+
+    @_locked
+    def servings(self, start: date, end: date) -> dict[tuple[date, str], int]:
+        rows = self.db.execute(
+            "SELECT day, recipe_uid, servings FROM servings WHERE day BETWEEN ? AND ?",
+            (start.isoformat(), end.isoformat()),
+        ).fetchall()
+        return {(date.fromisoformat(d), u): n for d, u, n in rows}
 
     # Ratings -----------------------------------------------------------------
 

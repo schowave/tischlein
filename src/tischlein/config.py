@@ -31,6 +31,7 @@ class PlanConfig:
     kid_tag: str = "Kinder-OK"
     new_tag: str = "Neu"
     main_tag: str = "Hauptspeisen"
+    portions: int = 4  # portions planned per meal unless changed for one day; recipes are scaled to it
     ai_tag: str = "KI"  # marks recipes created from an LLM idea
     new_slot: int | None = 3
     cooldown_weeks: int = 2
@@ -85,6 +86,7 @@ def parse_config(data: dict) -> PlanConfig:
         kid_tag=plan.get("kinder_tag", default.kid_tag),
         new_tag=plan.get("neu_tag", default.new_tag),
         main_tag=plan.get("hauptspeise_tag", default.main_tag),
+        portions=int(plan.get("portionen", default.portions)),
         ai_tag=plan.get("ki_tag", default.ai_tag),
         new_slot=_weekday(new_slot) if new_slot else None,
         cooldown_weeks=int(plan.get("cooldown_wochen", default.cooldown_weeks)),
