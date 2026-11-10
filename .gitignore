@@ -6,3 +6,4 @@ data/
 .env
 *.paprikarecipes
 .taste-skill/
+data-demo/

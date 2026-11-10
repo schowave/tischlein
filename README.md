@@ -1,17 +1,30 @@
 # Tischlein
 
-Familien-Essensplan fürs Mittagessen. Tischlein plant jede Woche eiweißreiche Gerichte aus euren
-[Paprika](https://www.paprikaapp.com)-Rezepten nach Thementagen. Es achtet darauf, was die Kinder
-essen, schlägt pro Woche ein neues Gericht vor und stellt den freigegebenen Plan als Kalender aufs
-iPhone und in Home Assistant.
+[![CI](https://github.com/schowave/tischlein/actions/workflows/ci.yaml/badge.svg)](https://github.com/schowave/tischlein/actions/workflows/ci.yaml)
+[![Release](https://img.shields.io/github/v/release/schowave/tischlein)](https://github.com/schowave/tischlein/releases)
+[![Image](https://img.shields.io/badge/ghcr.io-schowave%2Ftischlein-blue)](https://github.com/schowave/tischlein/pkgs/container/tischlein)
+
+**Der Mittagsplan für die Familie.** Tischlein plant jede Woche eiweißreiche Gerichte aus euren
+[Paprika](https://www.paprikaapp.com)-Rezepten, achtet darauf, was die Kinder essen, und bringt den
+freigegebenen Plan als Kalender aufs iPhone, die Einkaufsliste in die Hosentasche und den
+Vorbereitungs-Hinweis am Vorabend über Home Assistant.
 
 Das Prinzip ist „Sous-Chef“: Tischlein schlägt vor, die Familie gibt frei.
 
+<p align="center">
+  <img src="docs/bilder/tischlein-iphone.gif" width="300" alt="Tischlein auf dem iPhone: Gericht des Tages mit Foto, Woche mit Portionen, Einkaufsliste nach Gang, Rezepte, Rückblick">
+</p>
+
+![Die Woche am Desktop: heutiges Gericht mit Foto, fünf Tage mit Portionen, Vorrat pro Thema](docs/bilder/tischlein-woche.jpg)
+
+<sub>Bilder mit Demo-Daten (`scripts/demo.py`) und gemeinfreien Fotos, Nachweise unten.</sub>
+
 ## Inhalt
 
-- [Funktionen](#funktionen)
-- [Schnellstart mit Docker](#schnellstart-mit-docker)
+- [Was Tischlein kann](#was-tischlein-kann)
+- [Schnellstart](#schnellstart)
 - [Einrichtung](#einrichtung)
+- [Auf dem iPhone](#auf-dem-iphone)
 - [Konfiguration](#konfiguration)
 - [Bedienung über die Kommandozeile](#bedienung-über-die-kommandozeile)
 - [HTTP-API](#http-api)
@@ -20,50 +33,64 @@ Das Prinzip ist „Sous-Chef“: Tischlein schlägt vor, die Familie gibt frei.
 - [Daten und Sicherungen](#daten-und-sicherungen)
 - [Entwicklung](#entwicklung)
 - [Bekannte Grenzen](#bekannte-grenzen)
+- [Bildnachweise](#bildnachweise)
 
-## Funktionen
+## Was Tischlein kann
 
-- **Wochenplan nach Thementagen**, z. B. Mo Hähnchen, Di Hülsenfrüchte, Mi Fisch, Do Eier/Quark,
-  Fr Pasta/Reis. Auf jeden Thementag kommt ein Rezept mit der passenden Kategorie.
-- **Kinder-OK zuerst:** An normalen Tagen nimmt der Plan nur Gerichte, die die Kinder essen.
-  „Vorrat pro Thema“ zeigt, wo noch welche fehlen.
-- **Rotation statt Wiederholung:** Ein Gericht kommt frühestens nach zwei Wochen wieder.
-  Gut bewertete Rezepte kommen öfter dran.
-- **Neu-Slot:** einmal pro Woche ein Rezept mit der Kategorie „Neu“, nur Hauptspeisen. Nach dem
-  Essen entscheidet die Familie: „Hat geschmeckt“ nimmt es in die Rotation, „Nie wieder“ wirft es
-  raus.
-- **Freigabe:** Einzelne Tage tauschen, die ganze Woche neu würfeln, freigeben. Nur freigegebene
-  Wochen landen im Kalender.
-- **Rezeptverwaltung** mit Foto, Zutaten und Kinder-OK-Schalter. Kategorien lassen sich direkt
-  setzen, Rezepte in den Papierkorb legen. Alles wird sofort nach Paprika zurückgeschrieben.
-- **Kalender-Abo** für iPhone und Mac über einen geheimen Link, dazu **Home Assistant**
-  (Sensor „Mittagessen heute“, Plan per Automation).
-- **Freie Tage:** Feiertage (bundesweit und pro Bundesland) automatisch, dazu Urlaub, Kita oder
-  Auswärtsessen pro Tag.
+**Planen**
+- **Thementage**, z. B. Mo Hähnchen, Di Hülsenfrüchte, Mi Fisch, Do Eier/Quark, Fr Pasta/Reis.
+  Auf jeden Tag kommt ein Rezept mit der passenden Paprika-Kategorie.
+- **Kinder-OK zuerst:** An normalen Tagen nur Gerichte, die die Kinder essen. „Vorrat pro Thema“
+  zeigt, wo noch welche fehlen.
+- **Rotation statt Wiederholung:** Ein Gericht kommt frühestens nach zwei Wochen wieder, gut
+  bewertete öfter.
+- **Neu-Slot:** einmal pro Woche ein Rezept mit der Kategorie „Neu“. Nach dem Essen entscheidet
+  ihr: „Gut“ nimmt es in die Rotation, „Nie wieder“ wirft es raus.
+- **Freigabe:** Tage tauschen, die Woche neu würfeln, freigeben. Nur freigegebene Wochen landen
+  im Kalender. Feiertage (bundesweit und pro Bundesland), Urlaub oder Kita markieren Tage als frei.
+- **Portionen pro Gericht:** Standard ist eure Familiengröße; mit − und + pro Tag änderbar.
+  Rezepte werden umgerechnet („Rezept für 2, Mengen für 4“).
+
+**Kochen und einkaufen**
+- **Heute auf einen Blick:** das Gericht mit Foto, Kochzeit und was ihr für morgen vorbereiten
+  müsst (TK auftauen, Hülsenfrüchte einweichen …).
+- **Einkaufsliste nach Zutaten:** gleiche Zutaten aus allen Rezepten zusammengeführt, Mengen
+  addiert und auf die Portionen umgerechnet, sortiert nach Gang im Laden, darunter für welche
+  Gerichte. Vorräte wie Salz und Öl bleiben weg. Mit LLM noch genauer, ohne LLM per Regeln.
+- **Gemeinsam abhaken:** eigene Einträge dazuschreiben, alles abhaken, Abgehaktes entfernen.
+  Neue Einträge melden sich über Home Assistant auf dem Handy der anderen.
 - **Bewertung nach jedem Essen:** gut, ging so, nie wieder. Lieblingsgerichte kommen öfter.
-- **Einkaufsliste:** aus dem Wochenplan, ohne Vorräte, mit LLM zusammengefasst und nach Gang
-  sortiert, zum Abhaken am Handy.
-- **Ideen:** neue Gerichte vom LLM, passend zu dem, was ihr mögt; per Klick nach Paprika.
-- **Vorbereitung:** „Morgen gibt's Lachs, Tiefkühlware in den Kühlschrank“ am Vorabend über Home
-  Assistant.
-- **Rückblick:** was gekocht wurde, Themen, Bewertungen, Lieblinge, die lange nicht dran waren.
-- **Einstellungen im Browser:** Paprika-Konto, LLM (OpenAI-kompatibel, z. B. LiteLLM), Kalender,
-  Namen der angemeldeten Personen.
 
-## Schnellstart mit Docker
+**Entdecken und zurückblicken**
+- **Ideen:** neue Gerichte vom LLM, passend zu dem, was ihr mögt, mit Fortschrittsanzeige; per
+  Klick als „Neu“ und „KI“ nach Paprika.
+- **Rückblick:** was gekocht wurde, Themen, Bewertungen, Lieblinge, die lange nicht dran waren.
+- **Rezeptverwaltung** mit Foto, Zutaten und Kinder-OK-Schalter; Kategorien und Papierkorb werden
+  sofort nach Paprika zurückgeschrieben.
+
+**Verbinden**
+- **Kalender-Abo** für iPhone und Mac über einen geheimen Link.
+- **Home Assistant:** Sensor „Mittagessen heute“, Plan per Automation, Meldungen per Webhook.
+- **Paprika** über die Cloud-Synchronisation, alternativ per Export-Datei.
+
+## Schnellstart
 
 Voraussetzungen: [mise](https://mise.jdx.dev), Docker mit Compose und ein Paprika-Konto mit
 aktivierter Cloud-Synchronisation.
 
 ```bash
-git clone git@github.com:schowave/tischlein.git
+git clone https://github.com/schowave/tischlein.git
 cd tischlein
 mise trust && mise run docker:build
 mkdir -p data && sudo chown 10001 data   # der Container läuft als UID 10001
 docker compose up -d
 ```
 
-Danach `http://<host>:8080` öffnen. Die Daten liegen im Ordner `./data`.
+Danach `http://<host>:8080` öffnen und unter **Einstellungen** das Paprika-Konto eintragen. Die
+Daten liegen im Ordner `./data`.
+
+Nur ansehen, ohne Paprika: `uv run --frozen python scripts/demo.py data-demo` und
+`TISCHLEIN_DB=data-demo/tischlein.db uv run --frozen tischlein serve` (siehe [Entwicklung](#entwicklung)).
 
 ## Einrichtung
 
@@ -100,6 +127,18 @@ Danach `http://<host>:8080` öffnen. Die Daten liegen im Ordner `./data`.
 Ohne Paprika-Konto lassen sich Rezepte auch per Export einlesen: in Paprika unter Einstellungen →
 Import/Export im Paprika-Format exportieren und die Datei auf der Startseite hochladen.
 
+## Auf dem iPhone
+
+- **Als App auf den Home-Bildschirm:** in Safari „Teilen → Zum Home-Bildschirm“. Tischlein bekommt
+  ein eigenes Symbol und unten eine Leiste mit Woche, Einkauf, Rezepten, Ideen und Rückblick.
+- **Updates:** Jede Seite kommt frisch vom Server, CSS und JavaScript tragen die Version im Link.
+  Nach einem Release ist die neue Fassung beim nächsten Öffnen da; hängt die App noch im
+  Speicher, einmal in der App-Übersicht schließen.
+- **Benachrichtigungen:** über die Home-Assistant-App, siehe `HA_WEBHOOK_URL` und
+  [`docs/betrieb.md`](docs/betrieb.md).
+- Von außen nur über Cloudflare Access erreichbar (siehe unten); die Anmeldung läuft einmal im
+  Browser.
+
 ## Konfiguration
 
 ### `tischlein.toml`
@@ -130,7 +169,7 @@ Kalendername, Uhrzeit und Dauer stellt ihr unter **Einstellungen** ein.
 | `TISCHLEIN_CONFIG` | `tischlein.toml` | Pfad zur Konfiguration |
 | `PAPRIKA_EMAIL`, `PAPRIKA_PASSWORD` | – | Alternative zu den Einstellungen; ein dort eingetragenes Konto hat Vorrang |
 | `PAPRIKA_USER_AGENT` | `Tischlein/0.1` | Kennung gegenüber Paprika |
-| `HA_WEBHOOK_URL` | – | Wird nach jedem automatisch erzeugten Plan aufgerufen |
+| `HA_WEBHOOK_URL` | – | Meldungen an Home Assistant: neuer Plan, Vorabend, Einträge auf der Einkaufsliste |
 
 Für Docker gehören sie in eine `.env`-Datei, Vorlage: [`.env.example`](.env.example). Die `.env`
 wird nie eingecheckt.
@@ -154,6 +193,9 @@ uv run tischlein serve [--port 8080]                    # Web-Oberfläche und AP
 |---|---|---|
 | `GET` | `/api/heute`, `/api/morgen` | Gericht, Vorbereitung, freier Tag, für Home Assistant |
 | `GET` | `/api/einkauf?woche=…` | Einkaufsliste der Woche |
+| `POST` | `/api/einkauf/{woche}/eintrag` | `{"name": "Kaffee", "menge": "500 g"}`, meldet sich bei Home Assistant |
+| `POST` | `/api/einkauf/{woche}/alle-erledigt`, `…/erledigte-entfernen` | Alles abhaken, Abgehakte entfernen |
+| `POST` | `/api/ideen/start`, `GET /api/ideen/status` | Rezeptideen im Hintergrund erzeugen, Fortschritt |
 | `GET` | `/api/plan?woche=aktuell\|naechste\|JJJJ-MM-TT` | Wochenplan als JSON |
 | `POST` | `/api/plaene/{woche}/erzeugen` | Paprika abgleichen und einen Entwurf erzeugen |
 | `POST` | `/api/sync` | Nur abgleichen |
@@ -224,11 +266,18 @@ kommen strikt aus `uv.lock`. CI und Docker-Build nutzen dieselben Tasks, ein gr�
 `mise run check` lokal ist also ein grünes CI.
 
 ```bash
-mise trust && mise run setup   # Werkzeuge und Abhängigkeiten
+mise trust && mise run setup   # Werkzeuge, Abhängigkeiten, Pre-commit-Hook
 mise run check                 # ruff und Tests, wie im CI
-mise run serve                 # lokal auf :8080, liest .env falls vorhanden
+mise run serve                 # lokal auf :8080, liest .env falls vorhanden, lädt bei Änderungen neu
 mise run docker:build          # Image bauen
 mise tasks                     # alle Tasks
+```
+
+**Demo-Daten** für Screenshots und das GIF oben, ganz ohne Paprika und LLM:
+
+```bash
+uv run --frozen python scripts/demo.py data-demo --fotos <ordner-mit-jpg>
+TISCHLEIN_DB=data-demo/tischlein.db uv run --frozen tischlein serve --port 8091
 ```
 
 Versionen aktualisieren: Version in `mise.toml` anheben, dann `mise lock --platform
@@ -236,9 +285,9 @@ linux-x64,linux-arm64,macos-arm64` für die Werkzeuge und `mise exec -- uv lock 
 Python-Abhängigkeiten.
 
 Domänensprache, Planungsregeln und Aufbau: [`CLAUDE.md`](CLAUDE.md). Paprika-Schnittstelle:
-[`docs/paprika-api.md`](docs/paprika-api.md), Betrieb: [`docs/betrieb.md`](docs/betrieb.md), Review-Regeln:
-[`CODING_STANDARDS.md`](CODING_STANDARDS.md). Neue Planungsregeln kommen immer zuerst als Test in
-`tests/test_planner.py`.
+[`docs/paprika-api.md`](docs/paprika-api.md), Betrieb: [`docs/betrieb.md`](docs/betrieb.md), offene
+Punkte: [`docs/offen.md`](docs/offen.md), Review-Regeln: [`CODING_STANDARDS.md`](CODING_STANDARDS.md).
+Neue Planungsregeln kommen immer zuerst als Test in `tests/test_planner.py`.
 
 ## Bekannte Grenzen
 
@@ -248,3 +297,17 @@ Domänensprache, Planungsregeln und Aufbau: [`CLAUDE.md`](CLAUDE.md). Paprika-Sc
 - Die Paprika-Server sperren IPs bei zu vielen Anfragen. Tischlein lädt deshalb nur geänderte
   Rezepte und macht Pausen zwischen den Abrufen.
 - Freigegebene Pläne werden noch nicht in den Meal Planner von Paprika geschrieben.
+
+## Bildnachweise
+
+Die Fotos im GIF und im Screenshot zeigen Demo-Rezepte, nicht die Gerichte einer echten Familie.
+Alle stehen unter [CC0](https://creativecommons.org/publicdomain/zero/1.0/) und kommen von Wikimedia
+Commons bzw. dem WordPress Photo Directory:
+[Chicken curry Trivandrum](https://commons.wikimedia.org/wiki/File:Chicken_curry_Trivandrum.jpg) (Abhilashsnair),
+[Red lentil dal](https://wordpress.org/photos/photo/3046841291/) (Suraj Sutar),
+[Fish and Chips Bath](https://commons.wikimedia.org/wiki/File:Fish_and_Chips_Bath,_UK.jpg) (Gvjekoslav),
+[Kaiserschmarrn, Munich](https://commons.wikimedia.org/wiki/File:Kaiserschmarrn,_Munich.jpg) (Gerda Arendt),
+[Spaghetti Bolognese](https://commons.wikimedia.org/wiki/File:Spaghetti_Bolognese_-_Figaros,_Brighton_2023-10-06.jpg) (Andy Li),
+[Pumpkin soup](https://commons.wikimedia.org/wiki/File:Pumpkin_soup_in_dish_with_spoon.jpg) (o.tacke),
+[Risotto de gambas](https://commons.wikimedia.org/wiki/File:Risotto_de_gambas,_restaurant_Danieli_(Vienne,_Autriche).jpg) (Benoît Prieur),
+[Chili con carne](https://commons.wikimedia.org/wiki/File:Chili_con_carne_50_A.jpg) (René Hourdry).
