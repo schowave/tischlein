@@ -432,6 +432,7 @@ details[open] summary { color: var(--text); }
   .day-status { grid-column: 2; grid-row: 2; min-width: 0; }
   .day-act { grid-column: 1 / -1; justify-content: flex-start; min-width: 0; }
   .day-act .btn { margin-left: -12px; }
+  .free-options { left: -12px; right: auto; max-width: calc(100vw - 48px); }
   .day-feedback { grid-column: 1 / -1; }
   .chips.scroll { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; }
   .search { max-width: none; flex-basis: 100%; }
