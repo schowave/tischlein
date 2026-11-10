@@ -81,6 +81,8 @@ class Tischlein:
         self._state_lock = threading.Lock()
         self._sync_state = {"laeuft": False, "phase": "", "fertig": 0, "gesamt": 0, "ergebnis": None, "fehler": None}
         self._sync_thread: threading.Thread | None = None
+        self._ideas_state = {"laeuft": False, "fertig": 0, "gesamt": 0, "ergebnis": None, "fehler": None}
+        self._ideas_thread: threading.Thread | None = None
         self._counters_after_sync: str | None = None
         self._auto_thread: threading.Thread | None = None
         self._auto_stop = threading.Event()
@@ -465,7 +467,13 @@ class Tischlein:
 
     # Ideas ---------------------------------------------------------------------
 
-    def generate_ideas(self, count: int = 6) -> int:
+    def generate_ideas(self, count: int = 6, progress=None) -> int:
+        """Ask the LLM for `count` ideas, one dish per request.
+
+        Single-dish answers are short (a long list tends to come back cut off and is then no valid
+        JSON), each idea is stored as soon as it arrives, and `progress(done, total)` can report
+        real progress. A failed request is skipped; only when none succeeds is the error raised.
+        """
         client = self.llm()
         if client is None:
             raise LLMError("Kein LLM eingerichtet. In den Einstellungen Basis-URL, Schlüssel und Modell eintragen.")
@@ -478,18 +486,74 @@ class Tischlein:
         liked = [r.name for r in recipes if r.has_tag(self.config.kid_tag) or verdicts.get(r.uid) == "gut"]
         disliked = [by_uid[u].name for u, v in verdicts.items() if v == "schlecht" and u in by_uid]
         disliked += [by_uid[u].name for u, v in feedback.items() if v == "nein" and u in by_uid]
-        prompt = ideas.build_prompt(
-            liked,
-            sorted(set(disliked)),
-            [r.name for r in recipes],
-            self.theme_supply(),
-            list(self.config.themes),
-            count,
-            date.today(),
+        themes = list(self.config.themes)
+        supply = self.theme_supply()
+        focus = ideas.focus_themes(supply, themes)
+        open_ideas = [i["name"] for i in self.store.ideas("neu")]
+        suggested: list[str] = []
+        error: LLMError | None = None
+        if progress:
+            progress(0, count)
+        for n in range(count):
+            prompt = ideas.build_prompt(
+                liked,
+                sorted(set(disliked)),
+                [r.name for r in recipes],
+                supply,
+                themes,
+                1,
+                date.today(),
+                theme=focus[n % len(focus)] if focus else None,
+                suggested=open_ideas + suggested,
+            )
+            try:
+                found = ideas.parse_ideas(client.chat_json(ideas.SYSTEM, prompt, temperature=0.8), themes)[:1]
+            except LLMError as e:
+                error = e
+                found = []
+            self.store.add_ideas(found)
+            suggested += [i["name"] for i in found]
+            if progress:
+                progress(n + 1, count)
+        if not suggested and error is not None:
+            raise error
+        return len(suggested)
+
+    def ideas_status(self) -> dict:
+        with self._state_lock:
+            return dict(self._ideas_state)
+
+    def start_ideas(self, count: int = 6) -> dict:
+        """Generate ideas in a background thread (several LLM calls take a minute) and return the state."""
+        if self.llm() is None:
+            raise LLMError("Kein LLM eingerichtet. In den Einstellungen Basis-URL, Schlüssel und Modell eintragen.")
+        with self._state_lock:
+            if self._ideas_state["laeuft"]:
+                return dict(self._ideas_state)
+            self._ideas_state = {"laeuft": True, "fertig": 0, "gesamt": count, "ergebnis": None, "fehler": None}
+            state = dict(self._ideas_state)
+        self._ideas_thread = threading.Thread(
+            target=self._run_background_ideas, args=(count,), name="llm-ideas", daemon=True
         )
-        found = ideas.parse_ideas(client.chat_json(ideas.SYSTEM, prompt, temperature=0.8), list(self.config.themes))
-        self.store.add_ideas(found)
-        return len(found)
+        self._ideas_thread.start()
+        return state
+
+    def _run_background_ideas(self, count: int) -> None:
+        def progress(done: int, total: int) -> None:
+            with self._state_lock:
+                self._ideas_state.update(fertig=done, gesamt=total)
+
+        result: dict = {}
+        try:
+            result["ergebnis"] = self.generate_ideas(count, progress=progress)
+        except LLMError as e:
+            result["fehler"] = str(e)
+        except Exception as e:  # noqa: BLE001 - surface anything in the UI instead of a silent dead thread
+            result["fehler"] = f"Unerwarteter Fehler: {e}"
+            raise
+        finally:
+            with self._state_lock:
+                self._ideas_state.update(laeuft=False, **result)
 
     def _ensure_categories(self, names: list[str]) -> list[str]:
         cats = [c for c in self.paprika.categories_raw() if not c.get("deleted")]

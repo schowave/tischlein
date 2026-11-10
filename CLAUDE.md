@@ -7,27 +7,14 @@ Plan als Kalender-Abo (ICS), als JSON für Home Assistant und als kleine Web-Obe
 Prinzip „Sous-Chef“: Tischlein schlägt vor, die Familie gibt frei. Nur freigegebene Pläne
 landen im Kalender.
 
-## Befehle
+## Wo was steht
 
-Werkzeuge (Python, uv, ruff) und Abläufe verwaltet mise (`mise.toml`, `mise.lock`), CI und
-Docker-Build nutzen dieselben Tasks. Befehle immer über mise ausführen.
-
-```bash
-mise run setup                                   # frischer Klon -> lauffähig
-mise run check                                   # ruff + Tests, wie im CI
-mise run serve                                   # Web + API auf :8080 (liest .env)
-mise run docker:build                            # Image bauen (mise auch im Image)
-uv run tischlein sync                            # Rezepte aus der Paprika-Cloud abgleichen
-uv run tischlein import Rezepte.paprikarecipes   # alternativ: Paprika-Export einlesen
-uv run tischlein plan --woche naechste           # Plan erzeugen (Entwurf)
-uv run tischlein serve                           # Web + API auf :8080
-docker compose up -d                             # Container aus mise run docker:build, Daten in ./data
-```
-
-Konfiguration: `tischlein.toml` (Wochenschema, Tags, Cooldown). Pfad über `TISCHLEIN_CONFIG`,
-Datenbank über `TISCHLEIN_DB` (Default `data/tischlein.db`). Paprika-Zugang am besten über die
-Seite **Einstellungen** (liegt in der Tabelle `meta`, gewinnt gegen die Umgebung); alternativ
-`PAPRIKA_EMAIL`, `PAPRIKA_PASSWORD` (optional `PAPRIKA_USER_AGENT`) in `.env`, nie im Repo.
+- Abläufe (setup, check, serve, Docker, Migrationen): `mise tasks`. Werkzeuge und Versionen
+  verwaltet mise; immer über mise ausführen. Konfiguration und Umgebungsvariablen: README.
+- Bevor du Paprika-Aufrufe änderst oder neue brauchst: `docs/paprika-api.md`.
+- Bei Release, LXC, Cloudflare, Kalender, Home Assistant oder LLM-Anbindung: `docs/betrieb.md`.
+- Bevor du ein neues Feature planst: `docs/offen.md`.
+- Regeln fürs Review: `CODING_STANDARDS.md`.
 
 ## Domänensprache
 
@@ -78,9 +65,9 @@ src/tischlein/
   service.py   Anwendungsfälle für Web und CLI, from_env() baut alles aus Umgebungsvariablen;
                Einstellungen (Paprika-Login, Kalender), Tags schreiben, Bild-Cache
   tagging.py   Kategorie-Differenzen nach Paprika schreiben (CSV-Befehl und Oberfläche)
-  views.py     View-Modelle für die Templates (Woche, Rezepte, Einstellungen)
-  templates/   base, woche, rezepte, einstellungen (Jinja, serverseitig gerendert)
-  static/      tischlein.css; rezepte.js = Alpine-Komponente der Rezepte-Seite (Markup im Template);
+  views.py     View-Modelle für die Templates
+  templates/   eine Seite pro Bereich (Jinja, serverseitig gerendert)
+  static/      tischlein.css; rezepte.js, ideen.js = Alpine-Komponenten (Markup im Template);
                vendor/alpine-<version>.min.js, nur über `mise run vendor:alpine` aktualisieren
   planner.py   reine Funktion plan_week(...) – deterministisch über übergebenen Random
   store.py     SQLite (stdlib sqlite3), einzige Stelle mit SQL
@@ -92,74 +79,10 @@ src/tischlein/
   llm.py       Client für OpenAI-kompatible Chat-API (z. B. LiteLLM), Transport injizierbar
   migrations/  Alembic-Revisionen; Store._migrate hebt die DB beim Start auf head
   app.py       FastAPI: Web-UI (Jinja), JSON-API, /kalender.ics
-  cli.py       import | plan | serve
+  cli.py       import | sync | plan | tags-anwenden | serve
 ```
 
-Regeln für den Code:
-- Frontend ohne Build-Schritt: Jinja für alles, Alpine.js nur wo Zustand im Browser nötig ist
-  (Rezepte-Seite). Kein CDN; Version und npm-Prüfsumme stehen im Task `vendor:alpine`.
-- `Store` ist threadsicher (eine Sperre um jede Methode), weil der Server parallel anfragt.
-- Schemaänderungen nur als Alembic-Revision (`mise run db:revision -- -m "…"`), SQL im Store bleibt
-  sqlite3. Datenbanken von vor Alembic (≤ 0.2.0) stempelt `_migrate` auf `0001`.
-- LLM-Aufrufe sind optional: ohne LLM einfache Einkaufsliste, keine Ideen. Gesendet werden nur
-  Rezeptnamen, Zutaten und Vorlieben an die konfigurierte URL.
-- `planner.py` und `paprika.py` bleiben frei von Datenbank und HTTP, damit sie direkt testbar sind.
-- Neue Planungsregeln immer zuerst als Test in `tests/test_planner.py`.
-- Bezeichner im Code englisch, Texte in UI, Kalender und Konfiguration deutsch.
-
-## Integrationen
-
-- **Apple-Kalender:** geheimer Abo-Link `https://<host>/kalender/<token>.ics` aus den
-  Einstellungen (Knopf „Auf diesem Gerät abonnieren“ öffnet `webcal://`). Enthält nur freigegebene
-  Pläne; Name, Uhrzeit und Dauer stehen in den Einstellungen. „Neuen geheimen Link erstellen“
-  macht alte Abos ungültig. `/kalender.ics` ohne Token nur im LAN bzw. hinter Access nutzen.
-- **Home Assistant:**
-  - Kalender: Integration „Remote Calendar“ mit derselben ICS-URL.
-  - Sensor: REST-Sensor auf `/api/heute` bzw. `/api/morgen` (Felder `gericht`, `vorbereitung`,
-    `frei`, `grund`).
-  - Vorabend-Meldung: Tischlein schickt um `[erinnerung] uhrzeit` (Standard 18:00) „Morgen gibt's …“
-    samt Vorbereitung an `HA_WEBHOOK_URL`, nur für freigegebene Pläne, einmal pro Tag.
-  - Wöchentlicher Entwurf: HA-Automation ruft `POST /api/plaene/naechste/erzeugen` auf,
-    Tischlein ruft danach optional `HA_WEBHOOK_URL` auf („Mahlzeit: Plan für nächste Woche ist da“).
-- **Paprika:** Primär Sync über die inoffizielle Cloud-API (`paprika_sync.py`):
-  - Login `POST /api/v1/account/login/` (Form + Basic Auth) → Token.
-    v2-Login lehnt Fremd-Clients ab („Unrecognized client“).
-  - Lesen über `/api/v2/sync/...` mit `Bearer <token>`. Geprüft 2026-11: v2 nimmt nur Bearer,
-    v1-Sync nur Basic Auth.
-  - `sync/categories/`, `sync/recipes/` (uid + hash), `sync/recipe/<uid>/`.
-    Rezepte verweisen per UID auf Kategorien.
-  - Nur geänderte Rezepte (Hash) werden geladen, Rohdaten liegen in `paprika_cache`. Paprika
-    sperrt IPs bei zu vielen Anfragen, daher 0,2 s Pause zwischen Abrufen.
-  - `POST /api/plaene/.../erzeugen` synchronisiert vorher; schlägt das fehl, wird mit dem
-    letzten Stand geplant und `sync_fehler` gemeldet.
-  - Fallback: Upload des Exports „Paprika Recipe Format“.
-  - Die API ist undokumentiert und kann sich ändern. Bei Fehlern zuerst gegen
-    github.com/johnwbyrd/kappari (Protokoll-Doku) abgleichen.
-
-## Betrieb
-
-- Release-Kette: GitHub-Release `vX.Y.Z` → `.github/workflows/release.yaml` → `mise run docker:publish`
-  → `ghcr.io/schowave/tischlein:{X.Y.Z,X.Y,latest}`. Die Version steckt im Image
-  (`TISCHLEIN_VERSION`) und steht in `/healthz` und der Seitenleiste.
-- Im LXC (`deploy/lxc/`, eingerichtet mit `install.sh`): `/opt/tischlein/compose.yaml`,
-  `tischlein-update.timer` alle 5 Minuten → `tischlein-update.sh` zieht `latest`, startet nur bei
-  neuem Image neu, prüft `/healthz` auf die neue Version und rollt sonst zurück. Pull statt Push:
-  kein offener Port, kein Zugang von GitHub ins Heimnetz.
-- Wer angemeldet ist, kommt aus dem Header `Cf-Access-Authenticated-User-Email` (nur Anzeige und
-  Zuordnung, keine Berechtigung; im LAN ohne Cloudflare ist niemand angemeldet). Namen unter
-  Einstellungen → Personen.
-- Keine eigene Authentifizierung. Von außen nur über Cloudflare Tunnel **mit Cloudflare Access**
-  erreichbar machen. Für den Pfad `/kalender/*` eine Access-Bypass-Regel anlegen: Der
-  iPhone-Kalender kann sich nicht anmelden, der Link ist durch seinen geheimen Schlüssel geschützt.
-- `tischlein serve` wertet `X-Forwarded-Proto`/`Host` aus, damit Abo-Links hinter dem Tunnel die
-  öffentliche https-Adresse tragen.
-- Rezeptfotos werden beim ersten Anzeigen nach `data/bilder/` geladen. Paprikas Bild-Links sind
-  nur kurz gültig; abgelaufene werden über einen Rezeptabruf erneuert (seriell, 0,25 s Pause).
-
-## Offen
-
-- Rückschreiben freigegebener Pläne in den Paprika Meal Planner: `POST /api/v1/sync/meals/`,
-  multipart-Feld `data` = gzip-JSON-Liste von `{uid, recipe_uid, date "YYYY-MM-DD 00:00:00",
-  type, name, deleted, order_flag}`. Welcher `type` Mittagessen ist, vorher prüfen.
-- Einkaufsliste nach Bring (Home-Assistant-Integration, `todo.add_item`) oder Paprika übertragen.
-- Vorlieben und Abneigungen der Jungs als Ausschluss-Zutaten.
+Beim Umsetzen:
+- Schemaänderungen nur als Alembic-Revision (`mise run db:revision -- -m "…"`).
+- Alpine.js nur über `mise run vendor:alpine` aktualisieren.
+- Reine Module (Liste in `tests/test_architecture.py`) bleiben ohne Datenbank, Web und Netzwerk.

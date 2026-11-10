@@ -1,21 +1,27 @@
 {% extends "base.html" %}
 {% block title %}Ideen · Tischlein{% endblock %}
 {% block content %}
+<div x-data="ideas">
 <section class="title">
   <div>
     <h1>Neue Ideen</h1>
     <p>Gerichte, die zu dem passen, was ihr mögt, und Abwechslung dort bringen, wo die Rotation dünn ist.</p>
   </div>
   {% if v.llm %}
-  <form class="inline" method="post" action="/ideen/erzeugen" x-data="{ busy: false }" @submit="busy = true">
-    <button class="btn btn-primary" :disabled="busy" x-text="busy ? 'Überlegt …' : 'Neue Vorschläge'">Neue Vorschläge</button>
+  <form class="inline" method="post" action="/ideen/erzeugen" @submit.prevent="start()">
+    <button class="btn btn-primary" :disabled="running" x-text="running ? 'Überlegt …' : 'Neue Vorschläge'">Neue Vorschläge</button>
   </form>
   {% else %}
   <a class="btn" href="/einstellungen#llm">LLM einrichten</a>
   {% endif %}
 </section>
 
-{% if hinweis %}<p class="notice" role="status">{{ hinweis }}</p>{% endif %}
+{% if hinweis %}<p class="notice" role="status" x-show="!running">{{ hinweis }}</p>{% endif %}
+<p class="notice" role="alert" x-show="error" x-text="error" x-cloak></p>
+<div class="sync-banner" role="status" aria-live="polite" x-show="running" x-cloak>
+  <div class="sync-line"><strong x-text="label"></strong><span class="num" x-text="elapsed"></span></div>
+  <div class="sync-bar" aria-hidden="true"><span :style="`width: ${percent}%`"></span></div>
+</div>
 
 <div class="grid">
   <section class="s8" aria-labelledby="ideas-h">
@@ -74,5 +80,6 @@
     {% endif %}
   </aside>
 </div>
+</div>
 {% endblock %}
-{% block scripts %}<script src="/static/vendor/alpine-3.17.5.min.js" defer></script>{% endblock %}
+{% block scripts %}<script src="/static/ideen.js"></script><script src="/static/vendor/alpine-3.17.5.min.js" defer></script>{% endblock %}

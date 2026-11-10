@@ -28,6 +28,11 @@ SYSTEM = (
 )
 
 
+def focus_themes(supply: list[dict], themes: list[str]) -> list[str]:
+    """Themes that lack kid-friendly recipes, or all themes when none does."""
+    return [s["thema"] for s in supply if s["kinder_ok"] < s["bedarf"]] or list(themes)
+
+
 def build_prompt(
     liked: list[str],
     disliked: list[str],
@@ -36,19 +41,26 @@ def build_prompt(
     themes: list[str],
     count: int,
     today: date,
+    theme: str | None = None,
+    suggested: list[str] | None = None,
 ) -> str:
-    thin = [s["thema"] for s in supply if s["kinder_ok"] < s["bedarf"]]
-    focus = thin or themes
+    """`theme` pins this request to one theme; `suggested` are ideas already made in this round."""
+    focus = [theme] if theme else focus_themes(supply, themes)
+    lines = [
+        f"Monat: {MONTHS[today.month - 1]} (saisonal passend vorschlagen).",
+        f"Mögliche Protein-Themen: {', '.join(themes)}.",
+        f"Besonders gesucht, weil dort kinderfreundliche Gerichte fehlen: {', '.join(focus)}.",
+        "Das mögen wir: " + ("; ".join(liked[:40]) or "noch keine Angaben"),
+        "Das kam nicht gut an: " + ("; ".join(disliked[:20]) or "nichts"),
+        "Schon in der Sammlung (nicht noch einmal vorschlagen): " + "; ".join(existing[:250]),
+    ]
+    if suggested:
+        lines.append("Gerade schon vorgeschlagen (etwas deutlich anderes wählen): " + "; ".join(suggested))
     return "\n".join(
         [
-            f"Monat: {MONTHS[today.month - 1]} (saisonal passend vorschlagen).",
-            f"Mögliche Protein-Themen: {', '.join(themes)}.",
-            f"Besonders gesucht, weil dort kinderfreundliche Gerichte fehlen: {', '.join(focus)}.",
-            "Das mögen wir: " + ("; ".join(liked[:40]) or "noch keine Angaben"),
-            "Das kam nicht gut an: " + ("; ".join(disliked[:20]) or "nichts"),
-            "Schon in der Sammlung (nicht noch einmal vorschlagen): " + "; ".join(existing[:250]),
+            *lines,
             "",
-            f"Schlage {count} Gerichte vor. Antwortformat:",
+            f"Schlage {count} {'Gericht' if count == 1 else 'Gerichte'} vor. Antwortformat:",
             '{"ideen": [{"name": "...", "thema": "<eines der Themen>", "warum": "<ein Satz, warum es passt>",'
             ' "zeit": "<z. B. 30 Min.>", "portionen": "4", "zutaten": ["400 g ...", "..."],'
             ' "zubereitung": ["Schritt 1 ...", "Schritt 2 ..."], "kinder_tipp": "<sichere Komponente>"}]}',

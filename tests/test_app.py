@@ -226,4 +226,6 @@ def test_new_pages_render_and_actions_work(client):
     )
 
     assert "Kein LLM" in client.post("/ideen/erzeugen").text or client.get("/ideen").status_code == 200
+    assert client.post("/api/ideen/start").status_code == 400
+    assert client.get("/api/ideen/status").json()["laeuft"] is False
     assert client.get("/api/morgen").json()["datum"]

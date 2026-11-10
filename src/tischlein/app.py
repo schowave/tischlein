@@ -244,6 +244,17 @@ def create_app(service: Tischlein | None = None, auto_sync: bool | None = None) 
         msg = "" if n else "Das Modell hat keine brauchbaren Vorschläge geliefert. Bitte noch einmal versuchen."
         return RedirectResponse("/ideen" + (f"?hinweis={quote(msg)}" if msg else ""), status_code=303)
 
+    @app.post("/api/ideen/start")
+    def api_ideas_start():
+        try:
+            return service.start_ideas()
+        except LLMError as e:
+            raise HTTPException(400, str(e)) from e
+
+    @app.get("/api/ideen/status")
+    def api_ideas_status():
+        return service.ideas_status()
+
     @app.post("/ideen/{idea_id}/uebernehmen")
     def ideas_accept(idea_id: int):
         try:

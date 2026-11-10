@@ -106,7 +106,6 @@ def week_view(svc: Tischlein, which: str | None, today: date) -> dict:
     planned = sum(1 for x in days if x["meal"] and x["meal"].recipe_uid)
     kid_in_plan = sum(1 for x in days if x["meal"] and x["kinder_ok"])
 
-
     today_meal = next((m for p in plans.values() if p for m in p.meals if m.day == today), None)
     headline = (
         f"Mahlzeit. Heute gibt’s {today_meal.theme}." if today_meal else "Mahlzeit. Für heute ist nichts geplant."

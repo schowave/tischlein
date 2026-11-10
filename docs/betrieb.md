@@ -1,0 +1,38 @@
+# Betrieb
+
+## Release und Auto-Update
+
+- GitHub-Release `vX.Y.Z` → `.github/workflows/release.yaml` → `mise run docker:publish` →
+  `ghcr.io/schowave/tischlein:{X.Y.Z,X.Y,latest}`. Die Version steckt im Image
+  (`TISCHLEIN_VERSION`) und steht in `/healthz` und der Seitenleiste. Vorher die Version in
+  `pyproject.toml` anheben.
+- LXC 104 auf dem Proxmox (`deploy/proxmox/create-lxc.sh`, eingerichtet mit `deploy/lxc/install.sh`):
+  `/opt/tischlein/compose.yaml`, `tischlein-update.timer` alle 5 Minuten → `tischlein-update.sh`
+  zieht `latest`, startet nur bei neuem Image neu, prüft `/healthz` auf die neue Version und rollt
+  sonst zurück. Pull statt Push: kein offener Port, kein Zugang von GitHub ins Heimnetz.
+- Die Datenbank im LXC hebt Alembic beim Start an.
+
+## Zugriff von außen
+
+- Keine eigene Anmeldung. Von außen nur über Cloudflare Tunnel (LXC 102) **mit Cloudflare
+  Access**, Anwendung `familie-dienste`. Für `/kalender/*` eine Bypass-Anwendung: Der
+  iPhone-Kalender kann sich nicht anmelden, der geheime Schlüssel im Link schützt ihn.
+  Einrichtung und Fallen: homelab-Repo, `docs/betrieb/cloudflare-access.md`.
+- `tischlein serve` wertet `X-Forwarded-Proto`/`Host` aus, damit Abo-Links die öffentliche
+  https-Adresse tragen.
+- Wer angemeldet ist, kommt aus `Cf-Access-Authenticated-User-Email` (nur Anzeige und Zuordnung,
+  keine Berechtigung; im LAN ohne Cloudflare ist niemand angemeldet). Namen unter
+  Einstellungen → Personen.
+
+## Integrationen
+
+- **Kalender:** geheimer Abo-Link `/kalender/<token>.ics` aus den Einstellungen (`webcal://`),
+  nur freigegebene Pläne. „Neuen geheimen Link erstellen“ macht alte Abos ungültig.
+  `/kalender.ics` ohne Schlüssel nur im LAN.
+- **Home Assistant:** Kalender über „Remote Calendar“ mit dem Abo-Link; REST-Sensoren auf
+  `/api/heute` und `/api/morgen` (`gericht`, `vorbereitung`, `frei`, `grund`); Automation ruft
+  `POST /api/plaene/naechste/erzeugen` auf. Mit `HA_WEBHOOK_URL` meldet Tischlein neue Pläne und
+  um `[erinnerung] uhrzeit` „Morgen gibt's …“ samt Vorbereitung (nur freigegebene Pläne, einmal
+  am Tag).
+- **LLM:** OpenAI-kompatibel (z. B. LiteLLM), in den Einstellungen; Tischlein ruft
+  `<Basis-URL>/chat/completions` mit `response_format: json_object`.

@@ -141,6 +141,44 @@ def test_ideas_generate_and_accept_into_paprika(svc):
         svc.accept_idea(idea["id"])
 
 
+def _idea(name, thema="Hauptspeisen"):
+    return {"ideen": [{"name": name, "thema": thema, "zutaten": ["1 x"], "zubereitung": ["s"]}]}
+
+
+def _with_llm(svc, answers):
+    svc.store.set_meta("llm_base_url", "u")
+    svc.store.set_meta("llm_api_key", "k")
+    svc.store.set_meta("llm_model", "m")
+    svc._llm_transport = FakeLLM(answers)
+    return svc._llm_transport
+
+
+def test_ideas_one_dish_per_request_with_progress(svc):
+    fake = _with_llm(svc, [_idea("A"), _idea("B"), _idea("C")])
+    steps = []
+    assert svc.generate_ideas(3, progress=lambda d, t: steps.append((d, t))) == 3
+    assert steps == [(0, 3), (1, 3), (2, 3), (3, 3)]
+    prompts = [c["messages"][1]["content"] for c in fake.calls]
+    assert all("Schlage 1 Gericht vor" in p for p in prompts)
+    assert "Gerade schon vorgeschlagen" not in prompts[0] and "A; B" in prompts[2]
+
+
+def test_ideas_survive_a_failed_request_and_fail_only_when_all_do(svc):
+    _with_llm(svc, [500, _idea("B")])
+    assert svc.generate_ideas(2) == 1
+    _with_llm(svc, [500, 500])
+    with pytest.raises(LLMError):
+        svc.generate_ideas(2)
+
+
+def test_ideas_in_background_report_state(svc):
+    _with_llm(svc, [_idea("A"), _idea("B")])
+    state = svc.start_ideas(2)
+    assert state["laeuft"] and state["gesamt"] == 2
+    svc._ideas_thread.join(5)
+    assert svc.ideas_status() == {"laeuft": False, "fertig": 2, "gesamt": 2, "ergebnis": 2, "fehler": None}
+
+
 def test_day_info_and_reminder(svc, monkeypatch):
     plan = svc.generate(MONDAY)
     changed = svc.fake.recipes[plan.meals[0].recipe_uid]

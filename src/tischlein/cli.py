@@ -29,15 +29,29 @@ def main(argv: list[str] | None = None) -> None:
     serve = sub.add_parser("serve", help="Web-Oberfläche und API starten")
     serve.add_argument("--host", default="0.0.0.0")
     serve.add_argument("--port", type=int, default=8080)
+    serve.add_argument("--reload", action="store_true", help="bei Codeänderungen neu laden (nur Entwicklung)")
     args = parser.parse_args(argv)
 
     if args.cmd == "serve":
         import uvicorn
 
-        from .app import create_app
-
         # behind Cloudflare Tunnel / a reverse proxy: trust X-Forwarded-Proto and Host for absolute links
-        uvicorn.run(create_app(), host=args.host, port=args.port, proxy_headers=True, forwarded_allow_ips="*")
+        options = {"host": args.host, "port": args.port, "proxy_headers": True, "forwarded_allow_ips": "*"}
+        if args.reload:
+            # reload needs an import string; watch code, templates and static files
+            src = Path(__file__).parent
+            uvicorn.run(
+                "tischlein.app:create_app",
+                factory=True,
+                reload=True,
+                reload_dirs=[str(src)],
+                reload_includes=["*.py", "*.html", "*.css", "*.js"],
+                **options,
+            )
+        else:
+            from .app import create_app
+
+            uvicorn.run(create_app(), **options)
         return
 
     svc = from_env()
