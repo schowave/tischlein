@@ -8,8 +8,8 @@ neu_slot = "do"              # Tag für das Neu-Rezept; "" schaltet den Neu-Slot
 cooldown_wochen = 2          # Rezept frühestens nach so vielen Wochen wieder
 mittag_uhrzeit = "12:00"
 mittag_minuten = 45
-weitere_themen = ["Fleisch"]
-feiertage_land = "BW"        # Bundesland für Landesfeiertage, z. B. "BW" oder "BY"; leer = nur bundesweite   # Themen ohne eigenen Tag, erscheinen in der Rezeptverwaltung
+weitere_themen = ["Fleisch"]   # Themen ohne eigenen Tag, erscheinen in der Rezeptverwaltung
+feiertage_land = "BW"          # Bundesland für Landesfeiertage, z. B. "BW" oder "BY"; leer = nur bundesweite
 
 [abgleich]
 alle_minuten = 15            # so oft fragt Tischlein Paprika nach Änderungen; 0 = nur von Hand
