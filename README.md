@@ -48,7 +48,7 @@ Das Prinzip ist „Sous-Chef“: Tischlein schlägt vor, die Familie gibt frei.
   ihr: „Gut“ nimmt es in die Rotation, „Nie wieder“ wirft es raus.
 - **Freigabe:** einen Tag mit „Anderes Gericht“ neu würfeln, die Woche neu planen, oben
   freigeben. Nur freigegebene Wochen landen im Kalender und werden nicht mehr neu gewürfelt. Feiertage (bundesweit und pro Bundesland), Urlaub oder Kita markieren Tage als frei.
-- **Woche umstellen:** unter „Mehr“ pro Tag ein Gericht auf einen anderen Tag verschieben (auch
+- **Woche umstellen:** einen Tag am Griff auf einen anderen ziehen oder unter „Mehr“ pro Tag ein Gericht auf einen anderen Tag verschieben (auch
   nach der Freigabe), ein bestimmtes Rezept wählen (bleibt beim Neu-Würfeln stehen), das Thema
   für diese Woche wechseln oder „Reste morgen“: Der nächste Tag isst mit, ohne Kochen und Einkauf.
   Jede Änderung meldet sich unten mit „Rückgängig“, solange danach nichts anderes geändert wurde.

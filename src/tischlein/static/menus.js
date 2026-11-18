@@ -1,5 +1,5 @@
 // Dropdowns (details.free-menu: "Frei", "Mehr") behave like menus: only one is open, and a click
-// elsewhere or Escape closes it. Delegated on document, so it survives stay.js swapping the page.
+// elsewhere or Escape closes it. On a phone the options come up as a sheet from the bottom (CSS). Delegated on document, so it survives stay.js swapping the page.
 (() => {
   const MENU = "details.free-menu";
   const closeAll = (except) =>
@@ -14,7 +14,8 @@
     true,
   );
   document.addEventListener("click", (e) => {
-    if (!e.target.closest(MENU)) closeAll();
+    // outside any menu, or on the dimmed backdrop of the phone sheet (that is the details itself)
+    if (!e.target.closest(MENU) || e.target.matches(MENU)) closeAll();
   });
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape") return;
