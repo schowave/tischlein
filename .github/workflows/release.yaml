@@ -16,7 +16,7 @@ jobs:
     name: Image bauen und pushen
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Version aus dem Tag und mise-Version aus mise.toml lesen
         id: pins
         run: |
