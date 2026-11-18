@@ -26,7 +26,7 @@ jobs:
           mise=$(sed -n 's/^min_version = "\([^"]*\)".*/\1/p' mise.toml)
           test -n "$mise"
           echo "mise=$mise" >> "$GITHUB_OUTPUT"
-      - uses: jdx/mise-action@v2
+      - uses: jdx/mise-action@v5
         with:
           version: ${{ steps.pins.outputs.mise }}
           install: true
