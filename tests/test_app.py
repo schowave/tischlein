@@ -82,7 +82,7 @@ def test_sync_endpoints(export_bytes):
     plan = c.post("/api/plaene/naechste/erzeugen").json()
     assert plan["mahlzeiten"][2]["gericht"] == "Rezept R1"
     assert "sync_fehler" not in plan
-    assert "Jetzt abgleichen" in c.get("/").text
+    assert "Jetzt abgleichen" in c.get("/einstellungen").text
 
     fake.login_status = 401
     svc.paprika._token = None
@@ -102,7 +102,8 @@ def test_week_page_tabs_and_redirects(client):
     r = client.post("/plaene/naechste/erzeugen", follow_redirects=False)
     assert r.headers["location"] == "/?woche=naechste"
     page = client.get("/?woche=naechste").text
-    assert "Hähnchen-Bowl" in page and "Woche freigeben" in page and "Vorrat pro Thema" in page
+    assert "Hähnchen-Bowl" in page and "Woche freigeben" in page and "Vorrat pro Thema" not in page
+    assert "Vorrat pro Thema" in client.get("/ideen").text  # moved: the week shows only the week
     assert "/rezepte?rezept=A1" in page  # dish links to its recipe for tagging
 
 
@@ -196,8 +197,13 @@ def test_new_pages_render_and_actions_work(client):
         client.post("/api/einkauf/naechste/eintrag", json={"name": name, "menge": ""})
     assert client.post("/api/einkauf/naechste/alle-erledigt", json={"erledigt": True}).json() == {"geaendert": 2}
     assert "Alle wieder offen" in client.get("/einkauf?woche=naechste").text
-    assert client.post("/api/einkauf/naechste/erledigte-entfernen").json() == {"entfernt": 2}
+    removed = client.post("/api/einkauf/naechste/erledigte-entfernen").json()
+    assert removed["entfernt"] == 2
     assert client.get("/api/einkauf", params={"woche": "naechste"}).json() == []
+    r = client.post("/api/einkauf/naechste/wiederherstellen", json={"eintraege": removed["eintraege"]})
+    assert r.json() == {"wiederhergestellt": 2}
+    back = client.get("/api/einkauf", params={"woche": "naechste"}).json()
+    assert {i["id"] for i in back} == {i["id"] for i in removed["eintraege"]} and all(i["done"] for i in back)
 
     assert client.post(f"/tage/{monday}/frei", data={"grund": "Urlaub", "woche": "naechste"}).status_code == 200
     page = client.get("/?woche=naechste").text
@@ -252,9 +258,15 @@ def test_week_menu_moves_picks_changes_theme_and_logs_cooked(client):
     assert "Verschieben auf" in page and "Rezept wählen" in page and "Reste morgen" in page
 
     r = client.post(f"/tage/{mon}/verschieben", data={"nach": tue, "woche": "naechste"}, follow_redirects=False)
-    assert r.status_code == 303 and r.headers["location"] == f"/?woche=naechste#tag-{tue}"
+    assert r.status_code == 303 and r.headers["location"] == f"/?woche=naechste&meldung={mon}#tag-{tue}"
+    page = client.get(f"/?woche=naechste&meldung={mon}").text
+    assert "auf Dienstag verschoben" in page and "Rückgängig" in page
     moved = client.get("/api/plan", params={"woche": "naechste"}).json()["mahlzeiten"]
     assert moved[1]["gericht"] == plan[0]["gericht"] and moved[1]["thema"] == plan[1]["thema"]
+    client.post("/plaene/naechste/rueckgaengig")
+    undone = client.get("/api/plan", params={"woche": "naechste"}).json()["mahlzeiten"]
+    assert undone[0]["gericht"] == plan[0]["gericht"]
+    assert client.post("/plaene/naechste/rueckgaengig").status_code == 400  # one step only
 
     assert "Fischstäbchen" in client.get(f"/tage/{mon}/rezept").text
     client.post(f"/tage/{mon}/rezept", data={"rezept_uid": "B2", "woche": "naechste"})
@@ -271,4 +283,34 @@ def test_week_menu_moves_picks_changes_theme_and_logs_cooked(client):
     assert "Pizza" in client.get("/rueckblick").text
     assert client.post("/nachtrag", data={"tag": "2999-01-01", "name": "Später"}).status_code == 400
     r = client.post("/nachtrag", data={"tag": today, "name": "x", "zurueck": "//evil.example"}, follow_redirects=False)
-    assert r.headers["location"] == "/"
+    assert r.headers["location"].startswith("/?meldung=")  # never off-site: back to the week, with Rückgängig
+    assert "Rückgängig" not in client.get("/?meldung=2000-01-03").text  # only the note of the changed week
+
+
+def test_approved_week_is_not_rolled_again_from_the_page(client):
+    client.post("/api/plaene/naechste/erzeugen")
+    client.post("/plaene/naechste/status", data={"status": "freigegeben"})
+    r = client.post("/plaene/naechste/erzeugen")
+    assert r.status_code == 400 and "Wieder bearbeiten" in r.json()["detail"]
+    page = client.get("/?woche=naechste").text
+    assert "Woche neu planen" not in page and "Wieder bearbeiten" in page
+
+
+def test_ideas_for_one_theme(client):
+    svc = client.app.state.service
+    assert client.post("/api/ideen/start", json={"thema": "Fisch"}).status_code == 400  # no LLM yet
+    svc.store.set_meta("llm_base_url", "u")
+    svc.store.set_meta("llm_api_key", "k")
+    svc.store.set_meta("llm_model", "m")
+    r = client.post("/api/ideen/start", json={"thema": "Kuchen"})
+    assert r.status_code == 400 and "Unbekanntes Thema" in r.json()["detail"]
+    assert "Ideen dazu" in client.get("/ideen").text
+
+
+def test_api_keeps_an_approved_week_for_home_assistant(client):
+    first = client.post("/api/plaene/naechste/erzeugen").json()
+    client.post("/plaene/naechste/status", data={"status": "freigegeben"})
+    again = client.post("/api/plaene/naechste/erzeugen").json()
+    assert again["status"] == "freigegeben" and again["mahlzeiten"] == first["mahlzeiten"] and again["hinweis"]
+    bad = client.post("/api/einkauf/naechste/wiederherstellen", json={"eintraege": [{"id": "x", "name": "Milch"}]})
+    assert bad.status_code == 400

@@ -2,10 +2,36 @@
 {% from "_macros.html" import thumb, collect_form %}
 {% block title %}Einkauf · Tischlein{% endblock %}
 {% block content %}
+{# One row; the same entry is rendered in its aisle and under "Im Wagen", the state decides where it shows. #}
+{% macro row(i, in_cart) %}
+{% set dishes = i.recipes.split(', ') if i.recipes and not i.manual else [] %}
+<li class="shop-item" data-id="{{ i.id }}" x-show="shown({{ i.id }}, {{ 'true' if in_cart else 'false' }})" x-data="{ more: false }"{% if in_cart %} x-cloak{% endif %}>
+  <label>
+    <input type="checkbox" :checked="items[{{ i.id }}].done" @change="toggle({{ i.id }}, $event.target.checked)">
+    <span class="shop-text">
+      <span class="shop-name">{{ i.name }}</span>
+      {% if i.amount %}<span class="shop-amount num">{{ i.amount }}</span>{% endif %}
+    </span>
+  </label>
+  <button type="button" class="btn btn-ghost btn-icon" @click="remove({{ i.id }})" aria-label="{{ i.name }} löschen" title="Löschen">
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 4h11M6.5 4V2.5h3V4M4 4l.7 9.5h6.6L12 4M6.75 6.5v4.5M9.25 6.5v4.5"/></svg>
+  </button>
+  {% if in_cart %}
+  <span class="shop-meta" x-show="items[{{ i.id }}].by" x-text="'abgehakt von ' + items[{{ i.id }}].by"></span>
+  {% elif dishes %}
+  <span class="shop-meta">
+    {% if dishes | length == 1 %}für {{ dishes[0] }}
+    {% else %}<span x-show="!more">für {{ dishes[0] }} <button type="button" class="meta-more" @click="more = true" aria-label="Alle {{ dishes | length }} Gerichte zeigen">+ {{ dishes | length - 1 }} weitere</button></span><span x-show="more" x-cloak>für {{ dishes | join(', ') }}</span>{% endif %}
+  </span>
+  {% endif %}
+</li>
+{% endmacro %}
+
+<div x-data="shopping('{{ v.which }}', {{ v.state | tojson | forceescape }})">
 <section class="title">
   <div>
     <h1>Einkaufsliste</h1>
-    <p>{{ v.range }}{% if v.count %} · <span class="num">{{ v.open }}</span> von <span class="num">{{ v.count }}</span> noch offen{% elif v.has_plan %} · {{ v.dishes | length }} Gerichte geplant{% endif %}</p>
+    <p>{{ v.range }}{% if v.count %} · <span class="num" x-text="left">{{ v.open }}</span> von <span class="num" x-text="total">{{ v.count }}</span> noch offen{% elif v.has_plan %} · {{ v.dishes | length }} Gerichte geplant{% endif %}</p>
   </div>
   <div class="title-actions">
     <nav class="seg" aria-label="Woche wählen">
@@ -18,15 +44,22 @@
 {% if hinweis %}<p class="notice" role="status">{{ hinweis }}</p>{% endif %}
 {% if v.updating %}<p class="notice" role="status">Der Plan hat sich geändert, die Liste wird gerade neu gesammelt …</p><script>setTimeout(() => navigator.onLine && location.reload(), 5000);</script>{% endif %}
 
-<div class="grid top" x-data="shopping('{{ v.which }}')">
+<div class="grid top">
   <section class="panel s8" aria-labelledby="list-h">
     <div class="panel-head">
       <h2 id="list-h">Zu kaufen</h2>
-      {% if v.count %}<span class="chip-count num">{{ v.open }}</span>{% endif %}
+      {% if v.count %}<span class="chip-count num" x-text="left">{{ v.open }}</span>{% endif %}
       {% if v.count %}<div class="end">
-        <label class="toggle-line"><input type="checkbox" x-model="hideDone"> Erledigte ausblenden</label>
         <button type="button" class="btn btn-ghost btn-sm" @click="share('Einkaufsliste {{ v.range }}')">Teilen</button>
-        {% if v.bring %}<button type="button" class="btn btn-ghost btn-sm" @click="toBring()" :disabled="busy" title="{{ 'Mit der Bring-Liste ' ~ v.bring_name ~ ' abgleichen' if v.bring_name else 'Mit Bring abgleichen' }}">{{ 'Bring abgleichen' if v.bring_sync else 'An Bring' }}</button>{% endif %}
+        <details class="free-menu">
+          <summary class="btn btn-ghost btn-sm" aria-label="Liste: mehr">Mehr</summary>
+          <div class="free-options day-options">
+            <button type="button" class="chip" @click="allDone(true)" x-show="left > 0">Alle abhaken</button>
+            <button type="button" class="chip" @click="allDone(false)" x-show="left === 0">Alle wieder offen</button>
+            {% if v.bring %}<button type="button" class="chip" @click="toBring()" :disabled="busy">{{ 'Mit Bring abgleichen' if v.bring_sync else 'An Bring schicken' }}</button>{% endif %}
+            {% if v.generated %}{{ collect_form(v.which, 'Neu aus dem Plan sammeln', 'chip', 'Zutaten neu aus dem Plan sammeln? Abgehaktes bleibt abgehakt, eigene Einträge bleiben.') }}{% endif %}
+          </div>
+        </details>
       </div>{% endif %}
     </div>
     <form class="add-row" @submit.prevent="add()">
@@ -46,34 +79,25 @@
     {% endif %}
     {% if v.groups %}
     {% for g in v.groups %}
-    <div class="shop-group">
+    <div class="shop-group" x-show="groupOpen({{ g['items'] | map(attribute='id') | list | tojson }})">
       <h3>{{ g.name }}</h3>
       <ul class="shop-list">
-        {% for i in g['items'] %}
-        <li class="shop-item" data-id="{{ i.id }}" x-data="{ done: {{ 'true' if i.done else 'false' }}, by: {{ i.done_by | tojson | forceescape }} }" x-show="!(hideDone && done)" :class="{ 'is-done': done }">
-          <label>
-            <input type="checkbox" :checked="done" @change="done = $event.target.checked; toggle({{ i.id }}, done).then(v => by = v)">
-            <span class="shop-text">
-              <span class="shop-name">{{ i.name }}</span>
-              {% if i.amount %}<span class="shop-amount num">{{ i.amount }}</span>{% endif %}
-            </span>
-          </label>
-          <span class="shop-meta">
-            <span x-show="done && by" x-text="'abgehakt von ' + by"></span>
-            {% if i.recipes and not i.manual %}<span x-show="!done">für {{ i.recipes }}</span>{% endif %}
-          </span>
-          <button type="button" class="btn btn-ghost btn-icon" @click="remove({{ i.id }}, $el.closest('li'))" aria-label="{{ i.name }} löschen" title="Löschen">
-            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 4h11M6.5 4V2.5h3V4M4 4l.7 9.5h6.6L12 4M6.75 6.5v4.5M9.25 6.5v4.5"/></svg>
-          </button>
-        </li>
-        {% endfor %}
+        {% for i in g['items'] %}{{ row(i, false) }}{% endfor %}
       </ul>
     </div>
     {% endfor %}
-    <div class="list-actions">
-      <button type="button" class="btn btn-sm" @click="allDone({{ 'true' if v.open else 'false' }})">{{ 'Alle abhaken' if v.open else 'Alle wieder offen' }}</button>
-      <button type="button" class="btn btn-ghost btn-sm danger" @click="removeDone()">Abgehakte entfernen</button>
-      {% if v.generated %}{{ collect_form(v.which, 'Neu sammeln', 'btn btn-ghost btn-sm', 'Zutaten neu aus dem Plan sammeln? Was schon abgehakt ist, bleibt abgehakt; eigene Einträge bleiben. Gelöschte Zutaten kommen nur zurück, wenn ein anderes Gericht sie braucht.') }}{% endif %}
+    <p class="all-done" x-show="left === 0" x-cloak>Alles im Wagen.</p>
+    <div class="shop-cart" x-show="inCart > 0" x-cloak>
+      <div class="cart-head">
+        <button type="button" class="cart-toggle" @click="cartOpen = !cartOpen" :aria-expanded="cartOpen" aria-controls="cart-list">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true" :style="cartOpen && 'transform: rotate(90deg)'"><path d="M6 4l4 4-4 4"/></svg>
+          Im Wagen <span class="num" x-text="'(' + inCart + ')'"></span>
+        </button>
+        <button type="button" class="btn btn-ghost btn-sm" @click="removeDone()">Entfernen</button>
+      </div>
+      <ul class="shop-list" id="cart-list" x-show="cartOpen">
+        {% for g in v.groups %}{% for i in g['items'] %}{{ row(i, true) }}{% endfor %}{% endfor %}
+      </ul>
     </div>
     {% elif v.has_plan %}
     <div class="empty-frame shop-empty">
@@ -99,8 +123,14 @@
     {% else %}
     <p class="muted">Noch nichts geplant.</p>
     {% endif %}
-    <p class="panel-note dish-note">Salz, Öl und andere Vorräte lässt Tischlein weg (<code>[einkauf] vorrat</code> in tischlein.toml).{% if not v.llm %} Mit einem LLM in den Einstellungen fasst es gleiche Zutaten zusammen und sortiert nach Gang.{% endif %}</p>
+    <p class="panel-note dish-note">Salz, Öl und andere Vorräte stehen nicht auf der Liste.{% if not v.llm %} Mit einem LLM in den Einstellungen fasst Tischlein gleiche Zutaten zusammen und sortiert nach Gang.{% endif %}</p>
   </section>
+
+  <div class="toast" role="status" aria-live="polite" x-show="toast.text" x-cloak>
+    <span x-text="toast.text"></span>
+    <button type="button" class="toast-action" x-show="toast.undo" @click="undo()">Rückgängig</button>
+  </div>
+</div>
 </div>
 {% endblock %}
 {% block scripts %}

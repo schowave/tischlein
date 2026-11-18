@@ -4,6 +4,32 @@
 (() => {
   const main = () => document.querySelector("main .col");
 
+  // The note after a change ("Chili auf Donnerstag verschoben · Rückgängig") goes after a while;
+  // "meldung=1" leaves the address, so a reload does not show it again.
+  function settleToast() {
+    const url = new URL(location.href);
+    if (url.searchParams.has("meldung")) {
+      url.searchParams.delete("meldung");
+      history.replaceState(null, "", url.pathname + url.search + url.hash);
+    }
+    const toast = document.querySelector("[data-toast]");
+    if (toast) setTimeout(() => toast.classList.add("is-gone"), 8000);
+  }
+
+  // A change the server refused: say why in the same place, instead of reloading silently.
+  function showError(text) {
+    document.querySelector("[data-toast]")?.remove();
+    const toast = document.createElement("div");
+    toast.className = "toast is-error";
+    toast.setAttribute("role", "alert");
+    toast.dataset.toast = "";
+    toast.textContent = text || "Das hat nicht geklappt. Bitte noch einmal versuchen.";
+    document.body.appendChild(toast);
+    setTimeout(() => toast.classList.add("is-gone"), 8000);
+  }
+
+  settleToast();
+
   // where the focus was, so it can come back after the swap: the day and the button's text
   function focusKey(el) {
     const day = el?.closest?.("[id]")?.id;
@@ -36,6 +62,13 @@
       form.submit();  // nothing arrived: the plain way, as without JavaScript
       return;
     }
+    if (res.status >= 400 && res.status < 500) {
+      const detail = (await res.json().catch(() => ({}))).detail;
+      form.querySelectorAll("button").forEach((b) => (b.disabled = false));
+      form.closest("details")?.removeAttribute("open");
+      showError(typeof detail === "string" ? detail : "");
+      return;
+    }
     try {
       if (!res.ok || !res.headers.get("content-type")?.includes("text/html")) throw new Error(String(res.status));
       const doc = new DOMParser().parseFromString(await res.text(), "text/html");
@@ -48,6 +81,7 @@
       document.title = doc.title;
       window.scrollTo(0, y);
       restoreFocus(key);
+      settleToast();
     } catch {
       location.reload();  // the server has done it already: show its state instead of sending twice
     }

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -29,7 +30,7 @@ from .llm import LLMClient, LLMError
 from .models import Meal, Recipe, Verdict, WeekPlan, with_cooked
 from .paprika import recipe_from_json
 from .paprika_sync import CachedRecipe, PaprikaClient, PaprikaError
-from .planner import ANY_THEME, is_quick, plan_week, week_start_of
+from .planner import ANY_THEME, is_lunch, is_quick, plan_week, week_start_of
 from .prep import prep_hints
 from .store import Store
 from .tagging import Change, apply_changes
@@ -629,8 +630,8 @@ class Tischlein:
 
     # Ideas ---------------------------------------------------------------------
 
-    def generate_ideas(self, count: int = 6, progress=None) -> int:
-        """Ask the LLM for `count` ideas, one dish per request.
+    def generate_ideas(self, count: int = 6, progress=None, theme: str | None = None) -> int:
+        """Ask the LLM for `count` ideas, one dish per request; `theme` asks for that theme only.
 
         Single-dish answers are short (a long list tends to come back cut off and is then no valid
         JSON), each idea is stored as soon as it arrives, and `progress(done, total)` can report
@@ -650,7 +651,9 @@ class Tischlein:
         disliked += [by_uid[u].name for u, v in feedback.items() if v == "nein" and u in by_uid]
         themes = list(self.config.themes)
         supply = self.theme_supply()
-        focus = ideas.focus_themes(supply, themes)
+        if theme is not None and theme not in themes:
+            raise LLMError(f"Unbekanntes Thema: {theme}")
+        focus = [theme] if theme else ideas.focus_themes(supply, themes)
         open_ideas = [i["name"] for i in self.store.ideas("neu")]
         suggested: list[str] = []
         error: LLMError | None = None
@@ -686,29 +689,31 @@ class Tischlein:
         with self._state_lock:
             return dict(self._ideas_state)
 
-    def start_ideas(self, count: int = 6) -> dict:
+    def start_ideas(self, count: int = 6, theme: str | None = None) -> dict:
         """Generate ideas in a background thread (several LLM calls take a minute) and return the state."""
         if self.llm() is None:
             raise LLMError("Kein LLM eingerichtet. In den Einstellungen Basis-URL, Schlüssel und Modell eintragen.")
+        if theme is not None and theme not in self.config.themes:
+            raise LLMError(f"Unbekanntes Thema: {theme}")
         with self._state_lock:
             if self._ideas_state["laeuft"]:
                 return dict(self._ideas_state)
             self._ideas_state = {"laeuft": True, "fertig": 0, "gesamt": count, "ergebnis": None, "fehler": None}
             state = dict(self._ideas_state)
         self._ideas_thread = threading.Thread(
-            target=self._run_background_ideas, args=(count,), name="llm-ideas", daemon=True
+            target=self._run_background_ideas, args=(count, theme), name="llm-ideas", daemon=True
         )
         self._ideas_thread.start()
         return state
 
-    def _run_background_ideas(self, count: int) -> None:
+    def _run_background_ideas(self, count: int, theme: str | None = None) -> None:
         def progress(done: int, total: int) -> None:
             with self._state_lock:
                 self._ideas_state.update(fertig=done, gesamt=total)
 
         result: dict = {}
         try:
-            result["ergebnis"] = self.generate_ideas(count, progress=progress)
+            result["ergebnis"] = self.generate_ideas(count, progress=progress, theme=theme)
         except LLMError as e:
             result["fehler"] = str(e)
         except Exception as e:  # noqa: BLE001 - surface anything in the UI instead of a silent dead thread
@@ -1031,30 +1036,62 @@ class Tischlein:
         if removed:
             self.store.remember_removed_shopping(week_start, removed)
 
-    def delete_item(self, item_id: int) -> None:
+    def delete_item(self, item_id: int) -> list[dict]:
+        """Delete one entry; returns it as it was, for Rückgängig (restore_items)."""
         week_start = self.store.shopping_week(item_id)
         if week_start is None:
-            return
+            return []
         item = next((i for i in self.store.shopping(week_start) if i["id"] == item_id), None)
         if item is None:
-            return
+            return []
         self._remember_removed(week_start, [item])
         self.store.delete_shopping_item(item_id)
         if item["bring"] == 1:
             self.push_bring(week_start, [item["name"]])
+        return [item]
+
+    def restore_items(self, week_start: date, items: list[dict]) -> int:
+        """Rückgängig for deleting: the entries come back with their tick, and collecting again
+        no longer leaves them out. Open ones go back to Bring when the sync is on."""
+        rows = []
+        for i in items:  # sent back by the browser: take only what a deleted entry can be
+            try:
+                rows.append(
+                    {
+                        "id": int(i["id"]),
+                        "name": str(i["name"]).strip()[:200],
+                        "amount": str(i.get("amount") or "")[:100],
+                        "group": str(i.get("group") or "Sonstiges")[:100],
+                        "recipes": str(i.get("recipes") or "")[:500],
+                        "manual": bool(i.get("manual")),
+                        "position": int(i.get("position") or 0),
+                        "done": bool(i.get("done")),
+                        "done_by": str(i.get("done_by") or "")[:100],
+                    }
+                )
+            except KeyError, TypeError, ValueError, AttributeError:
+                raise ValueError("Ungültiger Eintrag zum Wiederherstellen.") from None
+        rows = [r for r in rows if r["name"]]
+        back = self.store.restore_shopping(week_start, rows)
+        if back:
+            self.store.forget_removed_shopping(week_start, [shopping.item_key(r["name"]) for r in back])
+            self.push_bring(week_start)
+        return len(back)
 
     def set_all_done(self, week_start: date, done: bool, person: str = "") -> int:
         n = self.store.set_all_shopping_done(week_start, done, person)
         self.push_bring(week_start)
         return n
 
-    def remove_done(self, week_start: date) -> int:
+    def remove_done(self, week_start: date) -> list[dict]:
+        """Delete every ticked entry; returns them as they were, for Rückgängig."""
         done = [i for i in self.store.shopping(week_start) if i["done"]]
         gone = [i["name"] for i in done if i["bring"] == 1]
         self._remember_removed(week_start, done)  # bought: collecting again must not bring it back open
-        n = self.store.delete_done_shopping(week_start)
+        # exactly the ones read: one ticked on another phone meanwhile stays (and can be removed next time)
+        self.store.delete_shopping_items([i["id"] for i in done])
         self.push_bring(week_start, gone)
-        return n
+        return done
 
     def add_shopping_item(self, week_start: date, name: str, amount: str = "", person: str = "") -> int:
         """Put something on the list by hand and tell Home Assistant (push to the phones)."""
@@ -1174,11 +1211,11 @@ class Tischlein:
                 days[d] = reason
         return days
 
-    def set_day_free(self, day: date, reason: str) -> WeekPlan | None:
+    def _set_day_free(self, day: date, reason: str) -> WeekPlan | None:
         self.store.set_skipday(day, reason.strip() or "Kein Mittagessen")
         return self._replan_day(day)
 
-    def set_day_cooking(self, day: date) -> WeekPlan | None:
+    def _set_day_cooking(self, day: date) -> WeekPlan | None:
         self._mark_cooking(day)
         return self._replan_day(day)
 
@@ -1317,7 +1354,7 @@ class Tischlein:
         self._avoided = (key, out)
         return out
 
-    def set_quick(self, day: date, on: bool) -> WeekPlan | None:
+    def _set_quick(self, day: date, on: bool) -> WeekPlan | None:
         """Mark a day as short on time. A draft keeps a dish that is already quick, otherwise picks a
         quick one; if the theme has none, the planned dish stays."""
         self.store.set_quickday(day, on)
@@ -1339,9 +1376,12 @@ class Tischlein:
             return plan
         return new
 
-    def generate(self, week_start: date, notify: bool = False) -> WeekPlan:
-        """Plan the week anew. Dishes picked by hand stay, and so do their leftovers."""
+    def _generate(self, week_start: date, notify: bool = False) -> WeekPlan:
+        """Plan the week anew. Dishes picked by hand stay, and so do their leftovers. An approved
+        week is never re-rolled (Sous-Chef: only the family changes what is in the calendar)."""
         old = self.store.plan(week_start)
+        if old and old.status == "freigegeben":
+            raise ValueError("Die Woche ist freigegeben. Zum neu Planen erst „Wieder bearbeiten“.")
         keep = {m.day: m for m in old.meals if m.chosen} if old else {}
         for m in old.meals if old else []:
             if m.leftovers and any(k.recipe_uid == m.recipe_uid for k in keep.values()):
@@ -1352,8 +1392,10 @@ class Tischlein:
             self._notify(plan)
         return plan
 
-    def swap(self, week_start: date, day: date) -> WeekPlan:
+    def _swap(self, week_start: date, day: date) -> WeekPlan:
         plan = self._require(week_start)
+        if plan.status == "freigegeben":
+            raise ValueError("Die Woche ist freigegeben. Für ein anderes Gericht erst „Wieder bearbeiten“.")
         current = next((m for m in plan.meals if m.day == day), None)
         if current is None:
             raise KeyError(f"Kein Tag {day} im Plan")
@@ -1368,6 +1410,144 @@ class Tischlein:
             ]
         self._save(plan)
         return plan
+
+    # Rückgängig ------------------------------------------------------------------------
+
+    @staticmethod
+    def _fingerprint(state: dict) -> str:
+        return hashlib.sha256(json.dumps(state, sort_keys=True, default=str).encode()).hexdigest()
+
+    @contextmanager
+    def _undoable(self, week_start: date):
+        """Remember the week as it was before a change, with the message the change sets in the
+        yielded dict ("label"). One step per week. A failed change, or one that changed nothing,
+        leaves the last step alone. The step also remembers the week as it was right after, so
+        Rückgängig never throws away anything done later (portions, someone else's change)."""
+        before = self.store.week_state(week_start)
+        note = {"label": ""}
+        yield note
+        after = self.store.week_state(week_start)
+        if note["label"] and after != before:
+            record = {
+                "label": note["label"],
+                "at": datetime.now().isoformat(timespec="seconds"),
+                "state": before,
+                "after": self._fingerprint(after),
+            }
+            self.store.set_meta(f"rueckgaengig:{week_start.isoformat()}", json.dumps(record))
+
+    def _undo_record(self, week_start: date) -> dict | None:
+        """The last step, only while the week is still exactly as that change left it."""
+        raw = self.store.meta(f"rueckgaengig:{week_start.isoformat()}")
+        if not raw:
+            return None
+        record = json.loads(raw)
+        if record.get("after") != self._fingerprint(self.store.week_state(week_start)):
+            return None
+        return record
+
+    def last_change(self, week_start: date) -> dict | None:
+        """The change "Rückgängig" would take back: {"label", "at"}, or None."""
+        record = self._undo_record(week_start)
+        return {"label": record["label"], "at": record["at"]} if record else None
+
+    def undo(self, week_start: date) -> str:
+        """Put the week back as it was before its last change. Returns what was taken back."""
+        record = self._undo_record(week_start)
+        if record is None:
+            had_one = bool(self.store.meta(f"rueckgaengig:{week_start.isoformat()}"))
+            raise ValueError(
+                "Die Woche hat sich inzwischen geändert, das lässt sich nicht mehr zurücknehmen."
+                if had_one
+                else "Es gibt nichts zum Rückgängigmachen."
+            )
+        with self._watch(week_start):
+            self.store.restore_week_state(week_start, record["state"])
+        self.store.set_meta(f"rueckgaengig:{week_start.isoformat()}", "")
+        return record["label"]
+
+    @staticmethod
+    def _wd(day: date) -> str:
+        return WEEKDAY_NAMES[day.weekday()]
+
+    @staticmethod
+    def _dish(plan: WeekPlan | None, day: date) -> str:
+        meal = next((m for m in plan.meals if m.day == day), None) if plan else None
+        return meal.name if meal and meal.recipe_uid and not meal.skipped else ""
+
+    def move(self, day: date, to: date, today: date | None = None) -> WeekPlan:
+        with self._undoable(week_start_of(day)) as note:
+            name = self._dish(self.store.plan(week_start_of(day)), day) or "Der freie Tag"
+            plan = self._move(day, to, today)
+            note["label"] = f"{name} auf {self._wd(to)} verschoben"
+        return plan
+
+    def swap(self, week_start: date, day: date) -> WeekPlan:
+        with self._undoable(week_start) as note:
+            plan = self._swap(week_start, day)
+            note["label"] = f"{self._wd(day)}: jetzt {self._dish(plan, day) or 'nichts Passendes'}"
+        return plan
+
+    def choose(self, day: date, recipe_uid: str, today: date | None = None) -> WeekPlan:
+        with self._undoable(week_start_of(day)) as note:
+            plan = self._choose(day, recipe_uid, today)
+            note["label"] = f"{self._dish(plan, day)} am {self._wd(day)}"
+        return plan
+
+    def set_theme(self, day: date, theme: str | None, today: date | None = None) -> WeekPlan | None:
+        with self._undoable(week_start_of(day)) as note:
+            plan = self._set_theme(day, theme, today)
+            note["label"] = f"{self._wd(day)}: Thema {self.theme_of(day)}"
+        return plan
+
+    def set_leftovers(self, day: date, on: bool) -> WeekPlan:
+        with self._undoable(week_start_of(day)) as note:
+            plan = self._set_leftovers(day, on)
+            nxt = self.next_lunch(plan, day)
+            note["label"] = f"Reste am {self._wd(nxt.day)}" if on and nxt else "Kein Reste-Tag mehr"
+        return plan
+
+    def set_day_free(self, day: date, reason: str) -> WeekPlan | None:
+        with self._undoable(week_start_of(day)) as note:
+            plan = self._set_day_free(day, reason)
+            note["label"] = f"{self._wd(day)}: kein Mittagessen"
+        return plan
+
+    def set_day_cooking(self, day: date) -> WeekPlan | None:
+        with self._undoable(week_start_of(day)) as note:
+            plan = self._set_day_cooking(day)
+            note["label"] = f"{self._wd(day)}: doch kochen"
+        return plan
+
+    def set_quick(self, day: date, on: bool) -> WeekPlan | None:
+        with self._undoable(week_start_of(day)) as note:
+            plan = self._set_quick(day, on)
+            note["label"] = f"{self._wd(day)}: wenig Zeit" if on else f"{self._wd(day)}: wieder normal"
+        return plan
+
+    def generate(self, week_start: date, notify: bool = False) -> WeekPlan:
+        with self._undoable(week_start) as note:
+            plan = self._generate(week_start, notify)
+            note["label"] = "Woche neu geplant"
+        return plan
+
+    def set_status(self, week_start: date, status: str, person: str = "") -> WeekPlan:
+        with self._undoable(week_start) as note:
+            plan = self._set_status(week_start, status, person)
+            note["label"] = "Woche freigegeben" if status == "freigegeben" else "Woche wieder in Bearbeitung"
+        return plan
+
+    def log_cooked(
+        self, day: date, recipe_uid: str | None = None, name: str = "", person: str = "", today: date | None = None
+    ) -> None:
+        with self._undoable(week_start_of(day)) as note:
+            self._log_cooked(day, recipe_uid, name, person, today)
+            note["label"] = f"Nachgetragen für {self._wd(day)}"
+
+    def remove_cooked(self, day: date) -> None:
+        with self._undoable(week_start_of(day)) as note:
+            self._remove_cooked(day)
+            note["label"] = "Nachtrag entfernt"
 
     # Moving, picking, themes, leftovers -------------------------------------------
 
@@ -1392,7 +1572,7 @@ class Tischlein:
         """The next day of the week with lunch after `day` (where its leftovers would go)."""
         return next((m for m in sorted(plan.meals, key=lambda m: m.day) if m.day > day and not m.skipped), None)
 
-    def move(self, day: date, to: date, today: date | None = None) -> WeekPlan:
+    def _move(self, day: date, to: date, today: date | None = None) -> WeekPlan:
         """Verschieben: the two days swap their dishes (a free day swaps too). The theme stays with the
         weekday; leftovers move with their dish to the lunch after its new day."""
         today = today or date.today()
@@ -1450,7 +1630,7 @@ class Tischlein:
             leftovers=True,
         )
 
-    def set_leftovers(self, day: date, on: bool) -> WeekPlan:
+    def _set_leftovers(self, day: date, on: bool) -> WeekPlan:
         """Reste-Tag: the next lunch day of the week eats what `day` cooks (no cooking, no shopping)."""
         plan = self._require(week_start_of(day))
         meal = self._meal_on(plan, day)
@@ -1471,7 +1651,7 @@ class Tischlein:
         nxt = self.next_lunch(plan, day)
         return bool(nxt and nxt.leftovers)
 
-    def set_theme(self, day: date, theme: str | None, today: date | None = None) -> WeekPlan | None:
+    def _set_theme(self, day: date, theme: str | None, today: date | None = None) -> WeekPlan | None:
         """Themenwechsel for one day of one week; None or the weekly theme goes back to the schedule.
         The day is planned anew right away (a free day or a Reste-Tag keeps what it has)."""
         today = today or date.today()
@@ -1511,7 +1691,7 @@ class Tischlein:
 
         def themed(r: Recipe) -> bool:
             if theme == ANY_THEME:
-                return r.has_tag(cfg.main_tag) or any(r.has_tag(t) for t in cfg.themes)
+                return is_lunch(r, cfg)
             return bool(theme) and r.has_tag(theme)
 
         plan = self.store.plan(week_start_of(day)) if hints else None
@@ -1524,7 +1704,7 @@ class Tischlein:
         for r in self.store.recipes():
             if feedback.get(r.uid) == "nein" or (q and q not in r.name.casefold()):
                 continue
-            lunch = r.has_tag(cfg.main_tag) or any(r.has_tag(t) for t in cfg.themes)
+            lunch = is_lunch(r, cfg)
             flags = self.choice_hints(r, day) if hints else []
             if r.uid in elsewhere:  # picking it here plans that day anew
                 flags.insert(0, f"schon am {elsewhere[r.uid]}")
@@ -1541,7 +1721,7 @@ class Tischlein:
         out.sort(key=lambda x: (bool(x["hints"]), not x["themed"], not x["lunch"], x["name"].casefold()))
         return out
 
-    def choose(self, day: date, recipe_uid: str, today: date | None = None) -> WeekPlan:
+    def _choose(self, day: date, recipe_uid: str, today: date | None = None) -> WeekPlan:
         """Rezept wählen: put this dish on `day`. It stays when the week is re-rolled; rules only show
         as hints. A new dish picked by hand fills the week's new slot."""
         today = today or date.today()
@@ -1578,7 +1758,7 @@ class Tischlein:
 
     # Nachträge -------------------------------------------------------------------
 
-    def log_cooked(
+    def _log_cooked(
         self, day: date, recipe_uid: str | None = None, name: str = "", person: str = "", today: date | None = None
     ) -> None:
         """Nachtrag: what was cooked on `day`, planned or not. A recipe from Paprika counts like any
@@ -1597,11 +1777,11 @@ class Tischlein:
         with self._watch(week_start_of(day)):
             self.store.set_cooked(day, recipe_uid or None, name[:120], person)
 
-    def remove_cooked(self, day: date) -> None:
+    def _remove_cooked(self, day: date) -> None:
         with self._watch(week_start_of(day)):
             self.store.remove_cooked(day)
 
-    def set_status(self, week_start: date, status: str, person: str = "") -> WeekPlan:
+    def _set_status(self, week_start: date, status: str, person: str = "") -> WeekPlan:
         plan = self._require(week_start)
         before = plan.status
         plan.status = status  # type: ignore[assignment]

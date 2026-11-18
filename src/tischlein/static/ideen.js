@@ -33,10 +33,15 @@ document.addEventListener("alpine:init", () => {
       return this.total ? Math.round(((this.done + 0.15) / this.total) * 100) : 5;
     },
 
-    async start() {
+    // theme: only ideas for this theme ("Ideen dazu" in Vorrat pro Thema), else for the thin ones
+    async start(theme = "") {
       this.error = "";
       try {
-        const res = await fetch("/api/ideen/start", { method: "POST" });
+        const res = await fetch("/api/ideen/start", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ thema: theme }),
+        });
         const state = await res.json();
         if (!res.ok) throw new Error(state.detail || `Fehler ${res.status}`);
         this.follow(state);

@@ -250,6 +250,7 @@ form.inline { display: inline; margin: 0; }
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.12); /* floats */ min-width: 180px;
 }
 .free-options form { margin: 0; }
+.free-menu:not([open]) .free-options { display: none; }  /* closed: no layout at all, not just hidden */
 .free-options .chip { width: 100%; justify-content: flex-start; }
 .day-options { min-width: 240px; max-width: 320px; text-decoration: none; }
 .day-options a.chip { text-decoration: none; color: inherit; }
@@ -408,6 +409,10 @@ details[open] summary { color: var(--text); }
 }
 .toast .linkish { color: var(--primary-ink); font-weight: 600; white-space: nowrap; }
 .toast[hidden] { display: none; }
+.toast form { margin: 0; }
+.toast-action { border: 0; background: none; padding: 6px 0; font: inherit; font-weight: 600; color: var(--primary-ink); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; white-space: nowrap; }
+.toast.is-gone { opacity: 0; pointer-events: none; transition: opacity 400ms; }
+.toast.is-error { background: var(--negative); }
 
 /* ---------- sync progress ---------- */
 .sync-banner { margin: 0 0 20px; padding: 12px 16px; border-radius: var(--radius-row); background: var(--surface); }
@@ -554,17 +559,29 @@ details[open] summary { color: var(--text); }
 .toggle-line { display: inline-flex; gap: 8px; align-items: center; font-size: 13px; color: var(--muted); cursor: pointer; }
 .shop-group { margin-bottom: 18px; }
 .shop-group h3 { font-size: 13px; font-weight: 600; margin: 0 0 6px; color: var(--muted); }
-.shop-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+/* one list per aisle: rows split by a rule, not a card per entry; the whole row stays a 44px+ target */
+/* the 1px gap shows the list's ground as the rule; hidden rows (ticked, deleted) leave no gap behind */
+.shop-list {
+  list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1px; overflow: hidden;
+  background: var(--rule); border: 1px solid var(--border); border-radius: var(--radius-row);
+}
 .shop-item {
-  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 2px 12px; min-height: 52px;
-  padding: 8px 12px; background: var(--raised); border: 1px solid var(--border); border-radius: var(--radius-row);
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 0 12px; min-height: 48px;
+  padding: 4px 12px; background: var(--raised);
 }
 .shop-item label { display: flex; align-items: center; gap: 12px; cursor: pointer; min-width: 0; }
 .shop-item input[type="checkbox"] { width: 22px; height: 22px; accent-color: var(--accent); flex: none; }
 .shop-text { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 10px; min-width: 0; }
 .shop-name { font-weight: 500; overflow-wrap: break-word; min-width: 0; }
 .shop-amount { color: var(--muted); }
-.shop-meta { grid-column: 1 / -1; padding-left: 34px; color: var(--muted); font-size: 13px; line-height: 18px; }
+.shop-meta { grid-column: 1 / -1; padding: 0 0 4px 34px; margin-top: -6px; color: var(--muted); font-size: 12px; line-height: 16px; }
+.meta-more { border: 0; background: none; padding: 4px 0; font: inherit; color: var(--text); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.shop-cart { margin-top: 18px; }
+.cart-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
+.cart-toggle { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; border: 0; background: none; padding: 0; font: inherit; font-size: 13px; font-weight: 600; color: var(--muted); cursor: pointer; }
+.cart-toggle svg { width: 14px; height: 14px; transition: transform var(--t); }
+.shop-cart .shop-name { text-decoration: line-through; color: var(--muted); }
+.all-done { margin: 4px 0 0; color: var(--muted); }
 .shop-meta:empty { display: none; }
 .shop-item.is-done .shop-name { text-decoration: line-through; color: var(--muted); }
 .shop-item .btn { grid-row: 1; grid-column: 2; }
@@ -643,3 +660,19 @@ details[open] summary { color: var(--text); }
 .check-chip:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
 .web-list li { padding: 4px 0; border-bottom: 1px solid var(--border); }
 .web-list li:last-child { border-bottom: 0; }
+
+/* ---------- week: one row of actions, past days compact ---------- */
+.week-panel { margin-top: var(--gap); }
+.week-head { flex-wrap: wrap; row-gap: 10px; }
+.week-foot { display: flex; gap: 4px; justify-content: flex-end; flex-wrap: wrap; margin-top: 12px; }
+.day.is-past { min-height: 0; padding-top: 8px; padding-bottom: 8px; background: var(--surface); }
+.day.is-past .day-dish strong { font-size: 15px; }
+.day-status .rated { font-size: 12px; color: var(--muted); }
+.day.is-past .day-status { gap: 4px; align-items: center; }
+.chip.is-current { background: var(--primary); border-color: var(--primary); color: var(--primary-ink); cursor: default; }
+.side-foot a { color: inherit; }
+
+/* ---------- ideas: supply per theme with "Ideen dazu" ---------- */
+.supply-item { display: flex; align-items: center; gap: 4px; }
+.supply-item > a { flex: 1; min-width: 0; }
+.side-panel { margin-top: var(--gap); }

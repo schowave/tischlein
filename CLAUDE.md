@@ -30,10 +30,12 @@ landen im Kalender.
 | Plan | Eine Woche Mittagessen, Status `entwurf` oder `freigegeben` | `WeekPlan` |
 | Mahlzeit | Ein geplanter Tag im Plan | `Meal` |
 | Verschieben | Zwei Tage einer Woche tauschen ihre Gerichte; das Thema bleibt am Wochentag, die Mahlzeit vermerkt „verschoben von …“; auch im freigegebenen Plan, nicht für vergangene Tage; freie Tage tauschen mit; ein Reste-Tag zieht mit seinem Gericht mit | `move` |
-| Tauschen | Für einen Tag ein anderes Rezept zum selben Thema würfeln | `swap` |
+| Anderes Gericht | Für einen Tag ein anderes Rezept zum selben Thema würfeln (früher „Tauschen“) | `swap` |
 | Rezept wählen | Ein bestimmtes Rezept von Hand auf einen Tag legen; bleibt beim Neu-Würfeln der Woche stehen; Cooldown, Kinder-OK und Abneigungen nur als Hinweis; ein von Hand gewähltes Neu-Rezept ersetzt den Neu-Slot der Woche | `choose`, `Meal.chosen` |
 | Reste-Tag | Am Kochtag markiert („Reste morgen“): der nächste Tag mit Mittagessen isst die Reste, kein Kochen, kein Einkauf, sein Thema entfällt diese Woche; zählt nicht als eigene Mahlzeit; nur innerhalb der Woche | `set_leftovers`, `Meal.leftovers` |
 | Themenwechsel | Ein Tag bekommt für eine Woche ein anderes Thema (oder „beliebig“); bleibt beim Neu-Würfeln stehen; am Neu-Slot-Tag wird das Neu-Rezept dann zum neuen Thema gesucht | `set_theme`, `themedays` |
+| Rückgängig | Nimmt die letzte Planänderung einer Woche zurück (eine Stufe), nur solange die Woche seitdem unverändert ist; Löschen auf der Einkaufsliste ebenso | `undo`, `restore_items` |
+| Im Wagen | Abgehakte Zutaten, unten auf der Einkaufsliste eingeklappt | |
 | Nachtrag | Gekochte Mahlzeit, die nicht vom Planer kommt: „stattdessen“ ersetzt das geplante Gericht des Tages, an Tagen ohne Plan kommt sie dazu; zählt für Cooldown, Rückblick, Bewertung und Rückmeldung; auch als Freitext ohne Paprika-Rezept (dann nur Rückblick); Kalender und Home Assistant zeigen das tatsächlich Gekochte | `Cooked`, `with_cooked`, `cooked` |
 | Rückmeldung | Nach einem Neu-Rezept: `ok` (in die Rotation) oder `nein` (nie wieder) | `Feedback` |
 | Bewertung | Nach jedem Essen: gut / mittel / schlecht, pro Tag und Person; steuert die Gewichtung | `ratings` |
@@ -75,6 +77,8 @@ landen im Kalender.
 13. Ein Reste-Tag gehört zum Gericht des Mittagessens davor; ändert sich das, wird er normal geplant.
 14. Gekocht ist, was in einem freigegebenen Plan steht (ohne Reste-Tage) oder nachgetragen wurde;
     ein Nachtrag ersetzt das geplante Gericht seines Tages (Cooldown, Rückblick, Kalender).
+15. Eine freigegebene Woche wird nicht neu gewürfelt (weder ganz noch ein Tag); ändern lässt sie
+    sich nur gezielt: Verschieben, Rezept wählen, Thema, Reste, freier Tag, Nachtrag.
 
 ## Architektur
 

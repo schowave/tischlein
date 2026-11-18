@@ -88,7 +88,11 @@ def main(argv: list[str] | None = None) -> None:
         count = svc.store.replace_recipes(read_export(args.datei))
         print(f"{count} Rezepte importiert.")
     elif args.cmd == "plan":
-        p = svc.generate(svc.resolve_week(args.woche))
+        try:
+            p = svc.generate(svc.resolve_week(args.woche))
+        except ValueError as e:  # approved: keep it, show it as it stands
+            print(e)
+            p = svc.store.plan(svc.resolve_week(args.woche))
         if args.freigeben:
             p = svc.set_status(p.week_start, "freigegeben")
         print(f"Woche ab {p.week_start:%d.%m.%Y} ({p.status}):")

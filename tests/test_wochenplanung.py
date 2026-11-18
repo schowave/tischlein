@@ -211,3 +211,67 @@ def test_moving_alone_does_not_collect_again(svc, monkeypatch):
     assert calls == []
     svc.set_leftovers(DAY[2], True)
     assert calls == [MONDAY]
+
+
+def test_rueckgaengig_puts_the_whole_week_back_once(svc):
+    before = meals(svc.generate(MONDAY))
+    svc.set_day_free(DAY[2], "Urlaub")
+    assert svc.last_change(MONDAY)["label"] == "Mittwoch: kein Mittagessen"
+    assert svc.undo(MONDAY) == "Mittwoch: kein Mittagessen"
+    after = meals(svc.store.plan(MONDAY))
+    assert DAY[2] not in svc.skip_map(MONDAY) and after[DAY[2]] == before[DAY[2]]
+    assert svc.last_change(MONDAY) is None
+    with pytest.raises(ValueError):
+        svc.undo(MONDAY)
+
+
+def test_rueckgaengig_takes_back_a_nachtrag_and_a_failed_change_keeps_the_last_step(svc):
+    svc.generate(MONDAY)
+    svc.log_cooked(DAY[0], name="Pizza", today=DAY[1])
+    with pytest.raises(ValueError):
+        svc.move(DAY[0], DAY[1], today=DAY[1])  # the past: refused, nothing remembered
+    assert svc.last_change(MONDAY)["label"] == "Nachgetragen für Montag"
+    svc.undo(MONDAY)
+    assert svc.store.cooked() == {}
+
+
+def test_rueckgaengig_never_takes_back_a_later_change(svc):
+    svc.generate(MONDAY)
+    svc.move(DAY[1], DAY[2], today=MONDAY)
+    svc.set_servings(DAY[3], 6)  # not a step of its own, but it changes the week after the move
+    assert svc.last_change(MONDAY) is None
+    with pytest.raises(ValueError, match="inzwischen geändert"):
+        svc.undo(MONDAY)
+    assert svc.week_servings(MONDAY)[DAY[3]]["servings"] == 6
+
+
+def test_a_change_that_changes_nothing_keeps_the_last_step(svc):
+    svc.generate(MONDAY)
+    svc.set_day_free(DAY[0], "Urlaub")
+    svc.set_day_free(DAY[1], "Urlaub")
+    svc.move(DAY[0], DAY[1], today=MONDAY)  # two free days: nothing to move
+    assert svc.last_change(MONDAY)["label"] == "Dienstag: kein Mittagessen"
+
+
+def test_an_approved_week_is_not_rolled_again_or_swapped(svc):
+    plan = svc.generate(MONDAY)
+    svc.set_status(MONDAY, "freigegeben")
+    with pytest.raises(ValueError, match="freigegeben"):
+        svc.generate(MONDAY)
+    with pytest.raises(ValueError, match="freigegeben"):
+        svc.swap(MONDAY, DAY[0])
+    assert svc.store.plan(MONDAY).meals == plan.meals and svc.store.plan(MONDAY).status == "freigegeben"
+
+
+def test_removing_ticked_entries_takes_only_those_read_and_restores_them(svc):
+    for name in ("Milch", "Brot"):
+        svc.store.add_shopping_item(MONDAY, name)
+    milk, bread = svc.store.shopping(MONDAY)
+    svc.store.set_shopping_done(milk["id"], True)
+    removed = svc.remove_done(MONDAY)
+    assert [i["name"] for i in removed] == ["Milch"]
+    assert [i["name"] for i in svc.store.shopping(MONDAY)] == ["Brot"]
+    assert svc.restore_items(MONDAY, removed) == 1
+    assert svc.restore_items(MONDAY, removed) == 0  # already back: nothing restored twice
+    with pytest.raises(ValueError):
+        svc.restore_items(MONDAY, [{"id": "x", "name": "Milch"}])

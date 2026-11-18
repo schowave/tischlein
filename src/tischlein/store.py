@@ -269,6 +269,55 @@ class Store:
         ).fetchall()
         return {date.fromisoformat(d) for (d,) in rows}
 
+    # Week snapshots (Rückgängig) ---------------------------------------------------
+
+    # table -> the date column that puts a row into a week (fixed names, never from input)
+    _WEEK_TABLES = {
+        "meals": "week_start",
+        "skipdays": "day",
+        "themedays": "day",
+        "quickdays": "day",
+        "servings": "day",
+        "cooked": "day",
+    }
+
+    @_locked
+    def week_state(self, week_start: date) -> dict:
+        """Everything one week's plan consists of, to put back as it was (Rückgängig)."""
+        ws, end = week_start.isoformat(), (week_start + timedelta(days=6)).isoformat()
+        plan = self.db.execute("SELECT status FROM plans WHERE week_start = ?", (ws,)).fetchone()
+        state = {"plan": plan["status"] if plan else None}
+        for table, col in self._WEEK_TABLES.items():
+            where = f"{col} = ?" if col == "week_start" else f"{col} BETWEEN ? AND ?"
+            args = (ws,) if col == "week_start" else (ws, end)
+            rows = self.db.execute(f"SELECT * FROM {table} WHERE {where}", args).fetchall()
+            # a stable order, so two snapshots of the same week compare equal
+            state[table] = sorted((dict(r) for r in rows), key=lambda r: json.dumps(r, sort_keys=True))
+        return state
+
+    @_locked
+    def restore_week_state(self, week_start: date, state: dict) -> None:
+        ws, end = week_start.isoformat(), (week_start + timedelta(days=6)).isoformat()
+        now = datetime.now().isoformat(timespec="seconds")
+        with self.db:
+            for table, col in self._WEEK_TABLES.items():
+                if col == "week_start":
+                    self.db.execute(f"DELETE FROM {table} WHERE {col} = ?", (ws,))
+                else:
+                    self.db.execute(f"DELETE FROM {table} WHERE {col} BETWEEN ? AND ?", (ws, end))
+                for row in state.get(table, []):
+                    cols = ", ".join(row)
+                    marks = ", ".join("?" for _ in row)
+                    self.db.execute(f"INSERT INTO {table} ({cols}) VALUES ({marks})", tuple(row.values()))
+            if state.get("plan") is None:
+                self.db.execute("DELETE FROM plans WHERE week_start = ?", (ws,))
+            else:
+                self.db.execute(
+                    "INSERT INTO plans VALUES (?, ?, ?) ON CONFLICT(week_start) DO UPDATE SET "
+                    "status = excluded.status, updated_at = excluded.updated_at",
+                    (ws, state["plan"], now),
+                )
+
     # Theme per day -------------------------------------------------------------
 
     @_locked
@@ -414,10 +463,9 @@ class Store:
         return cur.rowcount
 
     @_locked
-    def delete_done_shopping(self, week_start: date) -> int:
+    def delete_shopping_items(self, ids: list[int]) -> None:
         with self.db:
-            cur = self.db.execute("DELETE FROM shopping WHERE week_start = ? AND done = 1", (week_start.isoformat(),))
-        return cur.rowcount
+            self.db.executemany("DELETE FROM shopping WHERE id = ?", [(i,) for i in ids])
 
     @_locked
     def delete_shopping_item(self, item_id: int) -> None:
@@ -443,7 +491,7 @@ class Store:
     @_locked
     def shopping(self, week_start: date) -> list[dict]:
         rows = self.db.execute(
-            "SELECT id, name, amount, grp, recipes, manual, done, done_by, bring, bring_menge FROM shopping "
+            "SELECT id, name, amount, grp, recipes, manual, done, done_by, bring, bring_menge, position FROM shopping "
             "WHERE week_start = ? "
             "ORDER BY position, id",
             (week_start.isoformat(),),
@@ -460,9 +508,45 @@ class Store:
                 "done_by": b,
                 "bring": br,
                 "bring_menge": bm,
+                "position": p,
             }
-            for i, n, a, g, r, m, d, b, br, bm in rows
+            for i, n, a, g, r, m, d, b, br, bm, p in rows
         ]
+
+    @_locked
+    def restore_shopping(self, week_start: date, items: list[dict]) -> list[dict]:
+        """Put deleted entries back as they were (same id, place and tick); not into Bring yet.
+        Returns the ones that came back (an id still on a list is left alone)."""
+        back = []
+        with self.db:
+            for i in items:
+                cur = self.db.execute(
+                    "INSERT OR IGNORE INTO shopping (id, week_start, name, amount, grp, recipes, manual, position, "
+                    "done, done_by, bring, bring_menge) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, '')",
+                    (
+                        i["id"],
+                        week_start.isoformat(),
+                        i["name"],
+                        i["amount"],
+                        i["group"],
+                        i["recipes"],
+                        int(i["manual"]),
+                        i["position"],
+                        int(i["done"]),
+                        i["done_by"],
+                    ),
+                )
+                if cur.rowcount:
+                    back.append(i)
+        return back
+
+    @_locked
+    def forget_removed_shopping(self, week_start: date, keys: list[str]) -> None:
+        with self.db:
+            self.db.executemany(
+                "DELETE FROM shopping_removed WHERE week_start = ? AND item_key = ?",
+                [(week_start.isoformat(), k) for k in keys],
+            )
 
     @_locked
     def shopping_week(self, item_id: int) -> date | None:

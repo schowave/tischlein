@@ -8,7 +8,7 @@ from datetime import date, timedelta
 from . import shopping
 from .config import WEEKDAY_NAMES
 from .models import Recipe, WeekPlan, with_cooked
-from .planner import week_start_of
+from .planner import is_lunch, week_start_of
 from .service import Tischlein
 
 MONTHS = [
@@ -143,7 +143,7 @@ def cook_view(svc: Tischlein, day: date) -> dict:
     }
 
 
-def week_view(svc: Tischlein, which: str | None, today: date) -> dict:
+def week_view(svc: Tischlein, which: str | None, today: date, toast: str = "") -> dict:
     cfg = svc.config
     feedback = svc.store.feedback()
     recipes = {r.uid: r for r in svc.store.recipes()}
@@ -161,13 +161,16 @@ def week_view(svc: Tischlein, which: str | None, today: date) -> dict:
     raw = svc.store.plan(start)  # as planned, without Nachträge
     changed_themes = svc.store.themedays(start, start + timedelta(days=6))
     plan_days = [start + timedelta(days=rule.weekday) for rule in cfg.days]
+    shown_draft = bool(raw and raw.status == "entwurf")
     days = []
     for rule in cfg.days:
         d = start + timedelta(days=rule.weekday)
         meal = by_day.get(d)
         r = recipes.get(meal.recipe_uid) if meal and meal.recipe_uid else None
         planned = next((m for m in raw.meals if m.day == d), None) if raw else None
-        movable = bool(planned and not planned.leftovers and not (meal and meal.logged) and d >= today)
+        logged = bool(meal and meal.logged)
+        movable = bool(planned and not planned.leftovers and not logged and d >= today)
+        cookable = bool(planned and planned.recipe_uid and not planned.skipped and not planned.leftovers and not logged)
         days.append(
             {
                 "date": d,
@@ -188,17 +191,24 @@ def week_view(svc: Tischlein, which: str | None, today: date) -> dict:
                 if movable
                 else [],
                 "can_choose": bool(planned and not planned.skipped and d >= today and not (meal and meal.logged)),
-                "can_theme": bool(d >= today and not (planned and planned.leftovers) and not (meal and meal.logged)),
+                "can_theme": bool(
+                    d >= today and planned and not planned.skipped and not planned.leftovers and not logged
+                ),
                 "can_leftovers": bool(
                     planned
                     and planned.recipe_uid
                     and not planned.skipped
                     and not planned.leftovers
-                    and not (meal and meal.logged)
+                    and not logged
+                    and d >= today
                     and svc.next_lunch(raw, d)
                 ),
                 "leftovers_next": bool(raw and svc.has_leftovers(raw, d)),
                 "can_log": d <= today,
+                # an approved week changes only on purpose: move, pick, Nachtrag; no re-rolling
+                "can_swap": cookable and d >= today and shown_draft,
+                "can_quick": cookable and d >= today and shown_draft,
+                "can_free": bool(planned and not planned.skipped and not logged and d >= today),
                 "meal": meal,
                 "is_today": d == today,
                 "kinder_ok": is_kid_ok(svc, r, feedback),
@@ -215,6 +225,9 @@ def week_view(svc: Tischlein, which: str | None, today: date) -> dict:
             }
         )
     extras = [m for m in shown.meals if m.day not in plan_days] if shown else []
+    for x in days:
+        actions = ("logged", "can_log", "can_swap", "can_choose", "can_quick", "can_leftovers", "can_theme", "can_free")
+        x["has_menu"] = any(x[k] for k in actions) or bool(x["move_to"])
     planned = sum(1 for x in days if x["meal"] and x["meal"].recipe_uid)
     kid_in_plan = sum(1 for x in days if x["meal"] and x["kinder_ok"])
 
@@ -233,12 +246,6 @@ def week_view(svc: Tischlein, which: str | None, today: date) -> dict:
     if shown and planned and kid_in_plan == 0 and shown.status == "entwurf":
         finding += " Keines der Gerichte ist bisher Kinder-OK."
 
-    supply = svc.theme_supply()
-
-    def lunch(r: Recipe) -> bool:  # same rule as the planner's new slot
-        return r.has_tag(cfg.main_tag) or any(r.has_tag(t) for t in cfg.themes)
-
-    trial = [r for r in recipes.values() if r.has_tag(cfg.new_tag) and lunch(r) and r.uid not in feedback]
     return {
         "which": which,
         "start": start,
@@ -249,9 +256,8 @@ def week_view(svc: Tischlein, which: str | None, today: date) -> dict:
         "hero": hero,
         "today_line": long_date(today),
         "finding": finding,
-        "supply": supply,
-        "trial": sorted(trial, key=lambda r: r.name.casefold())[:4],
-        "trial_count": len(trial),
+        # only the note of the week that was just changed (meldung=<its Monday>)
+        "toast": svc.last_change(start) if toast == start.isoformat() else None,
         "new_tag": cfg.new_tag,
         "kid_tag": cfg.kid_tag,
         "sync_enabled": svc.paprika is not None,
@@ -381,6 +387,8 @@ def shopping_view(svc: Tischlein, week_start: date, which: str) -> dict:
         "has_plan": bool(dishes),
         "llm": svc.llm() is not None,
         "updating": svc.shopping_updating(week_start),
+        # the list's state for the page script: tick and who ticked, per entry
+        "state": {str(i["id"]): {"done": i["done"], "by": i["done_by"]} for i in items},
     }
 
 
@@ -433,12 +441,19 @@ def web_view(svc: Tischlein, url: str) -> dict:
 
 
 def ideas_view(svc: Tischlein) -> dict:
+    cfg = svc.config
+    feedback = svc.store.feedback()
+
+    trial = [r for r in svc.store.recipes() if r.has_tag(cfg.new_tag) and is_lunch(r, cfg) and r.uid not in feedback]
     return {
         "ideas": svc.store.ideas("neu"),
         "accepted": svc.store.ideas("uebernommen")[:6],
         "llm": svc.llm() is not None,
         "can_write": svc.paprika is not None,
         "supply": svc.theme_supply(),
+        "trial": sorted(trial, key=lambda r: r.name.casefold())[:6],
+        "trial_count": len(trial),
+        "new_tag": cfg.new_tag,
     }
 
 

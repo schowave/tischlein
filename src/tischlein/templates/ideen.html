@@ -54,6 +54,8 @@
           <form class="inline" method="post" action="/ideen/{{ i.id }}/uebernehmen" x-data="{ busy: false }" @submit="busy = true">
             <button class="btn btn-primary btn-sm" :disabled="busy" x-text="busy ? 'Wird angelegt …' : 'Nach Paprika übernehmen'">Nach Paprika übernehmen</button>
           </form>
+          {% else %}
+          <span class="muted small">Zum Übernehmen <a href="/einstellungen#paprika">Paprika verbinden</a></span>
           {% endif %}
           <form class="inline" method="post" action="/ideen/{{ i.id }}/verwerfen"><button class="btn btn-ghost btn-sm">Nicht interessant</button></form>
         </div>
@@ -66,20 +68,45 @@
   </section>
 
   <aside class="s4">
-    <section class="panel" aria-labelledby="focus-h">
-      <div class="panel-head"><h2 id="focus-h">Wo Abwechslung fehlt</h2></div>
+    <section class="panel" aria-labelledby="supply-h">
+      <div class="panel-head"><h2 id="supply-h">Vorrat pro Thema</h2></div>
+      <p class="panel-note">Damit sich nichts zu oft wiederholt, braucht jedes Thema {{ v.supply[0].bedarf if v.supply else 3 }} Kinder-OK-Gerichte.</p>
       <div class="supply">
         {% for s in v.supply %}
-        <div class="supply-row">
-          <span class="name">{{ s.thema }}</span>
-          <span class="ratio num{% if s.kinder_ok >= s.bedarf %} ok{% endif %}"><b>{{ s.kinder_ok }}</b> von {{ s.bedarf }} Kinder-OK</span>
+        <div class="supply-item">
+          <a href="/rezepte?thema={{ s.thema | urlencode }}&amp;kinder=nein" aria-label="{{ s.thema }}: {{ s.kinder_ok }} von {{ s.bedarf }} Kinder-OK, {{ s.rezepte }} Rezepte. Rezepte markieren">
+            <span class="name">{{ s.thema }}{% if not s.hat_tag %}<small>ohne Tag</small>{% endif %}</span>
+            <span class="ratio num{% if s.kinder_ok >= s.bedarf %} ok{% endif %}"><b>{{ s.kinder_ok }}</b> von {{ s.bedarf }}</span>
+            <span class="slots" aria-hidden="true">
+              {% for n in range(s.bedarf) %}<span class="slot{% if n < s.kinder_ok %} on{% endif %}"></span>{% endfor %}
+              <span class="of num">{{ s.rezepte }} Rezepte</span>
+            </span>
+          </a>
+          {% if v.llm and s.kinder_ok < s.bedarf %}
+          <form class="inline" method="post" action="/ideen/erzeugen" @submit.prevent="start({{ s.thema | tojson | forceescape }})">
+            <input type="hidden" name="thema" value="{{ s.thema }}">
+            <button class="btn btn-ghost btn-sm" :disabled="running" aria-label="Ideen für {{ s.thema }}">Ideen dazu</button>
+          </form>
+          {% endif %}
         </div>
         {% endfor %}
       </div>
-      <p class="panel-note">Übernommene Ideen landen mit den Kategorien „Neu“ und „KI“ in Paprika und kommen in den Neu-Slot. Nach dem Essen entscheidet ihr: Gut nimmt sie in die Rotation.</p>
+      <p class="panel-note">Übernommene Ideen landen mit „Neu“ in Paprika und kommen in den Neu-Slot. Nach dem Essen entscheidet ihr: „Gut“ nimmt sie in die Rotation.</p>
+    </section>
+    <section class="panel side-panel" aria-labelledby="trial-h">
+      <div class="panel-head">
+        <h2 id="trial-h">Zum Ausprobieren</h2>
+        <span class="chip-count num">{{ v.trial_count }}</span>
+        <div class="end"><a class="btn btn-ghost btn-sm" href="/rezepte">Alle Rezepte</a></div>
+      </div>
+      {% if v.trial %}
+      <ul class="plain-list">{% for r in v.trial %}<li><a href="/rezepte?rezept={{ r.uid | urlencode }}">{{ r.name }}</a></li>{% endfor %}</ul>
+      {% else %}
+      <div class="empty-frame">Kein Rezept hat die Kategorie „{{ v.new_tag }}“. Übernehmt eine Idee oder ein Rezept aus dem Netz.</div>
+      {% endif %}
     </section>
     {% if v.accepted %}
-    <section class="panel" aria-labelledby="acc-h" style="margin-top: var(--gap)">
+    <section class="panel side-panel" aria-labelledby="acc-h">
       <div class="panel-head"><h2 id="acc-h">Zuletzt übernommen</h2></div>
       <ul class="plain-list">{% for i in v.accepted %}<li><a href="/rezepte?rezept={{ i.paprika_uid | urlencode }}">{{ i.name }}</a></li>{% endfor %}</ul>
     </section>

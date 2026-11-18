@@ -46,11 +46,12 @@ Das Prinzip ist „Sous-Chef“: Tischlein schlägt vor, die Familie gibt frei.
   bewertete öfter.
 - **Neu-Slot:** einmal pro Woche ein Rezept mit der Kategorie „Neu“. Nach dem Essen entscheidet
   ihr: „Gut“ nimmt es in die Rotation, „Nie wieder“ wirft es raus.
-- **Freigabe:** Tage tauschen, die Woche neu würfeln, freigeben. Nur freigegebene Wochen landen
-  im Kalender. Feiertage (bundesweit und pro Bundesland), Urlaub oder Kita markieren Tage als frei.
+- **Freigabe:** einen Tag mit „Anderes Gericht“ neu würfeln, die Woche neu planen, oben
+  freigeben. Nur freigegebene Wochen landen im Kalender und werden nicht mehr neu gewürfelt. Feiertage (bundesweit und pro Bundesland), Urlaub oder Kita markieren Tage als frei.
 - **Woche umstellen:** unter „Mehr“ pro Tag ein Gericht auf einen anderen Tag verschieben (auch
   nach der Freigabe), ein bestimmtes Rezept wählen (bleibt beim Neu-Würfeln stehen), das Thema
   für diese Woche wechseln oder „Reste morgen“: Der nächste Tag isst mit, ohne Kochen und Einkauf.
+  Jede Änderung meldet sich unten mit „Rückgängig“, solange danach nichts anderes geändert wurde.
 - **Portionen pro Gericht:** Standard ist eure Familiengröße; mit − und + pro Tag änderbar.
   Rezepte werden umgerechnet („Rezept für 2, Mengen für 4“).
 - **Was die Kinder nicht mögen** (z. B. „Pilze, Oliven“) steht in den Einstellungen; solche
@@ -68,8 +69,8 @@ Das Prinzip ist „Sous-Chef“: Tischlein schlägt vor, die Familie gibt frei.
   Was man schon hat, löscht man; „Neu sammeln“ holt es nur zurück, wenn ein anderes Gericht es braucht.
   Bei der Freigabe wird die Liste zum ersten Mal gesammelt, danach folgt sie jeder Änderung am Plan.
 - **Gemeinsam abhaken, auch ohne Netz:** Was die andere Person abhakt, erscheint nach wenigen
-  Sekunden; im Laden ohne Empfang wird nachgeholt. Eigene Einträge dazuschreiben, alles abhaken,
-  Abgehaktes entfernen, „Teilen“ als Text.
+  Sekunden; im Laden ohne Empfang wird nachgeholt. Abgehaktes rutscht nach unten unter „Im Wagen“,
+  oben steht nur, was noch fehlt. Löschen lässt sich rückgängig machen; „Teilen“ als Text.
 - **Mit Bring abgeglichen** (über Home Assistant): Einträge und Haken gehen in beide Richtungen,
   was ihr in Bring neu anlegt, kommt unter „Aus Bring“ dazu; die Liste wählt ihr in den Einstellungen. Neue Einträge
   melden sich über Home Assistant auf dem Handy der anderen.

@@ -3,47 +3,64 @@
 {% block title %}Woche · Tischlein{% endblock %}
 {% block sidefoot %}
 <div class="side-foot">
-  {% if v.sync_enabled %}<strong>Paprika verbunden</strong>{{ (v.last_sync or 'noch nicht abgeglichen').split(' – ')[0] }}{% else %}<strong>Paprika nicht verbunden</strong>Export-Upload möglich{% endif %}
+  {% if v.sync_enabled %}<strong>Paprika verbunden</strong>{{ (v.last_sync or 'noch nicht abgeglichen').split(' – ')[0] }}{% else %}<strong>Paprika nicht verbunden</strong><a href="/einstellungen#paprika">Verbinden</a>{% endif %}
 </div>
 {% endblock %}
 {% block content %}
+{# One form per menu entry: a POST that stays on the page (stay.js) and comes back to the day. #}
+{% macro post(action, label, fields={}, pressed=None, aria=None, cls="chip") %}
+<form data-stay method="post" action="{{ action }}">
+  {% for k, val in fields.items() %}<input type="hidden" name="{{ k }}" value="{{ val }}">{% endfor %}
+  <input type="hidden" name="woche" value="{{ v.which }}">
+  <button class="{{ cls }}"{% if pressed is not none %} aria-pressed="{{ 'true' if pressed else 'false' }}"{% endif %}{% if aria %} aria-label="{{ aria }}"{% endif %}>{{ label }}</button>
+</form>
+{% endmacro %}
+
+{# Everything a day can change, in one menu: the card itself keeps only the dish and its portions. #}
 {% macro day_menu(d) %}
 {% set iso = d.date.isoformat() %}
-{% if d.can_move or d.can_choose or d.can_theme or d.can_leftovers or d.can_log or d.logged %}
+{% if d.has_menu %}
 <details class="free-menu day-menu">
   <summary class="btn btn-ghost btn-sm" aria-label="{{ d.weekday }}: mehr">Mehr</summary>
   <div class="free-options day-options">
     {% if d.logged %}
-    <form data-stay method="post" action="/nachtrag/{{ iso }}/entfernen"><input type="hidden" name="woche" value="{{ v.which }}"><button class="chip">Nachtrag entfernen</button></form>
+    {{ post('/nachtrag/' ~ iso ~ '/entfernen', 'Nachtrag entfernen') }}
     {% elif d.can_log %}
     <a class="chip" href="/nachtrag?tag={{ iso }}">{{ 'Stattdessen gekocht …' if d.meal and d.meal.recipe_uid and not d.free else 'Gekocht …' }}</a>
     {% endif %}
+    {% if d.can_swap %}{{ post('/plaene/' ~ v.which ~ '/tauschen', 'Anderes Gericht', {'tag': iso}, aria=d.weekday ~ ': anderes Gericht') }}{% endif %}
     {% if d.can_choose %}<a class="chip" href="/tage/{{ iso }}/rezept">Rezept wählen …</a>{% endif %}
-    {% if d.can_leftovers %}
-    <form data-stay method="post" action="/tage/{{ iso }}/reste"><input type="hidden" name="an" value="{{ 0 if d.leftovers_next else 1 }}"><input type="hidden" name="woche" value="{{ v.which }}"><button class="chip" aria-pressed="{{ 'true' if d.leftovers_next else 'false' }}" title="Doppelt kochen, am nächsten Tag mit Mittagessen gibt es die Reste">Reste morgen</button></form>
-    {% endif %}
+    {% if d.can_quick %}{{ post('/tage/' ~ iso ~ '/schnell', 'Wenig Zeit', {'an': 0 if d.quick else 1}, pressed=d.quick) }}{% endif %}
+    {% if d.can_leftovers %}{{ post('/tage/' ~ iso ~ '/reste', 'Reste morgen', {'an': 0 if d.leftovers_next else 1}, pressed=d.leftovers_next) }}{% endif %}
     {% if d.move_to %}
     <span class="menu-h">Verschieben auf</span>
     <div class="chips">
-      {% for t in d.move_to %}<form data-stay method="post" action="/tage/{{ iso }}/verschieben"><input type="hidden" name="nach" value="{{ t.date.isoformat() }}"><input type="hidden" name="woche" value="{{ v.which }}"><button class="chip" aria-label="{{ d.weekday }} auf {{ t.label }} verschieben">{{ t.label[:2] }}</button></form>{% endfor %}
+      {% for t in d.move_to %}{{ post('/tage/' ~ iso ~ '/verschieben', t.label[:2], {'nach': t.date.isoformat()}, aria=d.weekday ~ ' auf ' ~ t.label ~ ' verschieben') }}{% endfor %}
     </div>
     {% endif %}
-    {% if d.can_theme and not d.free %}
+    {% if d.can_theme %}
     <span class="menu-h">Thema diese Woche</span>
     <div class="chips">
-      {% for t in d.themes %}<form data-stay method="post" action="/tage/{{ iso }}/thema"><input type="hidden" name="thema" value="{{ t }}"><input type="hidden" name="woche" value="{{ v.which }}"><button class="chip" aria-pressed="{{ 'true' if t == d.theme else 'false' }}" {% if t == d.theme %}disabled{% endif %}>{{ t }}</button></form>{% endfor %}
-      {% if d.theme_changed %}<form data-stay method="post" action="/tage/{{ iso }}/thema"><input type="hidden" name="thema" value=""><input type="hidden" name="woche" value="{{ v.which }}"><button class="chip">Wie im Wochenschema</button></form>{% endif %}
+      {% for t in d.themes %}{% if t == d.theme %}<span class="chip is-current" aria-current="true">{{ t }}</span>{% else %}{{ post('/tage/' ~ iso ~ '/thema', t, {'thema': t}) }}{% endif %}{% endfor %}
+      {% if d.theme_changed %}{{ post('/tage/' ~ iso ~ '/thema', 'Wie im Wochenschema', {'thema': ''}) }}{% endif %}
+    </div>
+    {% endif %}
+    {% if d.can_free %}
+    <span class="menu-h">Kein Mittagessen</span>
+    <div class="chips">
+      {% for g in free_reasons %}{{ post('/tage/' ~ iso ~ '/frei', g, {'grund': g}) }}{% endfor %}
     </div>
     {% endif %}
   </div>
 </details>
 {% endif %}
 {% endmacro %}
+
 {% set h = v.hero %}
 <section class="hero{% if h.photo %} has-photo{% endif %}">
   <div class="hero-text">
     <h1>{{ h.headline }}</h1>
-    <p class="hero-sub">{% if h.meal %}{{ h.date }}{% if h.time %} · {{ h.time }}{% endif %}{% if h.kid_ok %} · <span class="kid-word">Kinder-OK</span>{% endif %}{% if h.draft %} · noch nicht freigegeben{% endif %}{% else %}{{ v.today_line }}{% endif %}</p>
+    <p class="hero-sub">{% if h.meal %}{{ h.date }}{% if h.time %} · {{ h.time }}{% endif %}{% if h.draft %} · noch nicht freigegeben{% endif %}{% else %}{{ v.today_line }}{% endif %}</p>
     {% if h.meal and h.meal.is_new %}<p class="hero-note">Neu ausprobieren: eine sichere Beilage dazu, z. B. Nudeln, Brot oder Gurke.</p>{% endif %}
     {% if h.prep %}
     <div class="prep">
@@ -57,195 +74,116 @@
   {% if h.photo %}<a class="hero-photo" href="/rezepte?rezept={{ h.meal.recipe_uid | urlencode }}" tabindex="-1" aria-hidden="true"><img src="/bilder/{{ h.meal.recipe_uid | urlencode }}.jpg" alt="" decoding="async" onerror="this.closest('.hero').classList.remove('has-photo'); this.parentElement.remove()"></a>{% endif %}
 </section>
 
-<div class="grid">
-
-  <section class="panel s9" aria-labelledby="week-h">
-    <div class="panel-head">
-      <h2 id="week-h">Mittagessen {{ v.range }}</h2>
-      {% if v.plan %}<span class="pill {{ 'pill-kid' if v.plan.status == 'freigegeben' else 'pill-neutral' }}"><span class="pill-dot"></span>{{ 'Freigegeben, im Kalender' if v.plan.status == 'freigegeben' else 'Entwurf' }}</span>{% endif %}
-      <div class="end">
-        <nav class="seg" aria-label="Woche wählen">
-          <a href="/?woche=aktuell" {% if v.which == 'aktuell' %}aria-current="true"{% endif %}>Diese Woche</a>
-          <a href="/?woche=naechste" {% if v.which == 'naechste' %}aria-current="true"{% endif %}>Nächste Woche</a>
-        </nav>
-      </div>
-    </div>
-
+<section class="panel week-panel" aria-labelledby="week-h">
+  <div class="panel-head week-head">
+    <h2 id="week-h">Mittagessen {{ v.range }}</h2>
     {% if v.plan %}
-    <div class="days">
-      {% for d in v.days %}
-      <article class="day{% if d.free %} is-free{% endif %}{% if d.is_today %} is-today{% endif %}" id="tag-{{ d.date.isoformat() }}">
-        <div class="day-when">
-          <strong>{{ d.weekday }}</strong>
-          <span>{% if d.is_today %}<span class="today">Heute</span> · {% endif %}{{ d.short }} · {% if d.leftovers %}Reste{% else %}{{ d.theme }}{% if d.theme_changed %} <span class="theme-note">diese Woche</span>{% endif %}{% endif %}</span>
-        </div>
-        <div class="day-dish">
-          {% if d.free %}
-            <strong class="empty">Kein Mittagessen</strong>
-            <span>{{ d.free_reason }}</span>
-          {% elif d.meal and d.meal.recipe_uid %}
-            <div class="dish-row">
-              {{ thumb(d.meal.recipe_uid, d.meal.name | replace("Reste: ", ""), d.has_photo) }}
-              <div>
-                <strong><a class="dish-link" href="/kochen/{{ d.date.isoformat() }}">{{ d.meal.name }}</a></strong>
-                {% if d.meal.is_new %}<span>Neu ausprobieren: eine sichere Beilage dazu.</span>
-                {% elif d.meal.reason and 'Kinder-OK' not in d.meal.reason %}<span>{{ d.meal.reason }}</span>{% endif %}
-                {% if d.portions and d.portions.base != d.portions.servings %}<span class="scale-note">Rezept für {{ d.portions.base }}, Mengen für {{ d.portions.servings }}</span>{% endif %}
-              </div>
+    <span class="pill {{ 'pill-kid' if v.plan.status == 'freigegeben' else 'pill-neutral' }}"><span class="pill-dot"></span>{{ 'Freigegeben, im Kalender' if v.plan.status == 'freigegeben' else 'Entwurf' }}</span>
+    {% if v.plan.status == 'entwurf' %}
+    <form data-stay class="inline" method="post" action="/plaene/{{ v.which }}/status"><input type="hidden" name="status" value="freigegeben"><button class="btn btn-primary btn-sm">Woche freigeben</button></form>
+    {% else %}
+    <form data-stay class="inline" method="post" action="/plaene/{{ v.which }}/status"><input type="hidden" name="status" value="entwurf"><button class="btn btn-ghost btn-sm">Wieder bearbeiten</button></form>
+    {% endif %}
+    {% endif %}
+    <div class="end">
+      <nav class="seg" aria-label="Woche wählen">
+        <a href="/?woche=aktuell" {% if v.which == 'aktuell' %}aria-current="true"{% endif %}>Diese Woche</a>
+        <a href="/?woche=naechste" {% if v.which == 'naechste' %}aria-current="true"{% endif %}>Nächste Woche</a>
+      </nav>
+    </div>
+  </div>
+
+  {% if v.plan %}
+  <div class="days">
+    {% for d in v.days %}
+    <article class="day{% if d.free %} is-free{% endif %}{% if d.is_today %} is-today{% endif %}{% if d.past %} is-past{% endif %}" id="tag-{{ d.date.isoformat() }}">
+      <div class="day-when">
+        <strong>{{ d.weekday }}</strong>
+        <span>{% if d.is_today %}<span class="today">Heute</span> · {% endif %}{{ d.short }} · {% if d.leftovers %}Reste{% else %}{{ d.theme }}{% if d.theme_changed %} <span class="theme-note">diese Woche</span>{% endif %}{% endif %}{% if d.quick %} · wenig Zeit{% endif %}</span>
+      </div>
+      <div class="day-dish">
+        {% if d.free %}
+          <strong class="empty">Kein Mittagessen</strong>
+          <span>{{ d.free_reason }}</span>
+        {% elif d.meal and d.meal.recipe_uid %}
+          <div class="dish-row">
+            {{ thumb(d.meal.recipe_uid, d.meal.name | replace("Reste: ", ""), d.has_photo, 36 if d.past else 44) }}
+            <div>
+              <strong><a class="dish-link" href="/kochen/{{ d.date.isoformat() }}">{{ d.meal.name }}</a></strong>
+              {% if not d.past %}
+              {% if d.meal.is_new %}<span>Neu ausprobieren: eine sichere Beilage dazu.</span>
+              {% elif d.meal.reason and 'Kinder-OK' not in d.meal.reason %}<span>{{ d.meal.reason }}</span>{% endif %}
+              {% if d.portions and d.portions.base != d.portions.servings %}<span class="scale-note">Rezept für {{ d.portions.base }}, Mengen für {{ d.portions.servings }}</span>{% endif %}
+              {% elif d.meal.logged %}<span>{{ d.meal.reason }}</span>{% endif %}
             </div>
-          {% elif d.meal and d.meal.logged %}
-            <strong>{{ d.meal.name }}</strong>
-            <span>{{ d.meal.reason }}</span>
-          {% elif d.meal %}
-            <strong class="empty">{{ d.meal.reason }}</strong>
-          {% else %}
-            <strong class="empty">Nicht geplant</strong>
-          {% endif %}
-        </div>
-        <div class="day-status">
-          {% if d.free %}<span class="pill pill-neutral">frei</span>
-          {% elif d.meal and d.meal.is_new %}<span class="pill pill-new">Neu</span>
-          {% elif d.kinder_ok %}<span class="pill pill-kid"><span class="pill-dot"></span>Kinder-OK</span>
-          {% elif d.meal and d.meal.recipe_uid %}<a class="not" href="/rezepte?rezept={{ d.meal.recipe_uid | urlencode }}" aria-label="{{ d.meal.name }}: Kinder-OK setzen">nicht Kinder-OK</a>{% endif %}
-        </div>
-        <div class="day-act">
-          {% if d.free %}
-          <form data-stay class="inline" method="post" action="/tage/{{ d.date.isoformat() }}/kochen"><input type="hidden" name="woche" value="{{ v.which }}"><button class="btn btn-ghost btn-sm">Doch kochen</button></form>
-          {{ day_menu(d) }}
-          {% else %}
-          {% if d.portions %}
-          {% set p = d.portions %}
-          <div class="portions{% if p.custom %} is-custom{% endif %}" role="group" aria-label="{{ d.weekday }}: Portionen">
-            <form data-stay method="post" action="/tage/{{ d.date.isoformat() }}/portionen"><input type="hidden" name="portionen" value="{{ p.servings - 1 }}"><input type="hidden" name="woche" value="{{ v.which }}"><button class="step" aria-label="Eine Portion weniger" {% if p.servings <= 1 %}disabled{% endif %}>−</button></form>
-            <span class="num" title="Portionen für die Einkaufsliste">{{ p.servings }}<small> Port.</small></span>
-            <form data-stay method="post" action="/tage/{{ d.date.isoformat() }}/portionen"><input type="hidden" name="portionen" value="{{ p.servings + 1 }}"><input type="hidden" name="woche" value="{{ v.which }}"><button class="step" aria-label="Eine Portion mehr" {% if p.servings >= 30 %}disabled{% endif %}>+</button></form>
           </div>
-          {% endif %}
-          {% set cookable = d.meal and not d.leftovers and not d.logged %}
-          {% if v.plan.status == 'entwurf' and cookable %}
-          <form data-stay class="inline" method="post" action="/tage/{{ d.date.isoformat() }}/schnell"><input type="hidden" name="an" value="{{ 0 if d.quick else 1 }}"><input type="hidden" name="woche" value="{{ v.which }}"><button class="btn btn-ghost btn-sm quick-toggle{% if d.quick %} is-on{% endif %}" aria-pressed="{{ 'true' if d.quick else 'false' }}" title="{{ 'Wieder normal planen' if d.quick else 'Wenig Zeit: ein Gericht bis 30 Minuten wählen' }}">Schnell</button></form>
-          {% elif d.quick %}<span class="pill pill-neutral">Schnell</span>
-          {% endif %}
-          {% if v.plan.status == 'entwurf' and cookable %}
-          <form data-stay class="inline" method="post" action="/plaene/{{ v.which }}/tauschen">
-            <input type="hidden" name="tag" value="{{ d.date.isoformat() }}">
-            <button class="btn btn-ghost btn-sm" aria-label="{{ d.weekday }} tauschen">Tauschen</button>
-          </form>
-          {% endif %}
-          {% if not d.logged %}
-          <details class="free-menu">
-            <summary class="btn btn-ghost btn-sm" aria-label="{{ d.weekday }}: kein Mittagessen">Frei</summary>
-            <div class="free-options" role="group" aria-label="Grund">
-              {% for g in free_reasons %}
-              <form data-stay method="post" action="/tage/{{ d.date.isoformat() }}/frei"><input type="hidden" name="grund" value="{{ g }}"><input type="hidden" name="woche" value="{{ v.which }}"><button class="chip">{{ g }}</button></form>
-              {% endfor %}
-            </div>
-          </details>
-          {% endif %}
-          {{ day_menu(d) }}
-          {% endif %}
-        </div>
-        {% if d.can_rate %}
-        <div class="day-feedback">
-          <span>{% if d.rating %}Bewertet: {{ {'gut': 'gut', 'mittel': 'ging so', 'schlecht': 'kam nicht an'}[d.rating.verdict] }}{% if d.rating.person %} ({{ d.rating.person }}){% endif %}{% elif d.feedback == 'nein' %}Wird nicht mehr geplant{% else %}Wie war's?{% endif %}</span>
-          {% if d.feedback != 'nein' %}
-          {% for value, label in [('gut', 'Gut'), ('mittel', 'Ging so'), ('nie', 'Nie wieder')] %}
-          <form data-stay class="inline" method="post" action="/bewertung"><input type="hidden" name="rezept_uid" value="{{ d.meal.recipe_uid }}"><input type="hidden" name="tag" value="{{ d.date.isoformat() }}"><input type="hidden" name="urteil" value="{{ value }}"><input type="hidden" name="woche" value="{{ v.which }}"><button class="btn btn-sm{% if d.rating and d.rating.verdict == value %} is-chosen{% elif value == 'nie' %} btn-ghost{% endif %}" aria-pressed="{{ 'true' if d.rating and d.rating.verdict == value else 'false' }}">{{ label }}</button></form>
-          {% endfor %}
-          {% endif %}
-        </div>
-        {% endif %}
-      </article>
-      {% endfor %}
-    </div>
-    {% if v.extras %}
-    <p class="extras">Außerdem gekocht: {% for e in v.extras %}{{ e.day }} {{ e.name }}{% if not loop.last %} · {% endif %}{% endfor %}</p>
-    {% endif %}
-    <div class="panel-head" style="margin: 14px 0 0">
-      <div class="end">
-        <a class="btn btn-ghost" href="/einkauf?woche={{ v.which }}">Einkaufsliste</a>
-        <form data-stay class="inline" method="post" action="/plaene/{{ v.which }}/erzeugen"><button class="btn">Ganze Woche neu würfeln</button></form>
-        {% if v.plan.status == 'entwurf' %}
-        <form data-stay class="inline" method="post" action="/plaene/{{ v.which }}/status"><input type="hidden" name="status" value="freigegeben"><button class="btn btn-primary">Woche freigeben</button></form>
+        {% elif d.meal and d.meal.logged %}
+          <strong>{{ d.meal.name }}</strong>
+          <span>{{ d.meal.reason }}</span>
+        {% elif d.meal %}
+          <strong class="empty">{{ d.meal.reason }}</strong>
         {% else %}
-        <form data-stay class="inline" method="post" action="/plaene/{{ v.which }}/status"><input type="hidden" name="status" value="entwurf"><button class="btn btn-ghost">Wieder bearbeiten</button></form>
+          <strong class="empty">Nicht geplant</strong>
         {% endif %}
       </div>
-    </div>
-    {% elif v.first_run %}
-    <div class="week-empty">
-      <span>Damit Tischlein planen kann, braucht es eure Rezepte. Verbinde dein Paprika-Konto, der Abgleich läuft danach von selbst.</span>
-      <a class="btn btn-primary" href="/einstellungen">Paprika verbinden</a>
-    </div>
-    {% else %}
-    <div class="week-empty">
-      <span>Für {{ v.range }} ist noch nichts geplant. Tischlein wählt pro Tag ein Gericht zum Thema.</span>
-      <form data-stay class="inline" method="post" action="/plaene/{{ v.which }}/erzeugen"><button class="btn btn-primary">Woche planen</button></form>
-    </div>
-    {% endif %}
-  </section>
-
-  <section class="panel s3 supply-panel" aria-labelledby="supply-h">
-    <div class="panel-head"><h2 id="supply-h">Vorrat pro Thema</h2></div>
-    <p class="panel-note">Damit sich nichts zu oft wiederholt, braucht jedes Thema {{ v.supply[0].bedarf if v.supply else 3 }} Kinder-OK-Gerichte.</p>
-    <div class="supply">
-      {% for s in v.supply %}
-      <a href="/rezepte?thema={{ s.thema | urlencode }}&amp;kinder=nein" aria-label="{{ s.thema }}: {{ s.kinder_ok }} von {{ s.bedarf }} Kinder-OK, {{ s.rezepte }} Rezepte. Rezepte markieren">
-        <span class="name">{{ s.thema }}{% if not s.hat_tag %}<small>ohne Tag</small>{% endif %}</span>
-        <span class="ratio num{% if s.kinder_ok >= s.bedarf %} ok{% endif %}"><b>{{ s.kinder_ok }}</b> von {{ s.bedarf }}</span>
-        <span class="slots" aria-hidden="true">
-          {% for i in range(s.bedarf) %}<span class="slot{% if i < s.kinder_ok %} on{% endif %}"></span>{% endfor %}
-          <span class="of num">{{ s.rezepte }} Rezepte</span>
-        </span>
-      </a>
-      {% endfor %}
-    </div>
-  </section>
-
-  <section class="panel s6" aria-labelledby="trial-h">
-    <div class="panel-head">
-      <h2 id="trial-h">Zum Ausprobieren</h2>
-      <span class="chip-count num">{{ v.trial_count }}</span>
-      <div class="end"><a class="btn btn-ghost btn-sm" href="/rezepte">Alle Rezepte</a></div>
-    </div>
-    {% if v.trial %}
-    <div class="rows">
-      {% for r in v.trial %}
-      <div class="rowcard"><div class="grow"><strong>{{ r.name }}</strong><span>{{ r.tags | join(' · ') }}</span></div></div>
-      {% endfor %}
-    </div>
-    {% else %}
-    <div class="empty-frame">Kein Rezept hat die Kategorie „{{ v.new_tag }}“. Der Neu-Slot am Donnerstag nimmt dann ein bewährtes Gericht. <a href="/rezepte">Rezepte markieren</a></div>
-    {% endif %}
-  </section>
-
-  <section class="panel s6" aria-labelledby="link-h">
-    <div class="panel-head"><h2 id="link-h">Paprika und Kalender</h2></div>
-    <div class="rows">
-      <div class="rowcard">
-        <div class="grow">
-          <strong>Paprika</strong>
-          <span>{% if v.sync_enabled %}{{ v.recipe_count }} Rezepte · abgeglichen {{ (v.last_sync or 'noch nie').split(' – ')[0] }}{% else %}Noch nicht verbunden{% endif %}</span>
-        </div>
-        {% if v.sync_enabled %}<form class="inline" method="post" action="/sync" data-sync><button class="btn btn-sm">Jetzt abgleichen</button></form>{% else %}<a class="btn btn-sm btn-primary" href="/einstellungen">Verbinden</a>{% endif %}
+      <div class="day-status">
+        {% if d.meal and d.meal.is_new and not d.past %}<span class="pill pill-new">Neu</span>
+        {% elif d.rating %}<span class="rated">{{ {'gut': 'Gut', 'mittel': 'Ging so', 'schlecht': 'Kam nicht an'}[d.rating.verdict] }}</span>
+        {% elif d.meal and d.meal.recipe_uid and not d.kinder_ok and not d.leftovers and not d.past %}<a class="not" href="/rezepte?rezept={{ d.meal.recipe_uid | urlencode }}" aria-label="{{ d.meal.name }}: Kinder-OK setzen">nicht Kinder-OK</a>{% endif %}
+        {% if d.past %}{{ day_menu(d) }}{% endif %}
       </div>
-      <div class="rowcard">
-        <div class="grow">
-          <strong>Kalender-Abo</strong>
-          <span>Freigegebene Wochen als Termine auf iPhone und Mac</span>
+      {% if not d.past %}
+      <div class="day-act">
+        {% if d.free and not d.past %}
+        <form data-stay class="inline" method="post" action="/tage/{{ d.date.isoformat() }}/kochen"><input type="hidden" name="woche" value="{{ v.which }}"><button class="btn btn-ghost btn-sm">Doch kochen</button></form>
+        {% elif d.portions and not d.past %}
+        {% set p = d.portions %}
+        <div class="portions{% if p.custom %} is-custom{% endif %}" role="group" aria-label="{{ d.weekday }}: Portionen">
+          <form data-stay method="post" action="/tage/{{ d.date.isoformat() }}/portionen"><input type="hidden" name="portionen" value="{{ p.servings - 1 }}"><input type="hidden" name="woche" value="{{ v.which }}"><button class="step" aria-label="Eine Portion weniger" {% if p.servings <= 1 %}disabled{% endif %}>−</button></form>
+          <span class="num" title="Portionen für die Einkaufsliste">{{ p.servings }}<small> Port.</small></span>
+          <form data-stay method="post" action="/tage/{{ d.date.isoformat() }}/portionen"><input type="hidden" name="portionen" value="{{ p.servings + 1 }}"><input type="hidden" name="woche" value="{{ v.which }}"><button class="step" aria-label="Eine Portion mehr" {% if p.servings >= 30 %}disabled{% endif %}>+</button></form>
         </div>
-        <a class="btn btn-sm" href="/einstellungen#kalender">Einrichten</a>
+        {% endif %}
+        {{ day_menu(d) }}
       </div>
-    </div>
-    {% if v.sync_error %}<p class="error-line">Letzter Abgleich fehlgeschlagen: {{ v.sync_error }}</p>{% endif %}
-    <details>
-      <summary>Ohne Zugang: Paprika-Export hochladen</summary>
-      <form method="post" action="/import" enctype="multipart/form-data" class="field-row">
-        <input class="field" type="file" name="datei" accept=".paprikarecipes" required aria-label="Paprika-Export">
-        <button class="btn">Importieren</button>
-      </form>
-    </details>
-  </section>
+      {% endif %}
+      {% if d.can_rate and not d.rating and d.feedback != 'nein' %}
+      <div class="day-feedback">
+        <span>Wie war's?</span>
+        {% for value, label in [('gut', 'Gut'), ('mittel', 'Ging so'), ('nie', 'Nie wieder')] %}
+        <form data-stay class="inline" method="post" action="/bewertung"><input type="hidden" name="rezept_uid" value="{{ d.meal.recipe_uid }}"><input type="hidden" name="tag" value="{{ d.date.isoformat() }}"><input type="hidden" name="urteil" value="{{ value }}"><input type="hidden" name="woche" value="{{ v.which }}"><button class="btn btn-sm{% if value == 'nie' %} btn-ghost{% endif %}">{{ label }}</button></form>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </article>
+    {% endfor %}
+  </div>
+  {% if v.extras %}
+  <p class="extras">Außerdem gekocht: {% for e in v.extras %}{{ e.day }} {{ e.name }}{% if not loop.last %} · {% endif %}{% endfor %}</p>
+  {% endif %}
+  <div class="week-foot">
+    <a class="btn btn-ghost btn-sm" href="/einkauf?woche={{ v.which }}">Einkaufsliste</a>
+    {% if v.plan.status == 'entwurf' %}
+    <form data-stay class="inline" method="post" action="/plaene/{{ v.which }}/erzeugen" onsubmit="return confirm('Alle Tage außer den von Hand gewählten neu planen?')"><button class="btn btn-ghost btn-sm">Woche neu planen</button></form>
+    {% endif %}
+  </div>
+  {% elif v.first_run %}
+  <div class="week-empty">
+    <span>Damit Tischlein planen kann, braucht es eure Rezepte. Verbinde dein Paprika-Konto, der Abgleich läuft danach von selbst.</span>
+    <a class="btn btn-primary" href="/einstellungen">Paprika verbinden</a>
+  </div>
+  {% else %}
+  <div class="week-empty">
+    <span>Für {{ v.range }} ist noch nichts geplant. Tischlein wählt pro Tag ein Gericht zum Thema.</span>
+    <form data-stay class="inline" method="post" action="/plaene/{{ v.which }}/erzeugen"><button class="btn btn-primary">Woche planen</button></form>
+  </div>
+  {% endif %}
+</section>
+
+{% if v.toast %}
+<div class="toast" role="status" data-toast>
+  <span>{{ v.toast.label }}</span>
+  <form data-stay method="post" action="/plaene/{{ v.which }}/rueckgaengig"><button class="toast-action">Rückgängig</button></form>
 </div>
+{% endif %}
 {% endblock %}
-

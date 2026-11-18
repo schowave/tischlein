@@ -49,6 +49,11 @@ def is_quick(r: Recipe) -> bool:
     return r.has_tag(QUICK_TAG) or (n is not None and n <= QUICK_MINUTES)
 
 
+def is_lunch(r: Recipe, config: PlanConfig) -> bool:
+    """Main dishes and anything with a protein theme; keeps bread and cake out of the new slot."""
+    return r.has_tag(config.main_tag) or any(r.has_tag(t) for t in config.themes)
+
+
 def _prefer(pool: list[Recipe], keep, reason: str) -> tuple[list[Recipe], str]:
     """The part of the pool that passes `keep`, or the whole pool with a reason when none does."""
     preferred = [r for r in pool if keep(r)]
@@ -74,8 +79,7 @@ class _View:
         return r.uid not in self.feedback and r.has_tag(self.config.new_tag)
 
     def is_lunch(self, r: Recipe) -> bool:
-        """Main dishes and anything with a protein theme; keeps bread and cake out of the new slot."""
-        return r.has_tag(self.config.main_tag) or any(r.has_tag(t) for t in self.config.themes)
+        return is_lunch(r, self.config)
 
     def with_theme(self, theme: str) -> list[Recipe]:
         if theme == ANY_THEME:

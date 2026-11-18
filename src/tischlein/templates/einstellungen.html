@@ -12,7 +12,7 @@
 </section>
 
 <div class="settings">
-  <section class="setting" aria-labelledby="paprika-h">
+  <section class="setting" id="paprika" aria-labelledby="paprika-h">
     <div class="setting-label">
       <h2 id="paprika-h">Paprika-Konto</h2>
       <p>Tischlein liest eure Rezepte aus der Paprika-Cloud und schreibt Kategorien wie Kinder-OK zurück. Die Zugangsdaten liegen nur in der Datenbank auf eurem Server.</p>
@@ -63,6 +63,13 @@
         {% endif %}
       </div>
       {% endif %}
+      <details class="change-login">
+        <summary>Ohne Zugang: Paprika-Export hochladen</summary>
+        <form method="post" action="/import" enctype="multipart/form-data" class="field-row">
+          <input class="field" type="file" name="datei" accept=".paprikarecipes" required aria-label="Paprika-Export">
+          <button class="btn">Importieren</button>
+        </form>
+      </details>
     </div>
   </section>
 

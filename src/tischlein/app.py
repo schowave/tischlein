@@ -23,6 +23,7 @@ from .config import WEEKDAY_NAMES
 from .llm import LLMError
 from .models import WeekPlan
 from .paprika_sync import PaprikaError
+from .planner import week_start_of
 from .service import Tischlein, from_env
 from .views import (
     FREE_REASONS,
@@ -59,6 +60,14 @@ class BringLists(BaseModel):
 
 class BringState(BaseModel):
     liste: str = ""
+    eintraege: list[dict] = []
+
+
+class IdeasStart(BaseModel):
+    thema: str = ""
+
+
+class Restore(BaseModel):
     eintraege: list[dict] = []
 
 
@@ -120,8 +129,8 @@ def create_app(service: Tischlein | None = None, auto_sync: bool | None = None) 
         except ValueError as e:
             raise HTTPException(400, str(e)) from e
 
-    def to_day(woche: str | None, day: date) -> RedirectResponse:
-        r = back(woche)
+    def to_day(woche: str | None, day: date, note: bool = False) -> RedirectResponse:
+        r = back(woche, week_start_of(day) if note else None)
         r.headers["location"] += f"#tag-{day.isoformat()}"
         return r
 
@@ -137,8 +146,8 @@ def create_app(service: Tischlein | None = None, auto_sync: bool | None = None) 
         return service.person_name(email) if email else ""
 
     @app.get("/", response_class=HTMLResponse)
-    def index(request: Request, woche: str | None = None):
-        v = week_view(service, woche, date.today())
+    def index(request: Request, woche: str | None = None, meldung: str = ""):
+        v = week_view(service, woche, date.today(), toast=meldung)
         return render(request, "woche.html", {"v": v, "nav": "woche", "free_reasons": FREE_REASONS})
 
     @app.get("/rezepte", response_class=HTMLResponse)
@@ -201,7 +210,7 @@ def create_app(service: Tischlein | None = None, auto_sync: bool | None = None) 
     @app.post("/tage/{day}/frei")
     def ui_day_free(day: date, grund: str = Form(""), woche: str | None = Form(None)):
         service.set_day_free(day, grund)
-        return back(woche)
+        return to_day(woche, day, note=True)
 
     @app.post("/tage/{day}/portionen")
     def ui_day_servings(
@@ -220,9 +229,7 @@ def create_app(service: Tischlein | None = None, auto_sync: bool | None = None) 
     @app.post("/tage/{day}/schnell")
     def ui_day_quick(day: date, an: int = Form(...), woche: str | None = Form(None)):
         service.set_quick(day, bool(an))
-        r = back(woche)
-        r.headers["location"] += f"#tag-{day.isoformat()}"
-        return r
+        return to_day(woche, day, note=True)
 
     @app.get("/kochen/{day}", response_class=HTMLResponse)
     def cook_page(request: Request, day: date):
@@ -235,24 +242,24 @@ def create_app(service: Tischlein | None = None, auto_sync: bool | None = None) 
     @app.post("/tage/{day}/kochen")
     def ui_day_cook(day: date, woche: str | None = Form(None)):
         service.set_day_cooking(day)
-        return back(woche)
+        return to_day(woche, day, note=True)
 
     # Week: moving, picking, themes, leftovers, Nachträge ----------------------------
 
     @app.post("/tage/{day}/verschieben")
     def ui_day_move(day: date, nach: date = Form(...), woche: str | None = Form(None)):
         guard(service.move, day, nach)
-        return to_day(woche, nach)
+        return to_day(woche, nach, note=True)
 
     @app.post("/tage/{day}/thema")
     def ui_day_theme(day: date, thema: str = Form(""), woche: str | None = Form(None)):
         guard(service.set_theme, day, thema or None)
-        return to_day(woche, day)
+        return to_day(woche, day, note=True)
 
     @app.post("/tage/{day}/reste")
     def ui_day_leftovers(day: date, an: int = Form(...), woche: str | None = Form(None)):
         guard(service.set_leftovers, day, bool(an))
-        return to_day(woche, day)
+        return to_day(woche, day, note=True)
 
     @app.get("/tage/{day}/rezept", response_class=HTMLResponse)
     def choose_page(request: Request, day: date, q: str = ""):
@@ -262,7 +269,7 @@ def create_app(service: Tischlein | None = None, auto_sync: bool | None = None) 
     @app.post("/tage/{day}/rezept")
     def ui_day_choose(day: date, rezept_uid: str = Form(...), woche: str | None = Form(None)):
         guard(service.choose, day, rezept_uid)
-        return to_day(woche, day)
+        return to_day(woche, day, note=True)
 
     @app.get("/nachtrag", response_class=HTMLResponse)
     def cooked_page(request: Request, tag: date | None = None, q: str = ""):
@@ -278,12 +285,17 @@ def create_app(service: Tischlein | None = None, auto_sync: bool | None = None) 
         zurueck: str = Form("/"),
     ):
         guard(service.log_cooked, tag, rezept_uid or None, name, person_of(request))
-        return RedirectResponse(zurueck if zurueck.startswith("/") and not zurueck.startswith("//") else "/", 303)
+        target = zurueck if zurueck.startswith("/") and not zurueck.startswith("//") else "/"
+        if target.startswith("/?") or target == "/":  # back on the week: show the change with Rückgängig
+            path, _, anchor = target.partition("#")
+            note = f"meldung={week_start_of(tag).isoformat()}"
+            target = path + ("&" if "?" in path else "?") + note + (f"#{anchor}" if anchor else "")
+        return RedirectResponse(target, 303)
 
     @app.post("/nachtrag/{day}/entfernen")
     def ui_remove_cooked(day: date, woche: str | None = Form(None)):
         service.remove_cooked(day)
-        return to_day(woche, day)
+        return to_day(woche, day, note=True)
 
     @app.post("/bewertung")
     def ui_rate(
@@ -359,7 +371,12 @@ def create_app(service: Tischlein | None = None, auto_sync: bool | None = None) 
 
     @app.post("/api/einkauf/{which}/erledigte-entfernen")
     def api_shopping_remove_done(which: str):
-        return {"entfernt": service.remove_done(week(which))}
+        removed = service.remove_done(week(which))
+        return {"entfernt": len(removed), "eintraege": removed}
+
+    @app.post("/api/einkauf/{which}/wiederherstellen")
+    def api_shopping_restore(which: str, body: Restore):
+        return {"wiederhergestellt": guard(service.restore_items, week(which), body.eintraege)}
 
     @app.post("/api/einkauf/{item_id}/erledigt")
     def api_shopping_done(request: Request, item_id: int, body: Done):
@@ -369,8 +386,7 @@ def create_app(service: Tischlein | None = None, auto_sync: bool | None = None) 
 
     @app.post("/api/einkauf/{item_id}/loeschen")
     def api_shopping_delete(item_id: int):
-        service.delete_item(item_id)
-        return {"ok": True}
+        return {"ok": True, "eintraege": service.delete_item(item_id)}
 
     # Ideas -------------------------------------------------------------------------
 
@@ -379,18 +395,19 @@ def create_app(service: Tischlein | None = None, auto_sync: bool | None = None) 
         return render(request, "ideen.html", {"v": ideas_view(service), "nav": "ideen", "hinweis": hinweis})
 
     @app.post("/ideen/erzeugen")
-    def ideas_generate():
+    def ideas_generate(thema: str = Form("")):
         try:
-            n = service.generate_ideas()
+            n = service.generate_ideas(3 if thema else 6, theme=thema or None)
         except LLMError as e:
             return RedirectResponse(f"/ideen?hinweis={quote(str(e))}", status_code=303)
         msg = "" if n else "Das Modell hat keine brauchbaren Vorschläge geliefert. Bitte noch einmal versuchen."
         return RedirectResponse("/ideen" + (f"?hinweis={quote(msg)}" if msg else ""), status_code=303)
 
     @app.post("/api/ideen/start")
-    def api_ideas_start():
+    def api_ideas_start(body: IdeasStart | None = None):
+        theme = body.thema if body else ""
         try:
-            return service.start_ideas()
+            return service.start_ideas(3 if theme else 6, theme or None)
         except LLMError as e:
             raise HTTPException(400, str(e)) from e
 
@@ -455,17 +472,26 @@ def create_app(service: Tischlein | None = None, auto_sync: bool | None = None) 
         service.renew_calendar_token()
         return RedirectResponse("/einstellungen?ok=link#kalender", status_code=303)
 
-    def back(which: str | None = None) -> RedirectResponse:
-        return RedirectResponse(f"/?woche={which}" if which in ("aktuell", "naechste") else "/", status_code=303)
+    def back(which: str | None = None, note: date | None = None) -> RedirectResponse:
+        """Back to the week; `note` (the changed week's Monday) shows that change with its Rückgängig."""
+        query = [f"woche={which}"] if which in ("aktuell", "naechste") else []
+        query += [f"meldung={note.isoformat()}"] if note else []
+        return RedirectResponse("/" + ("?" + "&".join(query) if query else ""), status_code=303)
 
     @app.post("/plaene/{which}/erzeugen")
     def ui_generate(which: str):
-        service.generate(week(which))
-        return back(which)
+        plan = service.store.plan(week(which))
+        guard(service.generate, week(which))
+        return back(which, week(which) if plan is not None else None)
 
     @app.post("/plaene/{which}/tauschen")
     def ui_swap(which: str, tag: date = Form(...)):
         guard(service.swap, week(which), tag)
+        return to_day(which, tag, note=True)
+
+    @app.post("/plaene/{which}/rueckgaengig")
+    def ui_undo(which: str):
+        guard(service.undo, week(which))
         return back(which)
 
     @app.post("/plaene/{which}/status")
@@ -473,7 +499,7 @@ def create_app(service: Tischlein | None = None, auto_sync: bool | None = None) 
         if status not in ("entwurf", "freigegeben"):
             raise HTTPException(400, "Status: entwurf oder freigegeben")
         guard(service.set_status, week(which), status, person_of(request))
-        return back(which)
+        return back(which, week(which))
 
     @app.post("/rueckmeldung")
     def ui_feedback(rezept_uid: str = Form(...), urteil: str = Form(...), woche: str | None = Form(None)):
@@ -573,7 +599,10 @@ def create_app(service: Tischlein | None = None, auto_sync: bool | None = None) 
     @app.post("/api/plaene/{which}/erzeugen")
     def api_generate(which: str):
         sync_error = service.try_sync_paprika()
-        body = _plan_json(service.generate(week(which), notify=True))
+        try:
+            body = _plan_json(service.generate(week(which), notify=True))
+        except ValueError as e:  # approved: Home Assistant gets the plan as it stands, not an error
+            body = {**_plan_json(service.store.plan(week(which))), "hinweis": str(e)}
         if sync_error:
             body["sync_fehler"] = sync_error
         return body
