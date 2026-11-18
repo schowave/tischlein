@@ -678,7 +678,18 @@ details[open] summary { color: var(--text); }
 .side-panel { margin-top: var(--gap); }
 
 /* ---------- Rezepte: Sammlung | Neues finden ---------- */
-.recipe-tabs { align-self: center; }
+.recipe-tabs { display: flex; gap: 24px; padding-top: 12px; border-bottom: 1px solid var(--border); }
+.recipe-tabs a {
+  display: inline-flex; align-items: center; min-height: 44px; margin-bottom: -1px; border-bottom: 2px solid transparent;
+  color: var(--muted); text-decoration: none; font-weight: 500; white-space: nowrap; transition: color var(--t), border-color var(--t);
+}
+.recipe-tabs a:hover { color: var(--text); }
+.recipe-tabs [aria-current="page"] { color: var(--text); border-bottom-color: var(--text); font-weight: 600; }
+.recipe-tabs + .title { padding-top: 20px; }
+@media (max-width: 640px) {
+  .recipe-tabs { gap: 0; padding-top: 4px; }
+  .recipe-tabs a { flex: 1; justify-content: center; }
+}
 .sub-title { margin-top: calc(var(--gap) * 1.5); }
 .sub-title h2 { margin: 0; }
 
@@ -688,7 +699,7 @@ details[open] summary { color: var(--text); }
 .season-chips .menu-h { font-size: 12px; color: var(--muted); white-space: nowrap; }
 .season-chips .chip { text-decoration: none; }
 
-/* ---------- Stöbern bei Chefkoch ---------- */
+/* ---------- Stöbern (Chefkoch, Eat Smarter) ---------- */
 .browse { margin-bottom: var(--gap); }
 .browse .choose-free { max-width: 640px; }
 .browse-list { list-style: none; margin: 0 0 14px; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; }
@@ -699,6 +710,23 @@ details[open] summary { color: var(--text); }
 .browse-text strong { font-weight: 600; overflow-wrap: anywhere; }
 .browse-text small { color: var(--muted); font-size: 13px; }
 .browse-text b { color: var(--accent); font-weight: 600; }
+.browse-list a.is-opening { border-color: var(--text); animation: skel-pulse 1.1s ease-in-out infinite; }
+.chip.not-current { background: var(--raised); border-color: var(--control); color: var(--text); }
+.browse-wait .browse-list { pointer-events: none; }
+.skel { display: flex; gap: 12px; align-items: center; min-height: 98px; padding: 8px; border: 1px solid var(--border); border-radius: var(--radius-row); }
+.skel-img, .skel-line { background: var(--active); animation: skel-pulse 1.1s ease-in-out infinite; }
+.skel-img { width: 96px; height: 72px; border-radius: 8px; flex: none; }
+.skel .browse-text { flex: 1; gap: 8px; }
+.skel-line { height: 12px; border-radius: 999px; width: 80%; }
+.skel-line.short { width: 45%; }
+.skel-line.mid { width: 65%; }
+@keyframes skel-pulse { 50% { opacity: 0.45; } }
+@media (prefers-reduced-motion: reduce) {
+  .skel-img, .skel-line, .browse-list a.is-opening { animation: none; }
+}
+.web-notes { margin-top: 20px; padding-top: 14px; border-top: 1px solid var(--border); color: var(--muted); font-size: 15px; }
+.web-notes h3 { margin: 0 0 6px; font-size: 14px; font-weight: 600; color: var(--text); }
+.web-notes p { margin: 0 0 8px; }
 .link-way summary { cursor: pointer; color: var(--muted); font-size: 14px; padding: 6px 0; }
 .link-way .choose-free { margin: 8px 0 0; }
 

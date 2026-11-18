@@ -73,7 +73,10 @@ def _web_get(url: str, max_bytes: int, types: tuple[str, ...] = ()) -> tuple[byt
     """GET a public web page or image: (body, content type). At most `max_bytes`, 10 s."""
     _check_public(url)
     opener = urllib.request.build_opener(_PublicOnly)
-    req = urllib.request.Request(url, headers={"User-Agent": WEB_AGENT, "Accept-Language": "de-DE,de;q=0.9"})
+    headers = {"User-Agent": WEB_AGENT, "Accept-Language": "de-DE,de;q=0.9"}
+    if types:  # some sites answer one address with a page or with data, depending on what is asked for
+        headers["Accept"] = ", ".join(types)
+    req = urllib.request.Request(url, headers=headers)
     try:
         with opener.open(req, timeout=10) as resp:
             kind = resp.headers.get("Content-Type", "").split(";")[0].strip().lower()
@@ -156,6 +159,7 @@ class Tischlein:
         self._shopping_pending: dict[date, threading.Timer | None] = {}
         self._llm_transport = None  # tests inject a fake transport
         self.web_get = _web_get  # tests inject fake pages
+        self._cookidoo_key: dict | None = None  # for Cookidoo's search index, see _search_cookidoo
         self._web_cache: dict[str, dict] = {}
         self._user_agent = user_agent
 
@@ -798,6 +802,12 @@ class Tischlein:
             recipe = webrecipe.from_llm(answer, html, url)
             if recipe is None:
                 raise ValueError("Auf dieser Seite steht kein Rezept, das Tischlein lesen kann.")
+        if not recipe["steps"] and webrecipe.is_cookidoo_recipe(url):
+            try:  # the page leaves the steps out; without them the recipe still has its ingredients
+                body, _ = self.web_get(webrecipe.clean_url(url), 1_000_000, ("application/json",))
+                recipe.update(webrecipe.cookidoo_details(json.loads(body)))
+            except ValueError:
+                pass
         recipe["theme"] = webrecipe.suggest_theme(recipe, list(self.config.themes))
         if len(self._web_cache) > 20:
             self._web_cache.pop(next(iter(self._web_cache)))
@@ -1792,21 +1802,54 @@ class Tischlein:
 
     # Stöbern -----------------------------------------------------------------------
 
-    def search_web(self, query: str) -> list[dict]:
-        """Browse Chefkoch (at least 4 stars, no paid recipes). Results are not kept; what the family
-        takes goes the way of every Web-Rezept. Raises ValueError when the search does not answer."""
+    def search_web(self, query: str, source: str = "chefkoch") -> list[dict]:
+        """Browse Chefkoch (at least 4 stars, no paid recipes), Eat Smarter (lunch dishes) or Cookidoo
+        (at least 4 stars). Results
+        are not kept; what the family takes goes the way of every Web-Rezept. Raises ValueError when
+        the search does not answer."""
         query = " ".join(query.split())[:80]
         if not query:
             return []
+        site = webrecipe.SOURCES.get(source)
+        if site is None:
+            raise ValueError("Diese Quelle kennt Tischlein nicht.")
         try:
-            body, _ = self.web_get(webrecipe.search_url(query), 2_000_000, ("application/json",))
-            results = webrecipe.search_results(json.loads(body))
+            if source == "cookidoo":
+                results = self._search_cookidoo(query)
+            elif source == "eatsmarter":
+                body, _ = self.web_get(webrecipe.search_url(query, source), 2_000_000, ("text/html",))
+                results = webrecipe.eatsmarter_results(body.decode("utf-8", "replace"))
+            else:
+                body, _ = self.web_get(webrecipe.search_url(query), 2_000_000, ("application/json",))
+                results = webrecipe.search_results(json.loads(body))
         except (ValueError, TypeError) as e:
-            raise ValueError("Die Suche bei Chefkoch antwortet gerade nicht. Ein Rezept-Link geht weiterhin.") from e
+            raise ValueError(f"Die Suche bei {site} antwortet gerade nicht. Ein Rezept-Link geht weiterhin.") from e
         have = {webrecipe.normalize_url(r.source_url): r.uid for r in self.store.recipes() if r.source_url}
         for r in results:
             r["uid"] = have.get(webrecipe.normalize_url(r["url"]), "")
         return results
+
+    def _search_cookidoo(self, query: str) -> list[dict]:
+        """Cookidoo's search works in two steps: its search page hands out a key for the index, the
+        index answers. The key is kept until shortly before it runs out; if the index refuses it
+        earlier, it is fetched once more."""
+        for attempt in (1, 2):
+            key = self._cookidoo_key
+            if key is None or key["until"] < time.time() + 300:
+                page, _ = self.web_get(webrecipe.COOKIDOO_SEARCH, 2_000_000, ("text/html",))
+                key = webrecipe.cookidoo_key(page.decode("utf-8", "replace"))
+                if key is None:
+                    raise ValueError("Cookidoo gibt keinen Suchschlüssel mehr heraus.")
+                self._cookidoo_key = key
+            try:
+                body, _ = self.web_get(webrecipe.cookidoo_search_url(key, query), 2_000_000, ("application/json",))
+            except ValueError:
+                self._cookidoo_key = None
+                if attempt == 2:
+                    raise
+                continue
+            return webrecipe.cookidoo_results(json.loads(body))
+        return []
 
     def _swap(self, week_start: date, day: date) -> WeekPlan:
         plan = self._require(week_start)

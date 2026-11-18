@@ -3,12 +3,12 @@
 {% block title %}Rezepte · Tischlein{% endblock %}
 {% block content %}
 <div x-data="recipes" @keydown.escape.window="phone && selectedUid && select(null)">
+{{ recipe_tabs('sammlung') }}
 <section class="title">
   <div>
     <h1>Rezepte</h1>
     <p><span class="num">{{ v.kid_count }}</span> von <span class="num">{{ v.main_count }}</span> Hauptspeisen sind Kinder-OK · <span class="num">{{ v.untagged }}</span> ohne Thema · <span class="num">{{ v.count }}</span> Rezepte in Paprika</p>
   </div>
-  {{ recipe_tabs('sammlung') }}
   {% if v.data.canWrite %}
   <div class="title-actions">
     <span class="stamp">Abgeglichen {{ (v.last_sync or 'noch nie').split(' – ')[0] }}</span>

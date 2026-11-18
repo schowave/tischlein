@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from datetime import date, timedelta
 
-from . import season, shopping
+from . import season, shopping, webrecipe
 from .config import WEEKDAY_NAMES
 from .models import Recipe, WeekPlan, with_cooked
 from .planner import is_lunch, week_start_of
@@ -455,13 +455,14 @@ def web_view(svc: Tischlein, url: str) -> dict:
     return v
 
 
-def ideas_view(svc: Tischlein, query: str = "", today: date | None = None) -> dict:
+def ideas_view(svc: Tischlein, query: str = "", today: date | None = None, source: str = "") -> dict:
     cfg = svc.config
     feedback = svc.store.feedback()
+    source = source if source in webrecipe.SOURCES else "chefkoch"
     results, search_error = [], ""
     if query.strip():
         try:
-            results = svc.search_web(query)
+            results = svc.search_web(query, source)
         except ValueError as e:
             search_error = str(e)
 
@@ -470,6 +471,8 @@ def ideas_view(svc: Tischlein, query: str = "", today: date | None = None) -> di
         "query": " ".join(query.split()),
         "results": results,
         "search_error": search_error,
+        "source": source,
+        "sources": webrecipe.SOURCES,
         "season": season.in_season((today or date.today()).month)[:8],
         "ideas": svc.store.ideas("neu"),
         "accepted": svc.store.ideas("uebernommen")[:6],

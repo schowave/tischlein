@@ -1,6 +1,8 @@
 // Ideen-Seite: startet die Vorschläge über /api/ideen/start, zeigt „Gericht 2 von 6“ und die
 // verstrichene Zeit und lädt die Seite am Ende neu. Ohne JavaScript schickt das Formular
 // POST /ideen/erzeugen und wartet, bis alle Vorschläge da sind.
+// Stöbern: Die Suche lädt die Seite neu und die fremde Seite braucht einen Moment. Vom Klick bis zur Antwort
+// stehen Platzhalter an der Stelle der Treffer, damit sichtbar ist, dass etwas passiert.
 document.addEventListener("alpine:init", () => {
   Alpine.data("ideas", () => ({
     running: false,
@@ -9,12 +11,41 @@ document.addEventListener("alpine:init", () => {
     seconds: 0,
     error: "",
     timer: null,
+    searching: "",
+    site: "",
 
     init() {
       fetch("/api/ideen/status", { cache: "no-store" })
         .then((r) => r.json())
         .then((s) => s.laeuft && this.follow(s))
         .catch(() => {});
+      // back from the browser's page cache: the placeholders of the last search must not linger
+      window.addEventListener("pageshow", (e) => {
+        if (!e.persisted) return;
+        this.searching = "";
+        document.querySelectorAll(".browse-list .is-opening").forEach((a) => a.classList.remove("is-opening"));
+      });
+    },
+
+    // a click that opens a new tab or window leaves this page as it is
+    stays(event) {
+      return event && (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button);
+    },
+
+    // the navigation itself stays the browser's; this only shows what is loading
+    // site: the source being switched to; empty means the one the page already shows
+    search(query, event, site = "") {
+      if (this.stays(event)) return;
+      query = query.trim();
+      if (!query) return;
+      this.site = site;
+      this.searching = query;
+      if (event) this.$refs.q.value = query;
+    },
+
+    // a hit is fetched from its site before the preview shows
+    opening(event) {
+      if (!this.stays(event)) event.currentTarget.classList.add("is-opening");
     },
 
     get label() {

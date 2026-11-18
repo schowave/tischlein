@@ -1,9 +1,10 @@
 {# Shared bits: a recipe thumbnail (photo or initial) and the form that builds the shopping list. #}
-{# The two sides of Rezepte: the family's collection, and where new dishes come from. #}
+{# The two sides of Rezepte: the family's collection, and where new dishes come from. Tabs at the very
+   top of both pages, so they stay in one place when switching. #}
 {% macro recipe_tabs(active) %}
-<nav class="seg recipe-tabs" aria-label="Rezepte">
-  <a href="/rezepte" {% if active == 'sammlung' %}aria-current="true"{% endif %}>Sammlung</a>
-  <a href="/ideen" {% if active == 'neues' %}aria-current="true"{% endif %}>Neues finden</a>
+<nav class="recipe-tabs" aria-label="Rezepte">
+  <a href="/rezepte" {% if active == 'sammlung' %}aria-current="page"{% endif %}>Sammlung</a>
+  <a href="/ideen" {% if active == 'neues' %}aria-current="page"{% endif %}>Neues finden</a>
 </nav>
 {% endmacro %}
 

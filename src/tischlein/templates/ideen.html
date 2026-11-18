@@ -3,46 +3,67 @@
 {% block title %}Neues finden · Tischlein{% endblock %}
 {% block content %}
 <div x-data="ideas">
+{{ recipe_tabs('neues') }}
 <section class="title">
   <div>
     <h1>Neues finden</h1>
-    <p>Bei Chefkoch stöbern, einen Rezept-Link holen oder euch Gerichte vorschlagen lassen, die zu dem passen, was ihr mögt.</p>
+    <p>Bei Chefkoch, Eat Smarter und Cookidoo stöbern, einen Rezept-Link holen oder euch Gerichte vorschlagen lassen, die zu dem passen, was ihr mögt.</p>
   </div>
-  {{ recipe_tabs('neues') }}
 </section>
 
 <section class="panel browse" aria-labelledby="browse-h">
-  <div class="panel-head"><h2 id="browse-h">Stöbern bei Chefkoch</h2></div>
-  <form class="choose-free" method="get" action="/ideen" role="search">
+  {% set site = v.sources[v.source] %}
+  <div class="panel-head">
+    <h2 id="browse-h">Stöbern</h2>
+    {# switching the source repeats the search there #}
+    <nav class="seg end" aria-label="Quelle">
+      {% for key, label in v.sources.items() %}<a href="/ideen?{% if v.query %}suche={{ v.query | urlencode }}&amp;{% endif %}quelle={{ key }}" {% if key == v.source %}aria-current="true"{% endif %}{% if v.query and key != v.source %} @click="search({{ v.query | tojson | forceescape }}, $event, {{ label | tojson | forceescape }})"{% endif %}>{{ label }}</a>{% endfor %}
+    </nav>
+  </div>
+  <form class="choose-free" method="get" action="/ideen" role="search" @submit="search($refs.q.value)">
     <label class="sr-only" for="browse-q">Gericht oder Zutat</label>
-    <input class="field" id="browse-q" name="suche" type="search" value="{{ v.query }}" placeholder="Gericht oder Zutat, z. B. Lauch Hähnchen" autocomplete="off" enterkeyhint="search" required>
-    <button class="btn btn-primary">Suchen</button>
+    <input class="field" id="browse-q" x-ref="q" name="suche" type="search" value="{{ v.query }}" placeholder="Gericht oder Zutat, z. B. Lauch Hähnchen" autocomplete="off" enterkeyhint="search" required>
+    <input type="hidden" name="quelle" value="{{ v.source }}">
+    <button class="btn btn-primary" :disabled="!!searching" x-text="searching ? 'Sucht …' : 'Suchen'">Suchen</button>
   </form>
   {% if v.season %}
   <div class="chips scroll season-chips" role="group" aria-label="Jetzt Saison">
     <span class="menu-h">Jetzt Saison</span>
-    {% for s in v.season %}<a class="chip{% if v.query == s %} is-current{% endif %}" href="/ideen?suche={{ s | urlencode }}">{{ s }}</a>{% endfor %}
+    {% for s in v.season %}<a class="chip{% if v.query == s %} is-current{% endif %}" href="/ideen?suche={{ s | urlencode }}&amp;quelle={{ v.source }}" data-q="{{ s }}" :class="searching && { 'is-current': searching === $el.dataset.q, 'not-current': searching !== $el.dataset.q }" @click="search($el.dataset.q, $event)">{{ s }}</a>{% endfor %}
   </div>
   {% endif %}
+  {# shown from the click until the site has answered and the page comes back with the hits #}
+  <div class="browse-wait" x-show="searching" x-cloak>
+    <p class="panel-note" role="status"><span x-text="site || {{ site | tojson | forceescape }}"></span> wird nach „<span x-text="searching"></span>“ durchsucht …</p>
+    <ul class="browse-list" aria-hidden="true">
+      {% for n in range(6) %}<li class="skel"><span class="skel-img"></span><span class="browse-text"><span class="skel-line"></span><span class="skel-line short"></span><span class="skel-line mid"></span></span></li>{% endfor %}
+    </ul>
+  </div>
+  <div x-show="!searching">
   {% if v.search_error %}<p class="notice" role="alert">{{ v.search_error }}</p>
-  {% elif v.query and not v.results %}<div class="empty-frame">Zu „{{ v.query }}“ gibt es bei Chefkoch nichts mit mindestens 4 Sternen.</div>
+  {% elif v.query and not v.results %}<div class="empty-frame">Zu „{{ v.query }}“ gibt es bei {{ site }} {% if v.source == 'eatsmarter' %}kein Mittagsgericht{% else %}nichts mit mindestens 4 Sternen{% endif %}.</div>
   {% elif v.results %}
-  <p class="panel-note">{{ v.results | length }} Treffer zu „{{ v.query }}“, alle mit mindestens 4 Sternen. Ein Tipp öffnet die Vorschau.</p>
+  <p class="panel-note">{{ v.results | length }} {% if v.source == 'eatsmarter' %}Mittagsgerichte zu „{{ v.query }}“ bei {{ site }}, von der Redaktion geprüft{% else %}Treffer zu „{{ v.query }}“ bei {{ site }}, alle mit mindestens 4 Sternen{% endif %}. Ein Tipp öffnet die Vorschau.</p>
   <ul class="browse-list">
     {% for r in v.results %}
     <li>
-      <a href="{% if r.uid %}/rezepte?rezept={{ r.uid | urlencode }}{% else %}/rezept-holen?url={{ r.url | urlencode }}{% endif %}">
+      <a {% if not r.uid %}@click="opening($event)" {% endif %}href="{% if r.uid %}/rezepte?rezept={{ r.uid | urlencode }}{% else %}/rezept-holen?url={{ r.url | urlencode }}{% endif %}">
         {% if r.image %}<img src="{{ r.image }}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" width="120" height="80" onerror="this.remove()">{% endif %}
         <span class="browse-text">
           <strong>{{ r.name }}</strong>
           {% if r.subtitle %}<small>{{ r.subtitle }}</small>{% endif %}
-          <small class="num">{{ '%.1f' | format(r.stars) | replace('.', ',') }} Sterne · {{ r.votes }} Stimmen{% if r.minutes %} · {{ r.minutes }} Min. Arbeit{% endif %}{% if r.uid %} · <b>schon in Paprika</b>{% endif %}</small>
+          {% set facts = [] %}
+          {%- if r.votes %}{% set _ = facts.append(('%.1f' | format(r.stars) | replace('.', ',')) ~ ' Sterne') %}{% set _ = facts.append(r.votes ~ (' Stimme' if r.votes == 1 else ' Stimmen')) %}{% endif %}
+          {%- if r.minutes %}{% set _ = facts.append(r.minutes ~ (' Min. gesamt' if r.whole_time else ' Min. Arbeit')) %}{% endif %}
+          {%- if r.kcal %}{% set _ = facts.append(r.kcal ~ ' kcal') %}{% endif %}
+          <small class="num">{{ facts | join(' · ') }}{% if r.uid %}{% if facts %} · {% endif %}<b>schon in Paprika</b>{% endif %}</small>
         </span>
       </a>
     </li>
     {% endfor %}
   </ul>
   {% endif %}
+  </div>
   <details class="link-way"{% if not v.query %} open{% endif %}>
     <summary>Rezept-Link von einer anderen Seite</summary>
     <form class="choose-free web-link" method="get" action="/rezept-holen">
@@ -62,6 +83,7 @@
   </div>
   {% if v.llm %}
   <form class="inline" method="post" action="/ideen/erzeugen" @submit.prevent="start()">
+    <input type="hidden" name="quelle" value="{{ v.source }}">
     <button class="btn btn-primary" :disabled="running" x-text="running ? 'Überlegt …' : 'Neue Vorschläge'">Neue Vorschläge</button>
   </form>
   {% else %}

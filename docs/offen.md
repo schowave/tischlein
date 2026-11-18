@@ -10,4 +10,8 @@
 - Zutaten aufbrauchen: braucht ein Gericht nur einen Teil einer Packung (Sahne, Lauch), in derselben Woche
   ein zweites Gericht damit bevorzugen.
 - Wer in der Mitteilung „Wie war's?“ antwortet, ist Tischlein nicht bekannt (Home Assistant meldet nur die Antwort).
-- Stöbern nutzt Chefkochs inoffizielle App-Schnittstelle; fällt sie weg, bleibt der Weg über den Rezept-Link.
+- Stöbern nutzt Chefkochs inoffizielle App-Schnittstelle, die Suchseite von Eat Smarter und den
+  Suchindex hinter der Cookidoo-Suche; fällt eine weg, bleibt der Weg über den Rezept-Link.
+- Cookidoo: Die Rezeptseite zeigt keine Schritte; Tischlein fragt dieselbe Adresse als JSON und bekommt
+  sie ohne Anmeldung. Verlangt Cookidoo dafür einmal einen Login, bleiben Zutaten, Zeiten und Foto.
+- Die Cookidoo-Suche lässt sich nicht auf Hauptgerichte eingrenzen; zu „Lauch“ kommen auch Kuchen und Aufstriche.

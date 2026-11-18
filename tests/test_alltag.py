@@ -398,6 +398,112 @@ def test_browsing_chefkoch_shows_free_hits_and_what_is_already_in_paprika(svc):
     assert svc.search_web("   ") == []
 
 
+EATSMARTER_PAGE = """
+<div class="teaser-wrapper"> <div class="teaser teaser-node-recipe">
+  <picture><source srcset="https://images.eatsmarter.de/styles/300x225-webp/public/huhn-1.jpg 1x" type="image/webp" />
+  <source srcset="https://images.eatsmarter.de/styles/300x225/public/huhn-1.jpg 1x" media="(min-width: 481px)" />
+  <img src="https://images.eatsmarter.de/styles/mobile/public/huhn-1.jpg" alt="x" /></picture>
+  <div class="premium-badge">Protein-Kick zum Mittag</div>
+  <div class="title"> <a class="teaser-wrapper-link" href="/rezepte/huhn-mit-lauch" title="x" rel="follow">
+    Huhn mit K&uuml;rbis &amp; Lauch </a> </div>
+  <span class="rating">5</span> <div class="rating-count"> (6) </div>
+  <p class="preparation">30 Min.</p><p class="preparation-wait">45 Min.</p> <p class="calories">782 kcal</p>
+</div></div>
+<div class="teaser-wrapper"> <div class="title">
+  <a class="teaser-wrapper-link" href="/rezepte/neu-und-unbewertet">Linsentopf</a>
+  </div> <span class="rating">0</span> <div class="rating-count"> (0) </div> </div>
+<div class="teaser-wrapper"> <a class="teaser-wrapper-link" href="/magazin/kein-rezept">Artikel</a> </div>
+"""
+
+
+def test_browsing_eat_smarter_shows_lunch_dishes_also_without_votes(svc):
+    asked = []
+    svc.web_get = lambda url, size, types=(): (asked.append((url, types)), (EATSMARTER_PAGE.encode(), "text/html"))[1]
+    hits = svc.search_web("lauch", "eatsmarter")
+    assert asked[0][0].startswith("https://eatsmarter.de/suche/rezepte?ft=lauch") and "Mittagessen" in asked[0][0]
+    assert asked[0][1] == ("text/html",)
+    assert [h["name"] for h in hits] == ["Huhn mit Kürbis & Lauch", "Linsentopf"]
+    first, second = hits
+    assert first["url"] == "https://eatsmarter.de/rezepte/huhn-mit-lauch"
+    assert first["image"].endswith("/300x225/public/huhn-1.jpg")
+    assert (first["stars"], first["votes"], first["minutes"], first["kcal"]) == (5.0, 6, 30, 782)
+    assert first["subtitle"] == "Protein-Kick zum Mittag"
+    assert (second["stars"], second["votes"], second["minutes"], second["kcal"]) == (0.0, 0, None, None)
+    assert second["image"] == ""
+
+    client = TestClient(create_app(svc, auto_sync=False))
+    page = client.get("/ideen?suche=lauch&quelle=eatsmarter").text
+    assert "2 Mittagsgerichte" in page and "782 kcal" in page and "0,0 Sterne" not in page
+    assert 'name="quelle" value="eatsmarter"' in page
+    assert "/ideen?suche=lauch&amp;quelle=chefkoch" in page  # the switch repeats the search at the other site
+
+
+def _cookidoo_page(key: str, until: int) -> bytes:
+    props = {
+        "algoliaAppId": "APP1",
+        "algoliaApiKeyData": {"apiKey": key, "validUntil": until},
+        "algoliaIndices": {"recipes": {"relevance": "recipes-de"}},
+    }
+    data = json.dumps({"props": {"pageProps": props}})
+    return f'<html><script id="__NEXT_DATA__" type="application/json">{data}</script></html>'.encode()
+
+
+COOKIDOO_HITS = {
+    "hits": [
+        {
+            "id": "r285039",
+            "title": "Hähnchen mit Zucchini-Möhren-Reis",
+            "rating": 4.338,
+            "numberOfRatings": 13046,
+            "totalTime": 2700,
+            "image": "https://{assethost}/image/upload/{transformation}/img/recipe/a",
+        },
+        {"id": "../x", "title": "Kein Rezept"},
+    ]
+}
+
+
+def test_browsing_cookidoo_fetches_the_search_key_once_and_again_when_it_is_refused(svc):
+    asked, keys, refuse = [], ["k1", "k2"], []
+
+    def web(url, size, types=()):
+        asked.append(url)
+        if url == "https://cookidoo.de/search/de-DE":
+            return _cookidoo_page(keys.pop(0), int(datetime.now().timestamp()) + 86400), "text/html"
+        if refuse and refuse.pop():
+            raise ValueError("Die Seite antwortet mit Fehler 403.")
+        return json.dumps(COOKIDOO_HITS).encode(), "application/json"
+
+    svc.web_get = web
+    hits = svc.search_web("lauch", "cookidoo")
+    assert asked[1].startswith("https://APP1-dsn.algolia.net/1/indexes/recipes-de?query=lauch")
+    assert "x-algolia-api-key=k1" in asked[1] and "rating%3E%3D4" in asked[1]
+    assert [h["name"] for h in hits] == ["Hähnchen mit Zucchini-Möhren-Reis"]
+    assert hits[0]["url"] == "https://cookidoo.de/recipes/recipe/de-DE/r285039"
+    assert hits[0]["image"] == "https://assets.tmecosys.com/image/upload/t_web276x230/img/recipe/a"
+    assert (hits[0]["stars"], hits[0]["votes"], hits[0]["minutes"]) == (4.3, 13046, 45)
+
+    svc.search_web("fenchel", "cookidoo")
+    assert len(asked) == 3  # the key is kept
+    refuse.append(True)
+    assert svc.search_web("kürbis", "cookidoo") and "x-algolia-api-key=k2" in asked[-1]
+
+    svc.web_get = lambda url, size, types=(): (b"<html>umgebaut</html>", "text/html")
+    svc._cookidoo_key = None
+    with pytest.raises(ValueError, match="Cookidoo antwortet gerade nicht"):
+        svc.search_web("lauch", "cookidoo")
+
+
+def test_browsing_an_unknown_source_falls_back_to_chefkoch(svc):
+    asked = []
+    svc.web_get = lambda url, size, types=(): (asked.append(url), (json.dumps(HITS).encode(), "application/json"))[1]
+    client = TestClient(create_app(svc, auto_sync=False))
+    assert "Lauchgemüse" in client.get("/ideen?suche=lauch&quelle=irgendwas").text
+    assert asked[0].startswith("https://api.chefkoch.de/")
+    with pytest.raises(ValueError):
+        svc.search_web("lauch", "irgendwas")
+
+
 def test_browse_page_says_when_the_search_is_down_and_offers_the_season(svc):
     def down(url, size, types=()):
         raise ValueError("Die Seite antwortet mit Fehler 503.")

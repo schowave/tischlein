@@ -62,7 +62,9 @@
     <section class="panel" aria-labelledby="zub-h">
       <div class="panel-head"><h2 id="zub-h">Zubereitung</h2></div>
       {% if r.steps %}<ol class="cook-steps">{% for s in r.steps %}<li>{{ s }}</li>{% endfor %}</ol>
+      {% elif 'cookidoo.' in r.source_url %}<div class="empty-frame">Cookidoo hat die Zubereitung gerade nicht herausgegeben. Übernommen wird das Rezept mit Zutaten, Zeiten und Foto; der Link zum Rezept steht in Paprika als Quelle.</div>
       {% else %}<div class="empty-frame">Keine Schritte gefunden.</div>{% endif %}
+      {% if r.notes %}<div class="web-notes"><h3>Tipps</h3>{% for n in r.notes.split('\n\n') %}<p>{{ n }}</p>{% endfor %}</div>{% endif %}
     </section>
   </div>
   {% endif %}

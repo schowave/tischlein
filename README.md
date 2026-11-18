@@ -86,8 +86,10 @@ Das Prinzip ist „Sous-Chef“: Tischlein schlägt vor, die Familie gibt frei.
   einen passenden Tag.
 
 **Entdecken und zurückblicken**
-- **Stöbern bei Chefkoch:** Gericht oder Zutat suchen, Treffer mit Foto, Sternen und Zeit sehen,
-  ab 4 Sternen und ohne Plus-Rezepte. Ein Tipp öffnet die Vorschau, von dort geht es nach Paprika.
+- **Stöbern bei Chefkoch, Eat Smarter und Cookidoo:** Gericht oder Zutat suchen, Treffer mit Foto,
+  Sternen und Zeit sehen. Chefkoch ab 4 Sternen und ohne Plus-Rezepte, Eat Smarter nur
+  Mittagsgerichte, mit Kalorien, Cookidoo ab 4 Sternen. Ein Tipp öffnet die Vorschau, von dort geht
+  es nach Paprika. Cookidoo-Rezepte bringen ihre Thermomix-Schritte und Tipps mit.
 - **Vorschläge prüfen:** Das LLM schlägt für Rezepte ohne Thema ein Thema und ohne Kochzeit eine
   Zeit vor; ihr bestätigt pro Zeile oder alles auf einmal.
 - **Ideen:** neue Gerichte vom LLM, passend zu dem, was ihr mögt, mit Fortschrittsanzeige; per
@@ -356,8 +358,9 @@ Neue Planungsregeln kommen immer zuerst als Test in `tests/test_planner.py`.
   unterstützt.
 - Die Paprika-Server sperren IPs bei zu vielen Anfragen. Tischlein lädt deshalb nur geänderte
   Rezepte und macht Pausen zwischen den Abrufen.
-- Das Stöbern nutzt die **inoffizielle Suche der Chefkoch-Apps**. Sie kann sich ändern oder
-  wegfallen; der Weg über den Rezept-Link bleibt davon unberührt. Tischlein speichert keine Treffer.
+- Das Stöbern nutzt die **inoffizielle Suche der Chefkoch-Apps**, liest die **Suchseite von
+  Eat Smarter** und fragt den **Suchindex hinter der Cookidoo-Suche** (mit dem Schlüssel, den deren
+  Suchseite jedem Besucher mitgibt). Alles davon kann sich ändern oder wegfallen; der Weg über den Rezept-Link bleibt davon unberührt. Tischlein speichert keine Treffer.
 - Freigegebene Pläne werden noch nicht in den Meal Planner von Paprika geschrieben.
 - Web-Rezepte bringen ihr Foto nach Paprika mit, wenn es ein JPEG ist; andere Formate behält
   Tischlein lokal und zeigt sie nur in seiner Oberfläche.

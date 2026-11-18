@@ -165,6 +165,46 @@ def test_preview_page_and_accept_route(svc):
     assert "Rezept-Link einfügen" in c.get("/ideen").text
 
 
+def test_cookidoo_steps_come_from_the_same_address_asked_for_json(svc):
+    url = "https://cookidoo.de/recipes/recipe/de-DE/r285039"
+    node = {"@type": "Recipe", "name": "Hähnchen mit Reis", "recipeIngredient": ["1 TL Salz"]}
+    page = f'<html><script type="application/ld+json">{json.dumps(node)}</script></html>'
+    details = {
+        "recipeStepGroups": [
+            {
+                "title": "",
+                "recipeSteps": [{"title": "1", "formattedText": "<NOBR>½ TL Salz</NOBR> in die Schale geben."}],
+            },
+            {"title": "Sauce", "recipeSteps": [{"formattedText": "<nobr>5 Sek./Stufe 5</nobr> verr&uuml;hren."}, {}]},
+        ],
+        "additionalInformation": [{"content": "Das Öl verhindert Schaum."}, {"content": ""}],
+    }
+    asked = []
+
+    def web(address, size, types=()):
+        asked.append((address, types))
+        if types == ("application/json",):
+            return json.dumps(details).encode(), "application/json"
+        return page.encode(), "text/html"
+
+    svc.web_get = web
+    r = svc.web_recipe(url + "?utm_source=app")
+    assert asked[1] == (url, ("application/json",))
+    assert r["steps"] == ["½ TL Salz in die Schale geben.", "Sauce: 5 Sek./Stufe 5 verrühren."]
+    assert r["notes"] == "Das Öl verhindert Schaum."
+    assert webrecipe.paprika_recipe(r, "u1", [], "2026-11-18 12:00:00")["notes"] == "Das Öl verhindert Schaum."
+
+    def no_json(address, size, types=()):
+        if types == ("application/json",):
+            raise ValueError("Die Seite antwortet mit Fehler 403.")
+        return page.encode(), "text/html"
+
+    svc.web_get, svc._web_cache = no_json, {}
+    assert svc.web_recipe(url)["steps"] == []  # still a recipe, with its ingredients
+    assert not webrecipe.is_cookidoo_recipe("https://cookidoo.de.example.org/recipes/recipe/de-DE/r1")
+    assert not webrecipe.is_cookidoo_recipe("https://cookidoo.de/search/de-DE")
+
+
 def test_instructions_as_one_text_become_steps():
     assert webrecipe._steps("Zwiebeln schneiden.\n\nAnbraten.\n\nServieren.") == [
         "Zwiebeln schneiden.",

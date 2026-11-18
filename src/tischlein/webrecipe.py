@@ -340,7 +340,7 @@ def paprika_recipe(recipe: dict, uid: str, category_uids: list[str], now: str) -
         "ingredients": "\n".join(recipe["ingredients"]),
         "directions": "\n\n".join(recipe.get("steps") or []),
         "description": recipe.get("description", ""),
-        "notes": "",
+        "notes": recipe.get("notes", ""),
         "nutritional_info": "",
         "servings": recipe.get("servings", ""),
         "difficulty": "",
@@ -364,12 +364,17 @@ def paprika_recipe(recipe: dict, uid: str, category_uids: list[str], now: str) -
     }
 
 
-# Stöbern: Chefkoch's own search (the one its apps use). Not a documented public interface: it may
-# change or go away, so everything here is defensive and the link way keeps working without it.
+# Stöbern: where the family looks for new dishes. None of the searches is a documented public
+# interface: Chefkoch's is the one its apps use, Eat Smarter's is its search page, Cookidoo's is the
+# index behind its search page. Each may change or go away, so callers cope with an empty answer.
+SOURCES = {"chefkoch": "Chefkoch", "eatsmarter": "Eat Smarter", "cookidoo": "Cookidoo"}
 SEARCH_URL = "https://api.chefkoch.de/v2/recipes"
+EATSMARTER = "https://eatsmarter.de"
 
 
-def search_url(query: str, limit: int = 24) -> str:
+def search_url(query: str, source: str = "chefkoch", limit: int = 24) -> str:
+    if source == "eatsmarter":  # lunch dishes only: the plain search also finds smoothies and bread
+        return EATSMARTER + "/suche/rezepte?" + urlencode({"ft": query, "f[0]": "meals_property:Mittagessen"})
     return SEARCH_URL + "?" + urlencode({"query": query, "limit": limit, "minimumRating": 4})
 
 
@@ -399,3 +404,127 @@ def search_results(data) -> list[dict]:
             }
         )
     return out
+
+
+def _first(pattern: str, text: str) -> str:
+    m = re.search(pattern, text, re.S)
+    return htmllib.unescape(m.group(1)).strip() if m else ""
+
+
+def eatsmarter_results(page: str, limit: int = 24) -> list[dict]:
+    """Hits of the Eat Smarter search page as the same cards as `search_results`, plus kcal per
+    portion. Recipes there are tested by the editors, so hits without votes stay in."""
+    out = []
+    for teaser in page.split('class="teaser-wrapper"')[1:]:
+        path = _first(r'class="teaser-wrapper-link"\s+href="(/rezepte/[^"#?]+)"', teaser)
+        name = " ".join(_first(r'class="teaser-wrapper-link"[^>]*>(.*?)</a>', teaser).split())
+        if not path or not name:
+            continue
+        image = _first(r'srcset="(https://images\.eatsmarter\.de/[^" ]+/300x225/[^" ]+)', teaser)
+        image = image or _first(r'<img[^>]+src="(https://images\.eatsmarter\.de/[^"]+)"', teaser)
+        votes = _first(r'class="rating-count">\s*\((\d+)\)', teaser)
+        stars = _first(r'class="rating">\s*([\d.]+)\s*<', teaser)
+        out.append(
+            {
+                "name": name,
+                "subtitle": _first(r'class="premium-badge">([^<]*)<', teaser),
+                "url": EATSMARTER + path,
+                "image": image,
+                "stars": round(float(stars), 1) if stars and votes else 0.0,
+                "votes": int(votes or 0),
+                "minutes": int(_first(r'class="preparation">\s*(\d+)\s*Min', teaser) or 0) or None,
+                "kcal": int(_first(r'class="calories">\s*(\d+)\s*kcal', teaser) or 0) or None,
+            }
+        )
+        if len(out) == limit:
+            break
+    return out
+
+
+COOKIDOO = "https://cookidoo.de"
+COOKIDOO_SEARCH = COOKIDOO + "/search/de-DE"
+
+
+def cookidoo_key(page: str) -> dict | None:
+    """What Cookidoo's search page hands every visitor for its search index: app, key, index and
+    until when the key is good (epoch seconds). None when the page no longer carries it."""
+    m = re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', page, re.S)
+    try:
+        props = json.loads(m.group(1))["props"]["pageProps"] if m else {}
+        key = {
+            "app": str(props["algoliaAppId"]),
+            "key": str(props["algoliaApiKeyData"]["apiKey"]),
+            "index": str(props["algoliaIndices"]["recipes"]["relevance"]),
+            "until": int(props["algoliaApiKeyData"].get("validUntil") or 0),
+        }
+    except KeyError, TypeError, ValueError:
+        return None
+    ok = re.fullmatch(r"[A-Za-z0-9]+", key["app"]) and re.fullmatch(r"[\w-]+", key["index"]) and key["key"]
+    return key if ok else None
+
+
+def cookidoo_search_url(key: dict, query: str, limit: int = 24) -> str:
+    params = {
+        "query": query,
+        "hitsPerPage": limit,
+        "numericFilters": "rating>=4",
+        "x-algolia-application-id": key["app"],
+        "x-algolia-api-key": key["key"],
+    }
+    return f"https://{key['app']}-dsn.algolia.net/1/indexes/{key['index']}?" + urlencode(params)
+
+
+def cookidoo_results(data) -> list[dict]:
+    """Hits of the Cookidoo search as the same cards as `search_results`; the time is the whole time."""
+    out = []
+    for hit in data.get("hits", []) if isinstance(data, dict) else []:
+        if not isinstance(hit, dict):
+            continue
+        rid, name = str(hit.get("id") or ""), str(hit.get("title") or "").strip()
+        if not name or not re.fullmatch(r"r\d+", rid):
+            continue
+        image = str(hit.get("image") or "")
+        image = image.replace("{assethost}", "assets.tmecosys.com").replace("{transformation}", "t_web276x230")
+        seconds = hit.get("totalTime")
+        out.append(
+            {
+                "name": name,
+                "subtitle": "",
+                "url": f"{COOKIDOO}/recipes/recipe/de-DE/{rid}",
+                "image": image if image.startswith("https://assets.tmecosys.com/") else "",
+                "stars": round(float(hit.get("rating") or 0), 1),
+                "votes": int(hit.get("numberOfRatings") or 0),
+                "minutes": round(seconds / 60) if isinstance(seconds, int | float) and seconds > 0 else None,
+                "whole_time": True,
+            }
+        )
+    return out
+
+
+def is_cookidoo_recipe(url: str) -> bool:
+    parts = urlsplit(url)
+    host = (parts.hostname or "").removeprefix("www.")
+    own = re.fullmatch(r"cookidoo\.(?:[a-z]{2}|international|co\.uk|com\.au)", host)  # not cookidoo.de.example.org
+    return bool(own and re.fullmatch(r"/recipes/recipe/[\w-]+/r\d+/?", parts.path))
+
+
+def cookidoo_details(data) -> dict:
+    """Steps and tips of a Cookidoo recipe. Its page shows no steps, but the same address answers
+    with the whole recipe when asked for JSON. Thermomix settings stay in the text as written."""
+
+    def plain(value) -> str:
+        return " ".join(htmllib.unescape(re.sub(r"<[^>]+>", "", str(value or ""))).split())
+
+    steps = []
+    for group in data.get("recipeStepGroups") or [] if isinstance(data, dict) else []:
+        if not isinstance(group, dict):
+            continue
+        title = plain(group.get("title"))
+        for step in group.get("recipeSteps") or []:
+            text = plain(step.get("formattedText")) if isinstance(step, dict) else ""
+            if text:
+                steps.append(f"{title}: {text}" if title else text)
+                title = ""
+    tips = data.get("additionalInformation") or [] if isinstance(data, dict) else []
+    notes = [plain(t.get("content")) for t in tips if isinstance(t, dict)]
+    return {"steps": steps, "notes": "\n\n".join(n for n in notes if n)}
