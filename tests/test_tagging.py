@@ -43,6 +43,8 @@ class WritablePaprika:
         self.ignore_category_create = ignore_category_create
         self.counters = {"recipes": 10, "categories": 3, "meals": 1}
         self.posts: list[tuple[str, object]] = []
+        self.photos: dict[str, bytes] = {}  # recipe uid -> uploaded photo
+        self.refuse_photos = False
 
     @staticmethod
     def _payload(headers, body):
@@ -79,6 +81,12 @@ class WritablePaprika:
                 self.cats += payload
             return ok(True)
         if path.startswith("recipe/"):
+            boundary = re.search(r"boundary=(\w+)", headers["Content-Type"]).group(1)
+            photo = next((p for p in body.split(f"--{boundary}".encode()) if b'name="photo_upload"' in p), None)
+            if photo is not None:
+                if self.refuse_photos:
+                    return 400, b"Invalid photo filename."
+                self.photos[payload["uid"]] = photo.split(b"\r\n\r\n", 1)[1].rsplit(b"\r\n", 1)[0]
             self.recipes[payload["uid"]] = payload
             return ok(True)
         if path == "notify/":

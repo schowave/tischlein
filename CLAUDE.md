@@ -44,6 +44,7 @@ landen im Kalender.
 | Schneller Tag | Tag mit wenig Zeit: Gerichte bis 30 Minuten zuerst | `quickdays`, `quick` |
 | Portionen | Pro geplantem Gericht, Standard `portionen` aus tischlein.toml; skaliert die Mengen | `config.portions`, `servings` |
 | Idee | Vorschlag des LLM für ein neues Gericht; übernommen landet es mit „Neu“ in Paprika | `ideas.py`, `ideas` |
+| Web-Rezept | Rezept von einer fremden Seite (z. B. Chefkoch), per Link geholt; nach einer Vorschau übernommen landet es mit „Neu“, Quelle und Foto (JPEG) in Paprika; gibt es die Quelle schon, wird nicht doppelt übernommen | `webrecipe.py`, `accept_web_recipe` |
 
 ## Planungsregeln
 
@@ -88,7 +89,7 @@ src/tischlein/
   tagging.py   Kategorie-Differenzen nach Paprika schreiben (CSV-Befehl und Oberfläche)
   views.py     View-Modelle für die Templates
   templates/   eine Seite pro Bereich (Jinja, serverseitig gerendert); _macros.html: Rezeptbild, Einkaufs-Formular;
-               waehlen.html: Rezept wählen und Nachtrag
+               waehlen.html: Rezept wählen und Nachtrag; rezept-holen.html: Vorschau eines Web-Rezepts
   static/      tischlein.css; rezepte.js, ideen.js, einkauf.js = Alpine-Komponenten (Markup im Template);
                stay.js: Formulare mit data-stay schicken ohne Neuladen ab (keine springende Seite);
                menus.js: Dropdowns (details.free-menu) schließen sich gegenseitig, bei Klick daneben und Escape;
@@ -102,6 +103,8 @@ src/tischlein/
   prep.py      Vorbereitungshinweise aus Zutaten (Regeln: TK auftauen, einweichen, marinieren …)
   shopping.py  Einkaufsliste: Zutaten sammeln, Vorräte filtern, LLM-Prompt und -Antwort
   ideas.py     Rezeptideen: LLM-Prompt, Antwort prüfen, neues Paprika-Rezept bauen
+  webrecipe.py Web-Rezepte: schema.org-Rezept oder LLM-Antwort lesen, Thema vorschlagen, Paprika-Rezept
+               bauen; das Abrufen (nur öffentliche Adressen, 3 MB, 10 s) macht service.py
   llm.py       Client für OpenAI-kompatible Chat-API (z. B. LiteLLM), Transport injizierbar
   migrations/  Alembic-Revisionen; Store._migrate hebt die DB beim Start auf head
   app.py       FastAPI: Web-UI (Jinja), JSON-API, /kalender.ics

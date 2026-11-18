@@ -16,6 +16,12 @@
   {% endif %}
 </section>
 
+<form class="choose-free web-link" method="get" action="/rezept-holen">
+  <label class="sr-only" for="web-url">Rezept-Link</label>
+  <input class="field" id="web-url" name="url" type="url" inputmode="url" placeholder="Rezept-Link einfügen, z. B. von Chefkoch" autocomplete="off" required>
+  <button class="btn">Ansehen</button>
+</form>
+
 {% if hinweis %}<p class="notice" role="status" x-show="!running">{{ hinweis }}</p>{% endif %}
 <p class="notice" role="alert" x-show="error" x-text="error" x-cloak></p>
 <div class="sync-banner" role="status" aria-live="polite" x-show="running" x-cloak>

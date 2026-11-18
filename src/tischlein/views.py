@@ -66,7 +66,7 @@ def svc_photos(svc: Tischlein) -> set[str]:
         uids = {uid for uid, (_, raw) in svc.store.paprika_cache().items() if raw.get("photo_hash") or raw.get("photo")}
         cache = (svc.store.meta("last_sync"), uids)
         svc._photo_uids = cache
-    return cache[1]
+    return cache[1] | svc.web_photo_uids()  # Web-Rezepte keep their photo locally
 
 
 def _hero(svc: Tischlein, plans: dict, today: date, recipes: dict, feedback: dict) -> dict:
@@ -409,6 +409,27 @@ def choose_view(svc: Tischlein, day: date, mode: str, query: str, today: date) -
         "which": which,
         "back": f"/?woche={which}#tag-{day.isoformat()}" if which in ("aktuell", "naechste") else "/rueckblick",
     }
+
+
+def web_view(svc: Tischlein, url: str) -> dict:
+    """Preview of a Web-Rezept: the recipe, or why it cannot be read; and whether it is in Paprika."""
+    v = {"url": url, "recipe": None, "error": "", "existing": None, "categories": []}
+    v["can_write"] = svc.paprika is not None
+    if not url.strip():
+        v["error"] = "Kein Link angegeben."
+        return v
+    try:
+        v["existing"] = svc.find_source(url)
+        recipe = svc.web_recipe(url)
+    except ValueError as e:
+        v["error"] = str(e)
+        return v
+    cfg = svc.config
+    preset = {cfg.new_tag, cfg.main_tag} | ({recipe["theme"]} if recipe.get("theme") else set())
+    v["recipe"] = recipe
+    v["existing"] = v["existing"] or svc.find_source(recipe["source_url"])
+    v["categories"] = [{"name": c, "on": c in preset} for c in svc.web_categories()]
+    return v
 
 
 def ideas_view(svc: Tischlein) -> dict:

@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}{{ v.recipe.name if v.recipe else 'Rezept holen' }} · Tischlein{% endblock %}
+{% block content %}
+<div class="cook">
+  <a class="btn btn-ghost btn-sm cook-back" href="/ideen">← Ideen</a>
+  {% if v.error %}
+  <section class="title">
+    <div>
+      <h1>Diese Seite lässt sich nicht lesen</h1>
+      <p>{{ v.error }}</p>
+    </div>
+  </section>
+  <section class="panel">
+    {% if v.url %}<p class="panel-note">Link: <a href="{{ v.url }}" rel="noopener noreferrer" target="_blank">{{ v.url | truncate(80) }}</a></p>{% endif %}
+    <p class="panel-note">In der Paprika-App gibt es einen eingebauten Browser, der viele Seiten trotzdem übernehmen kann.</p>
+    <form class="choose-free" method="get" action="/rezept-holen">
+      <label class="sr-only" for="web-url">Anderer Link</label>
+      <input class="field" id="web-url" name="url" type="url" inputmode="url" placeholder="Anderen Link einfügen" autocomplete="off" required>
+      <button class="btn">Ansehen</button>
+    </form>
+  </section>
+  {% else %}
+  {% set r = v.recipe %}
+  <section class="cook-head{% if r.image %} has-photo{% endif %}">
+    <div>
+      <h1>{{ r.name }}</h1>
+      <p class="hero-sub">
+        {% if r.source %}{{ r.source }}{% endif %}{% if r.servings %} · {{ r.servings }}{% endif %}{% if r.total_time %} · {{ r.total_time }}{% endif %}
+      </p>
+      {% if r.via == 'llm' %}<p class="muted">Diese Seite hat kein lesbares Rezeptformat; das LLM hat es aus dem Text gezogen. Bitte kurz gegenlesen.</p>{% endif %}
+      <p><a href="{{ r.source_url }}" rel="noopener noreferrer" target="_blank">Original ansehen</a></p>
+    </div>
+    {% if r.image %}<div class="hero-photo"><img src="{{ r.image }}" alt="" referrerpolicy="no-referrer" decoding="async" onerror="this.closest('.cook-head').classList.remove('has-photo'); this.parentElement.remove()"></div>{% endif %}
+  </section>
+
+  <section class="panel web-accept" aria-labelledby="accept-h">
+    <h2 id="accept-h" class="sr-only">Übernehmen</h2>
+    {% if v.existing %}
+    <p class="web-existing">Schon in Paprika: <a href="/rezepte?rezept={{ v.existing.uid | urlencode }}">{{ v.existing.name }}</a></p>
+    {% elif not v.can_write %}
+    <p class="web-existing">Zum Übernehmen muss Paprika verbunden sein. <a href="/einstellungen">Verbinden</a></p>
+    {% else %}
+    <form method="post" action="/rezept-holen" x-data="{ busy: false }" @submit="busy = true">
+      <input type="hidden" name="url" value="{{ r.source_url }}">
+      <p class="panel-note">Kategorien in Paprika. Mit „{{ v.categories[0].name }}“ kommt das Rezept in den Neu-Slot.</p>
+      <div class="chips web-cats" role="group" aria-label="Kategorien">
+        {% for c in v.categories %}
+        <label class="chip check-chip"><input type="checkbox" name="kategorien" value="{{ c.name }}" {% if c.on %}checked{% endif %}><span>{{ c.name }}</span></label>
+        {% endfor %}
+      </div>
+      <button class="btn btn-primary" :disabled="busy" x-text="busy ? 'Wird übernommen …' : 'Nach Paprika übernehmen'">Nach Paprika übernehmen</button>
+    </form>
+    {% endif %}
+  </section>
+
+  <div class="cook-cols">
+    <section class="panel" aria-labelledby="zut-h">
+      <div class="panel-head"><h2 id="zut-h">Zutaten</h2></div>
+      <ul class="cook-ingredients web-list">{% for z in r.ingredients %}<li>{{ z }}</li>{% endfor %}</ul>
+    </section>
+    <section class="panel" aria-labelledby="zub-h">
+      <div class="panel-head"><h2 id="zub-h">Zubereitung</h2></div>
+      {% if r.steps %}<ol class="cook-steps">{% for s in r.steps %}<li>{{ s }}</li>{% endfor %}</ol>
+      {% else %}<div class="empty-frame">Keine Schritte gefunden.</div>{% endif %}
+    </section>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

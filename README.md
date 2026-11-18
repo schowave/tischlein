@@ -78,6 +78,9 @@ Das Prinzip ist „Sous-Chef“: Tischlein schlägt vor, die Familie gibt frei.
 **Entdecken und zurückblicken**
 - **Ideen:** neue Gerichte vom LLM, passend zu dem, was ihr mögt, mit Fortschrittsanzeige; per
   Klick als „Neu“ und „KI“ nach Paprika.
+- **Rezepte aus dem Netz:** einen Link von Chefkoch & Co. teilen oder einfügen, Tischlein zeigt
+  eine Vorschau mit Thema-Vorschlag und übernimmt das Rezept mit Quelle und „Neu“ nach Paprika.
+  Liest das schema.org-Rezeptformat der Seite, sonst hilft das LLM; ein Rezept kommt nie doppelt.
 - **Rückblick:** was gekocht wurde, Themen, Bewertungen, Lieblinge, die lange nicht dran waren.
   Was ihr anders oder ohne Plan gekocht habt, tragt ihr nach („Stattdessen gekocht …“), auch
   ohne Rezept; es zählt für Rückblick und Rotation.
@@ -157,6 +160,18 @@ Import/Export im Paprika-Format exportieren und die Datei auf der Startseite hoc
   [`docs/betrieb.md`](docs/betrieb.md).
 - Von außen nur über Cloudflare Access erreichbar (siehe unten); die Anmeldung läuft einmal im
   Browser.
+- **Rezepte aus Chefkoch & Co. teilen:** Safari kann Web-Apps nicht ins Teilen-Menü eintragen,
+  ein Kurzbefehl übernimmt das. Einmal in der Kurzbefehle-App anlegen:
+  1. Neuer Kurzbefehl „Zu Tischlein“; unter Details „Im Share-Sheet anzeigen“ einschalten,
+     Eingabe: URLs und Text.
+  2. Aktion **„URL-Kodierung“** mit der Kurzbefehleingabe (Modus „Kodieren“).
+  3. Aktion **„URL“**: `https://<eure-tischlein-adresse>/rezept-holen?text=` und dahinter die
+     Variable „URL-kodierter Text“.
+  4. Aktion **„URLs öffnen“**.
+
+  Danach in der Chefkoch-App „Teilen → Zu Tischlein“: Die Vorschau öffnet sich im Browser,
+  „Nach Paprika übernehmen“ legt das Rezept an. Ohne Kurzbefehl geht es über das Feld
+  „Rezept-Link einfügen“ auf der Seite Ideen.
 
 ## Konfiguration
 
@@ -320,6 +335,8 @@ Neue Planungsregeln kommen immer zuerst als Test in `tests/test_planner.py`.
 - Die Paprika-Server sperren IPs bei zu vielen Anfragen. Tischlein lädt deshalb nur geänderte
   Rezepte und macht Pausen zwischen den Abrufen.
 - Freigegebene Pläne werden noch nicht in den Meal Planner von Paprika geschrieben.
+- Web-Rezepte bringen ihr Foto nach Paprika mit, wenn es ein JPEG ist; andere Formate behält
+  Tischlein lokal und zeigt sie nur in seiner Oberfläche.
 
 ## Bildnachweise
 

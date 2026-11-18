@@ -34,6 +34,7 @@ from .views import (
     review_view,
     settings_view,
     shopping_view,
+    web_view,
     week_view,
 )
 
@@ -410,6 +411,24 @@ def create_app(service: Tischlein | None = None, auto_sync: bool | None = None) 
     def ideas_dismiss(idea_id: int):
         service.dismiss_idea(idea_id)
         return RedirectResponse("/ideen", status_code=303)
+
+    # Web-Rezepte -------------------------------------------------------------------
+
+    @app.get("/rezept-holen", response_class=HTMLResponse)
+    def web_page(request: Request, url: str = "", text: str = ""):
+        # the iOS share sheet may hand over the shared text instead of the bare link
+        v = web_view(service, url or text)
+        return render(request, "rezept-holen.html", {"v": v, "nav": "ideen"})
+
+    @app.post("/rezept-holen")
+    def web_accept(url: str = Form(...), kategorien: list[str] = Form([])):
+        try:
+            recipe = service.accept_web_recipe(url, kategorien)
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from e
+        except PaprikaError as e:
+            raise HTTPException(502, str(e)) from e
+        return RedirectResponse(f"/rezepte?rezept={quote(recipe.uid)}", status_code=303)
 
     # Review ------------------------------------------------------------------------
 

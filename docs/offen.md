@@ -6,3 +6,4 @@
   Kategorie `Schnell` gesetzt ist.
 - Freigegebene Pläne in den Paprika Meal Planner schreiben (Schnittstelle: `docs/paprika-api.md`).
 - Wochenschema und Regeln in den Einstellungen statt in `tischlein.toml`.
+- Fotos von Web-Rezepten in PNG/WebP nach Paprika (heute nur JPEG; bräuchte eine Umwandlung).

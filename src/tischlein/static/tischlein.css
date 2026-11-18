@@ -630,3 +630,16 @@ details[open] summary { color: var(--text); }
   .add-row .add-amount { flex: 0 0 84px; }
   .add-row .btn { padding: 0 16px; }
 }
+
+/* ---------- Web-Rezept ---------- */
+.web-link { max-width: 640px; }
+.web-accept { margin-bottom: var(--gap); display: grid; gap: 12px; }
+.web-accept form { display: grid; gap: 12px; justify-items: start; }
+.web-accept .panel-note { margin: 0; }
+.web-existing { margin: 0; }
+.check-chip { cursor: pointer; }
+.check-chip input { position: absolute; opacity: 0; pointer-events: none; }
+.check-chip:has(input:checked) { background: var(--primary); border-color: var(--primary); color: var(--primary-ink); }
+.check-chip:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+.web-list li { padding: 4px 0; border-bottom: 1px solid var(--border); }
+.web-list li:last-child { border-bottom: 0; }

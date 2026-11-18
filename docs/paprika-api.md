@@ -36,6 +36,14 @@ Paprika hat keine offizielle API. Tischlein nutzt die inoffizielle Sync-API der 
 - Bild-Links (`photo_url`) sind signiert und nur kurz gültig; `recipe_photo` lädt sie beim
   ersten Anzeigen nach `data/bilder/` und erneuert abgelaufene über einen Rezeptabruf.
 - Bei Fehlern zuerst gegen github.com/johnwbyrd/kappari (Protokoll-Doku) abgleichen.
+- **Hauptfoto hochladen** (gegen ein echtes Konto geprüft, 2026-11-18): im selben
+  `POST /api/v2/sync/recipe/<uid>/` ein zweiter Multipart-Teil `photo_upload` mit der JPEG-Datei
+  (Dateiname = Feld `photo`, z. B. `<UUID>.jpg`); im Rezept-JSON `photo` = dieser Dateiname und
+  `photo_hash` = SHA-256 der Bilddatei (groß). Danach liefert `sync/recipe/<uid>/` einen
+  `photo_url` mit genau dieser Datei, und die Mac-App zeigt das Foto in der Detailansicht.
+  `paprika_sync.update_recipe(data, photo=…)`. Nur JPEG geprüft; PNG/WebP behalten Web-Rezepte
+  lokal (`data/bilder/<uid>-web.jpg`). Weitere Fotos (Galerie, `sync/photo/<uid>/`) nicht geprüft;
+  ob die Apps ein Bild von `image_url` selbst laden, ist unbekannt.
 - Noch nicht genutzt: Meal Planner `POST /api/v1/sync/meals/`, multipart `data` = gzip-JSON-Liste
   `{uid, recipe_uid, date "YYYY-MM-DD 00:00:00", type, name, deleted, order_flag}`; welcher `type`
   Mittagessen ist, vorher prüfen.

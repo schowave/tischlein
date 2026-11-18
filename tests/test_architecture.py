@@ -9,9 +9,11 @@ from pathlib import Path
 import pytest
 
 SRC = Path(__file__).parent.parent / "src" / "tischlein"
-PURE = ["planner.py", "paprika.py", "holidays.py", "prep.py", "shopping.py", "ideas.py", "models.py", "ics.py"]
+PURE = ["planner.py", "paprika.py", "holidays.py", "prep.py", "shopping.py", "ideas.py", "models.py", "ics.py",
+        "webrecipe.py"]
 FORBIDDEN = {"sqlite3", "urllib", "http", "socket", "fastapi", "starlette", "uvicorn", "sqlalchemy", "alembic",
              "requests", "httpx"}
+ALLOWED = {"urllib.parse"}  # parses URLs, no I/O
 FORBIDDEN_LOCAL = {"store", "app", "service", "views", "paprika_sync", "llm", "cli"}
 
 
@@ -32,6 +34,6 @@ def imports_of(path: Path) -> set[str]:
 @pytest.mark.parametrize("module", PURE)
 def test_pure_module_has_no_io_imports(module):
     found = imports_of(SRC / module)
-    external = {n for n in found if not n.startswith(".") and n.split(".")[0] in FORBIDDEN}
+    external = {n for n in found if not n.startswith(".") and n.split(".")[0] in FORBIDDEN and n not in ALLOWED}
     local = {n for n in found if n.startswith(".") and n[1:].split(".")[0] in FORBIDDEN_LOCAL}
     assert not external | local, f"{module} importiert I/O-Code: {sorted(external | local)}"

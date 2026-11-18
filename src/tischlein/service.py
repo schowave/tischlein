@@ -8,8 +8,11 @@ import os
 import random
 import re
 import secrets
+import socket
 import threading
 import time
+import urllib.error
+import urllib.parse
 import urllib.request
 import uuid
 from collections.abc import Callable
@@ -19,7 +22,7 @@ from datetime import date, datetime, timedelta
 from datetime import time as dtime
 from pathlib import Path
 
-from . import ics, ideas, shopping
+from . import ics, ideas, shopping, webrecipe
 from .config import WEEKDAY_NAMES, PlanConfig
 from .holidays import holidays_between
 from .llm import LLMClient, LLMError
@@ -41,6 +44,48 @@ def _download(url: str) -> bytes:
         if not resp.headers.get("Content-Type", "").startswith("image/"):
             raise OSError("keine Bilddatei")
         return resp.read()
+
+
+WEB_AGENT = "Mozilla/5.0 (compatible; Tischlein)"
+WEB_IMAGES = ("image/jpeg", "image/png", "image/webp")
+
+
+class _PublicOnly(urllib.request.HTTPRedirectHandler):
+    """Follow a redirect only to another public http(s) address."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        _check_public(newurl)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def _check_public(url: str) -> None:
+    host = urllib.parse.urlsplit(webrecipe.check_url(url)).hostname
+    try:
+        addresses = {info[4][0] for info in socket.getaddrinfo(host, None)}
+    except OSError as e:
+        raise ValueError(f"Die Adresse {host} ist nicht erreichbar.") from e
+    if not addresses or not all(webrecipe.is_public(a.split("%")[0]) for a in addresses):
+        raise ValueError("Links ins eigene Netz holt Tischlein nicht.")
+
+
+def _web_get(url: str, max_bytes: int, types: tuple[str, ...] = ()) -> tuple[bytes, str]:
+    """GET a public web page or image: (body, content type). At most `max_bytes`, 10 s."""
+    _check_public(url)
+    opener = urllib.request.build_opener(_PublicOnly)
+    req = urllib.request.Request(url, headers={"User-Agent": WEB_AGENT, "Accept-Language": "de-DE,de;q=0.9"})
+    try:
+        with opener.open(req, timeout=10) as resp:
+            kind = resp.headers.get("Content-Type", "").split(";")[0].strip().lower()
+            if types and kind not in types:
+                raise ValueError(f"Unerwarteter Inhalt ({kind or 'unbekannt'}).")
+            body = resp.read(max_bytes + 1)
+    except urllib.error.HTTPError as e:
+        raise ValueError(f"Die Seite antwortet mit Fehler {e.code}.") from e
+    except (urllib.error.URLError, TimeoutError, OSError) as e:
+        raise ValueError("Die Seite ist gerade nicht erreichbar.") from e
+    if len(body) > max_bytes:
+        raise ValueError("Die Seite ist zu groß.")
+    return body, kind
 
 
 def _removed_by_hand(removed: dict[str, str], item: dict) -> bool:
@@ -106,6 +151,8 @@ class Tischlein:
         self._auto_stop = threading.Event()
         self._shopping_pending: dict[date, threading.Timer | None] = {}
         self._llm_transport = None  # tests inject a fake transport
+        self.web_get = _web_get  # tests inject fake pages
+        self._web_cache: dict[str, dict] = {}
         self._user_agent = user_agent
 
         # A login entered in the settings wins over PAPRIKA_EMAIL/PAPRIKA_PASSWORD.
@@ -254,8 +301,9 @@ class Tischlein:
             return None
         raw_hash, raw = entry
         key = (raw.get("photo_hash") or raw.get("photo") or "").replace("/", "")[:16]
-        if not key:
-            return None
+        if not key:  # a Web-Rezept: its photo lives only here
+            web = self._web_photo_path(uid)
+            return web if web and web.exists() else None
         folder = self.backup_dir / "bilder"
         path = folder / f"{uid}-{key}.jpg"
         if path.exists():
@@ -703,6 +751,103 @@ class Tischlein:
         self.store.upsert_recipe(recipe, raw.get("hash", ""), raw)
         self.store.set_idea_status(idea_id, "uebernommen", uid)
         return recipe
+
+    # Web-Rezepte -----------------------------------------------------------------
+
+    def web_categories(self) -> list[str]:
+        """Categories offered in the preview: family tags first, then the themes."""
+        cfg = self.config
+        return [cfg.new_tag, cfg.main_tag, cfg.kid_tag, *cfg.themes]
+
+    def find_source(self, url: str) -> Recipe | None:
+        """A recipe in the collection that came from this page (same link without tracking parts)."""
+        key = webrecipe.normalize_url(url)
+        same = (r for r in self.store.recipes() if r.source_url and webrecipe.normalize_url(r.source_url) == key)
+        return next(same, None)
+
+    def web_recipe(self, url: str) -> dict:
+        """Read a recipe from a page for the preview: the page's schema.org data, else via the LLM.
+        Raises ValueError with a reason the family can read."""
+        url = webrecipe.check_url(webrecipe.find_url(url) or url)
+        key = webrecipe.normalize_url(url)
+        if key in self._web_cache:
+            return self._web_cache[key]
+        body, kind = self.web_get(url, 3_000_000, ("text/html", "application/xhtml+xml"))
+        html = body.decode("utf-8", errors="replace")
+        recipe = webrecipe.from_schema(html, url)
+        if recipe is None:
+            client = self.llm()
+            if client is None:
+                raise ValueError("Auf dieser Seite steht kein Rezept, das Tischlein lesen kann.")
+            try:
+                answer = client.chat_json(webrecipe.SYSTEM, webrecipe.llm_prompt(webrecipe.page_text(html)), 0.1)
+            except LLMError as e:
+                raise ValueError(f"Das LLM konnte die Seite nicht lesen: {e}") from e
+            recipe = webrecipe.from_llm(answer, html, url)
+            if recipe is None:
+                raise ValueError("Auf dieser Seite steht kein Rezept, das Tischlein lesen kann.")
+        recipe["theme"] = webrecipe.suggest_theme(recipe, list(self.config.themes))
+        if len(self._web_cache) > 20:
+            self._web_cache.pop(next(iter(self._web_cache)))
+        self._web_cache[key] = recipe
+        return recipe
+
+    def accept_web_recipe(self, url: str, categories: list[str]) -> Recipe:
+        """Übernehmen: create the Web-Rezept in Paprika with its source, the chosen categories and its
+        photo (JPEG). A photo Paprika does not take (other format, upload refused) is kept locally."""
+        if self.paprika is None:
+            raise PaprikaError("Paprika-Sync ist nicht eingerichtet.")
+        existing = self.find_source(url)
+        if existing:
+            raise ValueError(f"Schon in Paprika: {existing.name}")
+        recipe = self.web_recipe(url)
+        offered = {c.casefold(): c for c in self.web_categories()}
+        names = list(dict.fromkeys(offered[c.casefold()] for c in categories if c.casefold() in offered))
+        uid = str(uuid.uuid4()).upper()
+        photo, kind = b"", ""
+        if recipe.get("image"):
+            try:
+                photo, kind = self.web_get(recipe["image"], 5_000_000, WEB_IMAGES)
+            except ValueError:
+                photo = b""  # no photo is fine
+        with self._paprika_lock:
+            data = webrecipe.paprika_recipe(
+                recipe, uid, self._ensure_categories(names), f"{datetime.now():%Y-%m-%d %H:%M:%S}"
+            )
+            uploaded = False
+            if photo and kind == "image/jpeg":
+                try:
+                    self.paprika.update_recipe(data, photo=photo)
+                    uploaded = True
+                except PaprikaError:
+                    log.warning("Paprika hat das Foto zu %s nicht angenommen", recipe["name"])
+            if not uploaded:
+                self.paprika.update_recipe(data)
+            self.paprika.notify()
+            raw = self.paprika.recipe(uid)
+            cat_names = self.paprika.categories()
+        created = recipe_from_json(raw, cat_names)
+        self.store.upsert_recipe(created, raw.get("hash", ""), raw)
+        if photo and not uploaded:
+            self._save_web_photo(uid, photo)
+        self._web_cache.pop(webrecipe.normalize_url(url), None)
+        return created
+
+    def _web_photo_path(self, uid: str) -> Path | None:
+        return self.backup_dir / "bilder" / f"{uid}-web.jpg" if self.backup_dir else None
+
+    def _save_web_photo(self, uid: str, photo: bytes) -> None:
+        path = self._web_photo_path(uid)
+        if path is None:
+            return
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(photo)
+
+    def web_photo_uids(self) -> set[str]:
+        folder = self.backup_dir / "bilder" if self.backup_dir else None
+        if folder is None or not folder.exists():
+            return set()
+        return {p.name.removesuffix("-web.jpg") for p in folder.glob("*-web.jpg")}
 
     def dismiss_idea(self, idea_id: int) -> None:
         self.store.set_idea_status(idea_id, "verworfen")

@@ -129,8 +129,9 @@ class PaprikaClient:
             raise PaprikaError(f"Paprika-Anfrage {path} fehlgeschlagen (HTTP {status}): {detail}")
         return _decode(raw) if raw.strip() else None
 
-    def _post(self, path: str, payload: object | None = None):
-        """POST to the v2 sync API. Payloads go gzip-compressed in a multipart field `data`."""
+    def _post(self, path: str, payload: object | None = None, files: Mapping[str, tuple[str, bytes]] | None = None):
+        """POST to the v2 sync API. Payloads go gzip-compressed in a multipart field `data`;
+        `files` adds parts {field: (filename, bytes)}, e.g. a recipe photo."""
         if self._token is None:
             self.login()
         headers = {"User-Agent": self._user_agent, "Authorization": f"Bearer {self._token}"}
@@ -144,6 +145,15 @@ class PaprikaClient:
                     "Content-Type: application/octet-stream\r\n\r\n"
                 ).encode()
                 + gzip.compress(json.dumps(payload).encode())
+                + b"".join(
+                    (
+                        f"\r\n--{boundary}\r\n"
+                        f'Content-Disposition: form-data; name="{field}"; filename="{filename}"\r\n'
+                        "Content-Type: image/jpeg\r\n\r\n"
+                    ).encode()
+                    + content
+                    for field, (filename, content) in (files or {}).items()
+                )
                 + f"\r\n--{boundary}--\r\n".encode()
             )
             headers["Content-Type"] = f"multipart/form-data; boundary={boundary}"
@@ -162,14 +172,21 @@ class PaprikaClient:
         )
         return uid
 
-    def update_recipe(self, data: dict) -> None:
-        """Upload a full recipe (as returned by recipe()) with a fresh hash."""
+    def update_recipe(self, data: dict, photo: bytes | None = None) -> None:
+        """Upload a full recipe (as returned by recipe()) with a fresh hash. `photo` (JPEG) becomes
+        the recipe's main photo: field `photo` = file name, `photo_hash` = SHA-256 of the file, the
+        file itself as multipart part `photo_upload` (see docs/paprika-api.md)."""
         data = {k: v for k, v in data.items() if k != "photo_url"}
+        files = None
+        if photo is not None:
+            data["photo"] = f"{uuid.uuid4()}.jpg".upper().replace(".JPG", ".jpg")
+            data["photo_hash"] = hashlib.sha256(photo).hexdigest().upper()
+            files = {"photo_upload": (data["photo"], photo)}
         for name in ("photo", "photo_hash", "photo_large"):
             data[name] = data.get(name) or None
         data.pop("hash", None)
         data["hash"] = hashlib.sha256(json.dumps(data, sort_keys=True).encode()).hexdigest().upper()
-        self._post(f"sync/recipe/{urllib.parse.quote(data['uid'])}/", data)
+        self._post(f"sync/recipe/{urllib.parse.quote(data['uid'])}/", data, files)
 
     def notify(self) -> None:
         """Tell the Paprika apps to pull changes."""
