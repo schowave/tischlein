@@ -7,6 +7,38 @@
 </div>
 {% endblock %}
 {% block content %}
+{% macro day_menu(d) %}
+{% set iso = d.date.isoformat() %}
+{% if d.can_move or d.can_choose or d.can_theme or d.can_leftovers or d.can_log or d.logged %}
+<details class="free-menu day-menu">
+  <summary class="btn btn-ghost btn-sm" aria-label="{{ d.weekday }}: mehr">Mehr</summary>
+  <div class="free-options day-options">
+    {% if d.logged %}
+    <form data-stay method="post" action="/nachtrag/{{ iso }}/entfernen"><input type="hidden" name="woche" value="{{ v.which }}"><button class="chip">Nachtrag entfernen</button></form>
+    {% elif d.can_log %}
+    <a class="chip" href="/nachtrag?tag={{ iso }}">{{ 'Stattdessen gekocht …' if d.meal and d.meal.recipe_uid and not d.free else 'Gekocht …' }}</a>
+    {% endif %}
+    {% if d.can_choose %}<a class="chip" href="/tage/{{ iso }}/rezept">Rezept wählen …</a>{% endif %}
+    {% if d.can_leftovers %}
+    <form data-stay method="post" action="/tage/{{ iso }}/reste"><input type="hidden" name="an" value="{{ 0 if d.leftovers_next else 1 }}"><input type="hidden" name="woche" value="{{ v.which }}"><button class="chip" aria-pressed="{{ 'true' if d.leftovers_next else 'false' }}" title="Doppelt kochen, am nächsten Tag mit Mittagessen gibt es die Reste">Reste morgen</button></form>
+    {% endif %}
+    {% if d.move_to %}
+    <span class="menu-h">Verschieben auf</span>
+    <div class="chips">
+      {% for t in d.move_to %}<form data-stay method="post" action="/tage/{{ iso }}/verschieben"><input type="hidden" name="nach" value="{{ t.date.isoformat() }}"><input type="hidden" name="woche" value="{{ v.which }}"><button class="chip" aria-label="{{ d.weekday }} auf {{ t.label }} verschieben">{{ t.label[:2] }}</button></form>{% endfor %}
+    </div>
+    {% endif %}
+    {% if d.can_theme and not d.free %}
+    <span class="menu-h">Thema diese Woche</span>
+    <div class="chips">
+      {% for t in d.themes %}<form data-stay method="post" action="/tage/{{ iso }}/thema"><input type="hidden" name="thema" value="{{ t }}"><input type="hidden" name="woche" value="{{ v.which }}"><button class="chip" aria-pressed="{{ 'true' if t == d.theme else 'false' }}" {% if t == d.theme %}disabled{% endif %}>{{ t }}</button></form>{% endfor %}
+      {% if d.theme_changed %}<form data-stay method="post" action="/tage/{{ iso }}/thema"><input type="hidden" name="thema" value=""><input type="hidden" name="woche" value="{{ v.which }}"><button class="chip">Wie im Wochenschema</button></form>{% endif %}
+    </div>
+    {% endif %}
+  </div>
+</details>
+{% endif %}
+{% endmacro %}
 {% set h = v.hero %}
 <section class="hero{% if h.photo %} has-photo{% endif %}">
   <div class="hero-text">
@@ -45,7 +77,7 @@
       <article class="day{% if d.free %} is-free{% endif %}{% if d.is_today %} is-today{% endif %}" id="tag-{{ d.date.isoformat() }}">
         <div class="day-when">
           <strong>{{ d.weekday }}</strong>
-          <span>{% if d.is_today %}<span class="today">Heute</span> · {% endif %}{{ d.short }} · {{ d.theme }}</span>
+          <span>{% if d.is_today %}<span class="today">Heute</span> · {% endif %}{{ d.short }} · {% if d.leftovers %}Reste{% else %}{{ d.theme }}{% if d.theme_changed %} <span class="theme-note">diese Woche</span>{% endif %}{% endif %}</span>
         </div>
         <div class="day-dish">
           {% if d.free %}
@@ -53,7 +85,7 @@
             <span>{{ d.free_reason }}</span>
           {% elif d.meal and d.meal.recipe_uid %}
             <div class="dish-row">
-              {{ thumb(d.meal.recipe_uid, d.meal.name, d.has_photo) }}
+              {{ thumb(d.meal.recipe_uid, d.meal.name | replace("Reste: ", ""), d.has_photo) }}
               <div>
                 <strong><a class="dish-link" href="/kochen/{{ d.date.isoformat() }}">{{ d.meal.name }}</a></strong>
                 {% if d.meal.is_new %}<span>Neu ausprobieren: eine sichere Beilage dazu.</span>
@@ -61,6 +93,9 @@
                 {% if d.portions and d.portions.base != d.portions.servings %}<span class="scale-note">Rezept für {{ d.portions.base }}, Mengen für {{ d.portions.servings }}</span>{% endif %}
               </div>
             </div>
+          {% elif d.meal and d.meal.logged %}
+            <strong>{{ d.meal.name }}</strong>
+            <span>{{ d.meal.reason }}</span>
           {% elif d.meal %}
             <strong class="empty">{{ d.meal.reason }}</strong>
           {% else %}
@@ -76,6 +111,7 @@
         <div class="day-act">
           {% if d.free %}
           <form data-stay class="inline" method="post" action="/tage/{{ d.date.isoformat() }}/kochen"><input type="hidden" name="woche" value="{{ v.which }}"><button class="btn btn-ghost btn-sm">Doch kochen</button></form>
+          {{ day_menu(d) }}
           {% else %}
           {% if d.portions %}
           {% set p = d.portions %}
@@ -85,16 +121,18 @@
             <form data-stay method="post" action="/tage/{{ d.date.isoformat() }}/portionen"><input type="hidden" name="portionen" value="{{ p.servings + 1 }}"><input type="hidden" name="woche" value="{{ v.which }}"><button class="step" aria-label="Eine Portion mehr" {% if p.servings >= 30 %}disabled{% endif %}>+</button></form>
           </div>
           {% endif %}
-          {% if v.plan.status == 'entwurf' and d.meal %}
+          {% set cookable = d.meal and not d.leftovers and not d.logged %}
+          {% if v.plan.status == 'entwurf' and cookable %}
           <form data-stay class="inline" method="post" action="/tage/{{ d.date.isoformat() }}/schnell"><input type="hidden" name="an" value="{{ 0 if d.quick else 1 }}"><input type="hidden" name="woche" value="{{ v.which }}"><button class="btn btn-ghost btn-sm quick-toggle{% if d.quick %} is-on{% endif %}" aria-pressed="{{ 'true' if d.quick else 'false' }}" title="{{ 'Wieder normal planen' if d.quick else 'Wenig Zeit: ein Gericht bis 30 Minuten wählen' }}">Schnell</button></form>
           {% elif d.quick %}<span class="pill pill-neutral">Schnell</span>
           {% endif %}
-          {% if v.plan.status == 'entwurf' and d.meal %}
+          {% if v.plan.status == 'entwurf' and cookable %}
           <form data-stay class="inline" method="post" action="/plaene/{{ v.which }}/tauschen">
             <input type="hidden" name="tag" value="{{ d.date.isoformat() }}">
             <button class="btn btn-ghost btn-sm" aria-label="{{ d.weekday }} tauschen">Tauschen</button>
           </form>
           {% endif %}
+          {% if not d.logged %}
           <details class="free-menu">
             <summary class="btn btn-ghost btn-sm" aria-label="{{ d.weekday }}: kein Mittagessen">Frei</summary>
             <div class="free-options" role="group" aria-label="Grund">
@@ -103,6 +141,8 @@
               {% endfor %}
             </div>
           </details>
+          {% endif %}
+          {{ day_menu(d) }}
           {% endif %}
         </div>
         {% if d.can_rate %}
@@ -118,6 +158,9 @@
       </article>
       {% endfor %}
     </div>
+    {% if v.extras %}
+    <p class="extras">Außerdem gekocht: {% for e in v.extras %}{{ e.day }} {{ e.name }}{% if not loop.last %} · {% endif %}{% endfor %}</p>
+    {% endif %}
     <div class="panel-head" style="margin: 14px 0 0">
       <div class="end">
         <a class="btn btn-ghost" href="/einkauf?woche={{ v.which }}">Einkaufsliste</a>

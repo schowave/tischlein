@@ -30,3 +30,11 @@ def export_bytes() -> bytes:
             {"uid": "C3", "name": "Linsen-Dal", "categories": ["Hülsenfrüchte", "Neu"], "rating": 3},
         ]
     )
+
+
+@pytest.fixture(autouse=True)
+def shopping_right_away(monkeypatch):
+    """The automatic shopping list waits a few seconds for more changes; tests collect at once."""
+    from tischlein.service import Tischlein
+
+    monkeypatch.setattr(Tischlein, "shopping_delay", None)

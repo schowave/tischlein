@@ -26,6 +26,7 @@ from .paprika_sync import PaprikaError
 from .service import Tischlein, from_env
 from .views import (
     FREE_REASONS,
+    choose_view,
     cook_view,
     ideas_view,
     recipe_json,
@@ -110,11 +111,18 @@ def create_app(service: Tischlein | None = None, auto_sync: bool | None = None) 
         except ValueError:
             raise HTTPException(400, "Woche: 'aktuell', 'naechste' oder ein Datum (JJJJ-MM-TT)") from None
 
-    def guard(fn, *args):
+    def guard(fn, *args, **kwargs):
         try:
-            return fn(*args)
+            return fn(*args, **kwargs)
         except KeyError as e:
             raise HTTPException(404, str(e.args[0])) from e
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from e
+
+    def to_day(woche: str | None, day: date) -> RedirectResponse:
+        r = back(woche)
+        r.headers["location"] += f"#tag-{day.isoformat()}"
+        return r
 
     # Web UI ----------------------------------------------------------------
 
@@ -227,6 +235,54 @@ def create_app(service: Tischlein | None = None, auto_sync: bool | None = None) 
     def ui_day_cook(day: date, woche: str | None = Form(None)):
         service.set_day_cooking(day)
         return back(woche)
+
+    # Week: moving, picking, themes, leftovers, Nachträge ----------------------------
+
+    @app.post("/tage/{day}/verschieben")
+    def ui_day_move(day: date, nach: date = Form(...), woche: str | None = Form(None)):
+        guard(service.move, day, nach)
+        return to_day(woche, nach)
+
+    @app.post("/tage/{day}/thema")
+    def ui_day_theme(day: date, thema: str = Form(""), woche: str | None = Form(None)):
+        guard(service.set_theme, day, thema or None)
+        return to_day(woche, day)
+
+    @app.post("/tage/{day}/reste")
+    def ui_day_leftovers(day: date, an: int = Form(...), woche: str | None = Form(None)):
+        guard(service.set_leftovers, day, bool(an))
+        return to_day(woche, day)
+
+    @app.get("/tage/{day}/rezept", response_class=HTMLResponse)
+    def choose_page(request: Request, day: date, q: str = ""):
+        v = choose_view(service, day, "waehlen", q, date.today())
+        return render(request, "waehlen.html", {"v": v, "nav": "woche"})
+
+    @app.post("/tage/{day}/rezept")
+    def ui_day_choose(day: date, rezept_uid: str = Form(...), woche: str | None = Form(None)):
+        guard(service.choose, day, rezept_uid)
+        return to_day(woche, day)
+
+    @app.get("/nachtrag", response_class=HTMLResponse)
+    def cooked_page(request: Request, tag: date | None = None, q: str = ""):
+        v = choose_view(service, tag or date.today(), "nachtrag", q, date.today())
+        return render(request, "waehlen.html", {"v": v, "nav": "woche"})
+
+    @app.post("/nachtrag")
+    def ui_log_cooked(
+        request: Request,
+        tag: date = Form(...),
+        rezept_uid: str = Form(""),
+        name: str = Form(""),
+        zurueck: str = Form("/"),
+    ):
+        guard(service.log_cooked, tag, rezept_uid or None, name, person_of(request))
+        return RedirectResponse(zurueck if zurueck.startswith("/") and not zurueck.startswith("//") else "/", 303)
+
+    @app.post("/nachtrag/{day}/entfernen")
+    def ui_remove_cooked(day: date, woche: str | None = Form(None)):
+        service.remove_cooked(day)
+        return to_day(woche, day)
 
     @app.post("/bewertung")
     def ui_rate(

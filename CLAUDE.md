@@ -29,10 +29,16 @@ landen im Kalender.
 | Cooldown | Ein Rezept kommt frühestens nach N Wochen wieder | `config.cooldown_weeks` |
 | Plan | Eine Woche Mittagessen, Status `entwurf` oder `freigegeben` | `WeekPlan` |
 | Mahlzeit | Ein geplanter Tag im Plan | `Meal` |
+| Verschieben | Zwei Tage einer Woche tauschen ihre Gerichte; das Thema bleibt am Wochentag, die Mahlzeit vermerkt „verschoben von …“; auch im freigegebenen Plan, nicht für vergangene Tage; freie Tage tauschen mit; ein Reste-Tag zieht mit seinem Gericht mit | `move` |
+| Tauschen | Für einen Tag ein anderes Rezept zum selben Thema würfeln | `swap` |
+| Rezept wählen | Ein bestimmtes Rezept von Hand auf einen Tag legen; bleibt beim Neu-Würfeln der Woche stehen; Cooldown, Kinder-OK und Abneigungen nur als Hinweis; ein von Hand gewähltes Neu-Rezept ersetzt den Neu-Slot der Woche | `choose`, `Meal.chosen` |
+| Reste-Tag | Am Kochtag markiert („Reste morgen“): der nächste Tag mit Mittagessen isst die Reste, kein Kochen, kein Einkauf, sein Thema entfällt diese Woche; zählt nicht als eigene Mahlzeit; nur innerhalb der Woche | `set_leftovers`, `Meal.leftovers` |
+| Themenwechsel | Ein Tag bekommt für eine Woche ein anderes Thema (oder „beliebig“); bleibt beim Neu-Würfeln stehen; am Neu-Slot-Tag wird das Neu-Rezept dann zum neuen Thema gesucht | `set_theme`, `themedays` |
+| Nachtrag | Gekochte Mahlzeit, die nicht vom Planer kommt: „stattdessen“ ersetzt das geplante Gericht des Tages, an Tagen ohne Plan kommt sie dazu; zählt für Cooldown, Rückblick, Bewertung und Rückmeldung; auch als Freitext ohne Paprika-Rezept (dann nur Rückblick); Kalender und Home Assistant zeigen das tatsächlich Gekochte | `Cooked`, `with_cooked`, `cooked` |
 | Rückmeldung | Nach einem Neu-Rezept: `ok` (in die Rotation) oder `nein` (nie wieder) | `Feedback` |
 | Bewertung | Nach jedem Essen: gut / mittel / schlecht, pro Tag und Person; steuert die Gewichtung | `ratings` |
 | Freier Tag | Kein Mittagessen (Urlaub, Feiertag, Kita …); Feiertage automatisch, „Doch kochen“ überstimmt | `skipdays`, `holidays.py` |
-| Einkaufsliste | Zutaten der Woche ohne Vorräte, auf die Portionen umgerechnet, gleiche Zutaten zusammengeführt und nach Gang sortiert (mit LLM oder per Regeln); gelöschte Zutaten bleiben für die Woche weg, solange kein anderes Gericht sie braucht | `shopping.py`, `shopping`, `shopping_removed` |
+| Einkaufsliste | Zutaten der Woche ohne Vorräte, auf die Portionen umgerechnet, gleiche Zutaten zusammengeführt und nach Gang sortiert (mit LLM oder per Regeln); gelöschte Zutaten bleiben für die Woche weg, solange kein anderes Gericht sie braucht; zum ersten Mal gesammelt bei Freigabe (oder von Hand), danach sammelt sie sich bei jeder Änderung der Gerichte selbst neu | `shopping.py`, `shopping`, `shopping_removed` |
 | Bring-Abgleich | Einkaufsliste ↔ Bring über Home Assistant; pro Eintrag `bring` 0/1/2 (nicht drin, offen, abgehakt), nur Änderungen werden geschickt | `push_bring`, `apply_bring_state` |
 | Abneigung | Zutat, die die Kinder nicht mögen (Einstellungen); solche Rezepte plant Tischlein zuletzt | `dislikes`, `avoid` |
 | Schneller Tag | Tag mit wenig Zeit: Gerichte bis 30 Minuten zuerst | `quickdays`, `quick` |
@@ -61,6 +67,13 @@ landen im Kalender.
    anderes übrig ist; der Grund steht in der Mahlzeit. Neu-Slot und KI-Ideen meiden sie ganz.
 10. Schnelle Tage: zuerst Rezepte bis 30 Minuten (`total_time`) oder mit Kategorie `Schnell`, sonst
     die normale Regel mit Grund. Ein Entwurf wählt den Tag beim Umschalten neu.
+11. Themenwechsel ersetzt das Thema eines Tages für eine Woche („Beliebig“ = jedes Mittagsgericht);
+    der Neu-Slot sucht dann zum neuen Thema.
+12. Von Hand gewählte Rezepte bleiben beim Neu-Würfeln stehen, mit ihrem Reste-Tag. Ein von Hand
+    gewähltes Neu-Rezept füllt den Neu-Slot; der Slot-Tag bekommt dann ein normales Gericht.
+13. Ein Reste-Tag gehört zum Gericht des Mittagessens davor; ändert sich das, wird er normal geplant.
+14. Gekocht ist, was in einem freigegebenen Plan steht (ohne Reste-Tage) oder nachgetragen wurde;
+    ein Nachtrag ersetzt das geplante Gericht seines Tages (Cooldown, Rückblick, Kalender).
 
 ## Architektur
 
@@ -74,9 +87,11 @@ src/tischlein/
                Einstellungen (Paprika-Login, Kalender), Tags schreiben, Bild-Cache
   tagging.py   Kategorie-Differenzen nach Paprika schreiben (CSV-Befehl und Oberfläche)
   views.py     View-Modelle für die Templates
-  templates/   eine Seite pro Bereich (Jinja, serverseitig gerendert); _macros.html: Rezeptbild, Einkaufs-Formular
+  templates/   eine Seite pro Bereich (Jinja, serverseitig gerendert); _macros.html: Rezeptbild, Einkaufs-Formular;
+               waehlen.html: Rezept wählen und Nachtrag
   static/      tischlein.css; rezepte.js, ideen.js, einkauf.js = Alpine-Komponenten (Markup im Template);
                stay.js: Formulare mit data-stay schicken ohne Neuladen ab (keine springende Seite);
+               menus.js: Dropdowns (details.free-menu) schließen sich gegenseitig, bei Klick daneben und Escape;
                sw.js = Service Worker (unter /sw.js), nur damit die Einkaufsliste offline öffnet;
                manifest.webmanifest + icons/ für den Home-Bildschirm (display: browser, wegen Cloudflare Access);
                vendor/alpine-<version>.min.js, nur über `mise run vendor:alpine` aktualisieren

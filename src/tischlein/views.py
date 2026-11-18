@@ -7,7 +7,7 @@ from datetime import date, timedelta
 
 from . import shopping
 from .config import WEEKDAY_NAMES
-from .models import Recipe, WeekPlan
+from .models import Recipe, WeekPlan, with_cooked
 from .planner import week_start_of
 from .service import Tischlein
 
@@ -113,7 +113,7 @@ def _hero(svc: Tischlein, plans: dict, today: date, recipes: dict, feedback: dic
 
 def cook_view(svc: Tischlein, day: date) -> dict:
     """The dish of `day` for cooking: ingredients scaled to the planned portions, steps, photo."""
-    plan = svc.store.plan(week_start_of(day))
+    plan = svc.eaten_plan(week_start_of(day))
     meal = next((m for m in plan.meals if m.day == day and m.recipe_uid and not m.skipped), None) if plan else None
     if meal is None:
         raise KeyError(f"Am {day:%d.%m.} ist kein Gericht geplant.")
@@ -148,7 +148,7 @@ def week_view(svc: Tischlein, which: str | None, today: date) -> dict:
     feedback = svc.store.feedback()
     recipes = {r.uid: r for r in svc.store.recipes()}
     starts = {"aktuell": svc.resolve_week("aktuell", today), "naechste": svc.resolve_week("naechste", today)}
-    plans: dict[str, WeekPlan | None] = {k: svc.store.plan(v) for k, v in starts.items()}
+    plans: dict[str, WeekPlan | None] = {k: svc.eaten_plan(v) for k, v in starts.items()}
     if which not in starts:
         which = "aktuell" if plans["aktuell"] or not plans["naechste"] else "naechste"
     shown, start = plans[which], starts[which]
@@ -158,17 +158,47 @@ def week_view(svc: Tischlein, which: str | None, today: date) -> dict:
     quick = svc.store.quickdays(start, start + timedelta(days=6))
     skip = svc.skip_map(start)
     ratings = {(r["uid"], r["day"]): r for r in svc.store.ratings()}
+    raw = svc.store.plan(start)  # as planned, without Nachträge
+    changed_themes = svc.store.themedays(start, start + timedelta(days=6))
+    plan_days = [start + timedelta(days=rule.weekday) for rule in cfg.days]
     days = []
     for rule in cfg.days:
         d = start + timedelta(days=rule.weekday)
         meal = by_day.get(d)
         r = recipes.get(meal.recipe_uid) if meal and meal.recipe_uid else None
+        planned = next((m for m in raw.meals if m.day == d), None) if raw else None
+        movable = bool(planned and not planned.leftovers and not (meal and meal.logged) and d >= today)
         days.append(
             {
                 "date": d,
                 "weekday": WEEKDAY_NAMES[d.weekday()],
                 "short": f"{d.day}.{d.month}.",
-                "theme": rule.theme,
+                "theme": changed_themes.get(d, rule.theme),
+                "theme_changed": d in changed_themes,
+                "themes": svc.theme_choices(),
+                "past": d < today,
+                "logged": bool(meal and meal.logged),
+                "leftovers": bool(meal and meal.leftovers),
+                "can_move": movable,
+                "move_to": [
+                    {"date": x, "label": WEEKDAY_NAMES[x.weekday()]}
+                    for x in plan_days
+                    if x != d and x >= today and not any(m.day == x and m.leftovers for m in raw.meals)
+                ]
+                if movable
+                else [],
+                "can_choose": bool(planned and not planned.skipped and d >= today and not (meal and meal.logged)),
+                "can_theme": bool(d >= today and not (planned and planned.leftovers) and not (meal and meal.logged)),
+                "can_leftovers": bool(
+                    planned
+                    and planned.recipe_uid
+                    and not planned.skipped
+                    and not planned.leftovers
+                    and not (meal and meal.logged)
+                    and svc.next_lunch(raw, d)
+                ),
+                "leftovers_next": bool(raw and svc.has_leftovers(raw, d)),
+                "can_log": d <= today,
                 "meal": meal,
                 "is_today": d == today,
                 "kinder_ok": is_kid_ok(svc, r, feedback),
@@ -177,13 +207,14 @@ def week_view(svc: Tischlein, which: str | None, today: date) -> dict:
                 "free": bool(meal and meal.skipped) or (meal is None and d in skip),
                 "free_reason": (meal.reason if meal and meal.skipped else skip.get(d, "")),
                 "is_holiday": skip.get(d, "").startswith("Feiertag"),
-                "can_rate": bool(meal and meal.recipe_uid and not meal.skipped and d <= today),
+                "can_rate": bool(meal and meal.recipe_uid and not meal.skipped and not meal.leftovers and d <= today),
                 "rating": ratings.get((meal.recipe_uid, d)) if meal and meal.recipe_uid else None,
                 "has_photo": bool(meal and meal.recipe_uid and meal.recipe_uid in svc_photos(svc)),
                 "portions": portions.get(d),
                 "quick": d in quick,
             }
         )
+    extras = [m for m in shown.meals if m.day not in plan_days] if shown else []
     planned = sum(1 for x in days if x["meal"] and x["meal"].recipe_uid)
     kid_in_plan = sum(1 for x in days if x["meal"] and x["kinder_ok"])
 
@@ -213,6 +244,7 @@ def week_view(svc: Tischlein, which: str | None, today: date) -> dict:
         "start": start,
         "plan": shown,
         "days": days,
+        "extras": [{"day": WEEKDAY_NAMES[m.day.weekday()], "date": m.day, "name": m.name} for m in extras],
         "range": span(start, start + timedelta(days=4)),
         "hero": hero,
         "today_line": long_date(today),
@@ -328,7 +360,7 @@ def shopping_view(svc: Tischlein, week_start: date, which: str) -> dict:
                 "photo": m.recipe_uid in photos,
             }
             for m in sorted(plan.meals, key=lambda m: m.day)
-            if m.recipe_uid and not m.skipped
+            if m.recipe_uid and not m.skipped and not m.leftovers
         ]
         if plan
         else []
@@ -348,6 +380,34 @@ def shopping_view(svc: Tischlein, week_start: date, which: str) -> dict:
         "dishes": dishes,
         "has_plan": bool(dishes),
         "llm": svc.llm() is not None,
+        "updating": svc.shopping_updating(week_start),
+    }
+
+
+def choose_view(svc: Tischlein, day: date, mode: str, query: str, today: date) -> dict:
+    """Rezept wählen (mode "waehlen") or Nachtrag (mode "nachtrag") for one day."""
+    week = svc.resolve_week(day.isoformat())
+    which = (
+        "aktuell"
+        if week == svc.resolve_week("aktuell", today)
+        else ("naechste" if week == svc.resolve_week("naechste", today) else day.isoformat())
+    )
+    plan = svc.eaten_plan(week)
+    meal = next((m for m in plan.meals if m.day == day), None) if plan else None
+    choices = svc.recipe_choices(day, query, hints=mode == "waehlen")
+    return {
+        "mode": mode,
+        "day": day,
+        "today": today,
+        "date": long_date(day),
+        "theme": svc.theme_of(day),
+        "meal": meal,
+        "query": query,
+        "choices": choices[:60],
+        "more": max(0, len(choices) - 60),
+        "photos": svc_photos(svc),
+        "which": which,
+        "back": f"/?woche={which}#tag-{day.isoformat()}" if which in ("aktuell", "naechste") else "/rueckblick",
     }
 
 
@@ -366,14 +426,26 @@ def review_view(svc: Tischlein, today: date, weeks: int) -> dict:
     since = today - timedelta(weeks=weeks)
     recipes = {r.uid: r for r in svc.store.recipes()}
     feedback = svc.store.feedback()
-    plans = [p for p in svc.store.approved_plans() if since <= p.week_start <= today]
-    meals = [m for p in plans for m in p.meals if m.recipe_uid and not m.skipped and m.day <= today]
+    plans = [svc.eaten(p) for p in svc.store.approved_plans() if since <= p.week_start <= today]
+    approved = {p.week_start for p in plans}
+    for d in svc.store.cooked(since, today):  # Nachträge in weeks without an approved plan
+        ws = week_start_of(d)
+        if ws not in approved:
+            approved.add(ws)
+            plans.append(WeekPlan(ws, "freigegeben", with_cooked([], svc.store.cooked(ws, ws + timedelta(days=6)))))
+    meals = [
+        m
+        for p in plans
+        for m in p.meals
+        if (m.recipe_uid or m.logged) and not m.skipped and not m.leftovers and m.day <= today
+    ]
     ratings = [r for r in svc.store.ratings() if r["day"] >= since]
     verdict_of = {(r["uid"], r["day"]): r["verdict"] for r in ratings}
 
     themes: dict[str, int] = {}
     for m in meals:
-        themes[m.theme] = themes.get(m.theme, 0) + 1
+        if m.theme:
+            themes[m.theme] = themes.get(m.theme, 0) + 1
     top = max(themes.values(), default=0)
 
     counts = {"gut": 0, "mittel": 0, "schlecht": 0}
@@ -405,6 +477,8 @@ def review_view(svc: Tischlein, today: date, weeks: int) -> dict:
                         "skipped": m.skipped,
                         "reason": m.reason,
                         "is_new": m.is_new,
+                        "leftovers": m.leftovers,
+                        "logged": m.logged,
                         "verdict": verdict_of.get((m.recipe_uid, m.day)),
                     }
                     for m in p.meals
@@ -415,7 +489,7 @@ def review_view(svc: Tischlein, today: date, weeks: int) -> dict:
         "weeks": weeks,
         "photos": svc_photos(svc),
         "cooked": len(meals),
-        "distinct": len({m.recipe_uid for m in meals}),
+        "distinct": len({m.recipe_uid or m.name.casefold() for m in meals}),
         "kid_share": round(
             100 * sum(1 for m in meals if is_kid_ok(svc, recipes.get(m.recipe_uid), feedback)) / len(meals)
         )

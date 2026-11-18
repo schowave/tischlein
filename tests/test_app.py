@@ -243,3 +243,32 @@ def test_new_pages_render_and_actions_work(client):
     assert client.post("/api/ideen/start").status_code == 400
     assert client.get("/api/ideen/status").json()["laeuft"] is False
     assert client.get("/api/morgen").json()["datum"]
+
+
+def test_week_menu_moves_picks_changes_theme_and_logs_cooked(client):
+    plan = client.post("/api/plaene/naechste/erzeugen").json()["mahlzeiten"]
+    mon, tue = plan[0]["datum"], plan[1]["datum"]
+    page = client.get("/?woche=naechste").text
+    assert "Verschieben auf" in page and "Rezept wählen" in page and "Reste morgen" in page
+
+    r = client.post(f"/tage/{mon}/verschieben", data={"nach": tue, "woche": "naechste"}, follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == f"/?woche=naechste#tag-{tue}"
+    moved = client.get("/api/plan", params={"woche": "naechste"}).json()["mahlzeiten"]
+    assert moved[1]["gericht"] == plan[0]["gericht"] and moved[1]["thema"] == plan[1]["thema"]
+
+    assert "Fischstäbchen" in client.get(f"/tage/{mon}/rezept").text
+    client.post(f"/tage/{mon}/rezept", data={"rezept_uid": "B2", "woche": "naechste"})
+    assert client.get("/api/plan", params={"woche": "naechste"}).json()["mahlzeiten"][0]["gericht"] == "Fischstäbchen"
+
+    client.post(f"/tage/{tue}/thema", data={"thema": "Fisch", "woche": "naechste"})
+    assert client.get("/api/plan", params={"woche": "naechste"}).json()["mahlzeiten"][1]["thema"] == "Fisch"
+    assert client.post(f"/tage/{tue}/thema", data={"thema": "Kuchen"}).status_code == 400
+
+    today = date.today().isoformat()
+    assert "Was gab es?" in client.get("/nachtrag").text
+    r = client.post("/nachtrag", data={"tag": today, "name": "Pizza", "zurueck": "/rueckblick"}, follow_redirects=False)
+    assert r.headers["location"] == "/rueckblick"
+    assert "Pizza" in client.get("/rueckblick").text
+    assert client.post("/nachtrag", data={"tag": "2999-01-01", "name": "Später"}).status_code == 400
+    r = client.post("/nachtrag", data={"tag": today, "name": "x", "zurueck": "//evil.example"}, follow_redirects=False)
+    assert r.headers["location"] == "/"

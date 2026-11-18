@@ -4,8 +4,8 @@ from datetime import date, timedelta
 import pytest
 
 from tischlein.config import DayRule, PlanConfig
-from tischlein.models import Recipe
-from tischlein.planner import plan_week, week_start_of
+from tischlein.models import Meal, Recipe
+from tischlein.planner import ANY_THEME, plan_week, week_start_of
 
 MONDAY = date(2026, 11, 16)
 
@@ -197,3 +197,40 @@ def test_quick_new_slot_day_takes_only_a_quick_new_dish():
     regular = Recipe(uid="q", name="Wraps", tags=("Fleisch", "Kinder-OK"), total_time="20 Min.")
     meal = plan_week(MONDAY, [slow_new, regular], cfg("Fleisch", new_slot=0), rng=random.Random(0), quick={MONDAY})[0]
     assert meal.recipe_uid == "q" and not meal.is_new
+
+
+def test_themenwechsel_replaces_the_weekly_theme_of_one_day():
+    recipes = [r("h", "Hähnchen", "Kinder-OK"), r("f", "Fisch", "Kinder-OK")]
+    meals = plan_week(MONDAY, recipes, cfg("Hähnchen", "Hähnchen"), themes={MONDAY: "Fisch"}, rng=random.Random(0))
+    assert (meals[0].recipe_uid, meals[0].theme) == ("f", "Fisch")
+    assert meals[1].recipe_uid == "h"
+
+
+def test_any_theme_takes_any_kid_ok_lunch_dish():
+    recipes = [r("f", "Fisch", "Kinder-OK"), r("cake", "Kuchen", "Kinder-OK")]
+    for seed in range(10):
+        week = cfg("Hähnchen", "Fisch")
+        meal = plan_week(MONDAY, recipes, week, themes={MONDAY: ANY_THEME}, rng=random.Random(seed))[0]
+        assert meal.recipe_uid == "f"
+
+
+def test_new_slot_uses_the_changed_theme():
+    recipes = [r("nf", "Fisch", "Neu"), r("nh", "Hähnchen", "Neu"), r("h", "Hähnchen", "Kinder-OK")]
+    week = cfg("Hähnchen", "Fisch", new_slot=0)
+    for seed in range(10):
+        meal = plan_week(MONDAY, recipes, week, themes={MONDAY: "Fisch"}, rng=random.Random(seed))[0]
+        assert meal.recipe_uid == "nf" and meal.is_new
+
+
+def test_a_new_dish_picked_by_hand_fills_the_new_slot():
+    recipes = [r("n1", "Fisch", "Neu"), r("n2", "Hähnchen", "Neu"), r("h", "Hähnchen", "Kinder-OK")]
+    picked = Meal(MONDAY + timedelta(days=1), "n1", "Rezept n1", "Fisch", is_new=True, chosen=True)
+    meals = plan_week(MONDAY, recipes, cfg("Hähnchen", "Fisch", new_slot=0), keep={picked.day: picked})
+    assert meals[0].recipe_uid == "h" and not meals[0].is_new
+
+
+def test_two_days_with_one_theme_fall_back_when_the_kid_ok_dish_is_taken():
+    recipes = [r("ok", "Fisch", "Kinder-OK"), r("adult", "Fisch")]
+    meals = plan_week(MONDAY, recipes, cfg("Fisch", "Fisch"), rng=random.Random(0))
+    assert [m.recipe_uid for m in meals] == ["ok", "adult"]
+    assert "Kinder-OK" in meals[1].reason

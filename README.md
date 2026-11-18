@@ -48,6 +48,9 @@ Das Prinzip ist „Sous-Chef“: Tischlein schlägt vor, die Familie gibt frei.
   ihr: „Gut“ nimmt es in die Rotation, „Nie wieder“ wirft es raus.
 - **Freigabe:** Tage tauschen, die Woche neu würfeln, freigeben. Nur freigegebene Wochen landen
   im Kalender. Feiertage (bundesweit und pro Bundesland), Urlaub oder Kita markieren Tage als frei.
+- **Woche umstellen:** unter „Mehr“ pro Tag ein Gericht auf einen anderen Tag verschieben (auch
+  nach der Freigabe), ein bestimmtes Rezept wählen (bleibt beim Neu-Würfeln stehen), das Thema
+  für diese Woche wechseln oder „Reste morgen“: Der nächste Tag isst mit, ohne Kochen und Einkauf.
 - **Portionen pro Gericht:** Standard ist eure Familiengröße; mit − und + pro Tag änderbar.
   Rezepte werden umgerechnet („Rezept für 2, Mengen für 4“).
 - **Was die Kinder nicht mögen** (z. B. „Pilze, Oliven“) steht in den Einstellungen; solche
@@ -63,6 +66,7 @@ Das Prinzip ist „Sous-Chef“: Tischlein schlägt vor, die Familie gibt frei.
   addiert und auf die Portionen umgerechnet, sortiert nach Gang im Laden, darunter für welche
   Gerichte. Vorräte wie Salz und Öl bleiben weg. Mit LLM noch genauer, ohne LLM per Regeln.
   Was man schon hat, löscht man; „Neu sammeln“ holt es nur zurück, wenn ein anderes Gericht es braucht.
+  Bei der Freigabe wird die Liste zum ersten Mal gesammelt, danach folgt sie jeder Änderung am Plan.
 - **Gemeinsam abhaken, auch ohne Netz:** Was die andere Person abhakt, erscheint nach wenigen
   Sekunden; im Laden ohne Empfang wird nachgeholt. Eigene Einträge dazuschreiben, alles abhaken,
   Abgehaktes entfernen, „Teilen“ als Text.
@@ -75,6 +79,8 @@ Das Prinzip ist „Sous-Chef“: Tischlein schlägt vor, die Familie gibt frei.
 - **Ideen:** neue Gerichte vom LLM, passend zu dem, was ihr mögt, mit Fortschrittsanzeige; per
   Klick als „Neu“ und „KI“ nach Paprika.
 - **Rückblick:** was gekocht wurde, Themen, Bewertungen, Lieblinge, die lange nicht dran waren.
+  Was ihr anders oder ohne Plan gekocht habt, tragt ihr nach („Stattdessen gekocht …“), auch
+  ohne Rezept; es zählt für Rückblick und Rotation.
 - **Reste verwerten:** Die Rezeptsuche findet auch Zutaten, „Zucchini Feta“ zeigt alles mit beidem.
 - **Rezeptverwaltung** mit Foto, Zutaten und Kinder-OK-Schalter; Kategorien und Papierkorb werden
   sofort nach Paprika zurückgeschrieben.

@@ -5,7 +5,7 @@
 <section class="title">
   <div>
     <h1>Rückblick</h1>
-    <p>Die letzten {{ v.weeks }} Wochen, nur freigegebene Pläne bis heute.</p>
+    <p>Die letzten {{ v.weeks }} Wochen: freigegebene Pläne bis heute und alles Nachgetragene. <a href="/nachtrag">Gekochtes nachtragen</a></p>
   </div>
   <nav class="seg" aria-label="Zeitraum">
     {% for n in [4, 8, 12] %}<a href="/rueckblick?wochen={{ n }}" {% if v.weeks == n %}aria-current="true"{% endif %}>{{ n }} Wochen</a>{% endfor %}
@@ -56,7 +56,7 @@
         <h3>{{ w.range }}</h3>
         <ul>
           {% for m in w.meals %}
-          <li class="{% if m.skipped %}muted{% endif %}"><span class="rw-day">{{ m.day }}</span> {% if m.skipped %}{{ m.reason or 'frei' }}{% else %}{{ m.name }}{% if m.is_new %} <span class="pill pill-new">Neu</span>{% endif %}{% if m.verdict %} <span class="rw-verdict">{{ {'gut': 'gut', 'mittel': 'ging so', 'schlecht': 'kam nicht an'}[m.verdict] }}</span>{% endif %}{% endif %}</li>
+          <li class="{% if m.skipped %}muted{% endif %}"><span class="rw-day">{{ m.day }}</span> {% if m.skipped %}{{ m.reason or 'frei' }}{% else %}{{ m.name }}{% if m.logged %} <span class="rw-verdict">nachgetragen</span>{% endif %}{% if m.is_new %} <span class="pill pill-new">Neu</span>{% endif %}{% if m.verdict %} <span class="rw-verdict">{{ {'gut': 'gut', 'mittel': 'ging so', 'schlecht': 'kam nicht an'}[m.verdict] }}</span>{% endif %}{% endif %}</li>
           {% endfor %}
         </ul>
       </div>

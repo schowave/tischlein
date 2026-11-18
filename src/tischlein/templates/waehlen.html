@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% from "_macros.html" import thumb %}
+{% block title %}{{ 'Nachtragen' if v.mode == 'nachtrag' else 'Rezept wählen' }} · Tischlein{% endblock %}
+{% block content %}
+{% set nachtrag = v.mode == 'nachtrag' %}
+<a class="btn btn-ghost btn-sm cook-back" href="{{ v.back }}">← {{ 'Zurück' if v.back == '/rueckblick' else 'Woche' }}</a>
+<section class="title">
+  <div>
+    <h1>{{ 'Was gab es?' if nachtrag else 'Rezept wählen' }}</h1>
+    <p>
+      {{ v.date }}{% if v.theme and not nachtrag %} · Thema {{ v.theme }}{% endif %}
+      {% if v.meal and v.meal.recipe_uid and not v.meal.skipped %} · {{ 'geplant war' if nachtrag and not v.meal.logged else 'gerade' }} {{ v.meal.name }}{% endif %}
+    </p>
+  </div>
+</section>
+
+<section class="panel">
+  {% if nachtrag %}
+  <form class="choose-free" method="get" action="/nachtrag">
+    <label class="sr-only" for="cooked-day">Tag</label>
+    <input class="field" type="date" id="cooked-day" name="tag" value="{{ v.day.isoformat() }}" max="{{ v.today.isoformat() }}" onchange="this.form.submit()">
+    <noscript><button class="btn btn-ghost">Tag wählen</button></noscript>
+  </form>
+  <form class="choose-free" method="post" action="/nachtrag">
+    <input type="hidden" name="tag" value="{{ v.day.isoformat() }}">
+    <input type="hidden" name="zurueck" value="{{ v.back }}">
+    <label class="sr-only" for="free-name">Gericht ohne Rezept</label>
+    <input class="field" id="free-name" name="name" placeholder="Ohne Rezept, z. B. Pizza" autocomplete="off" required maxlength="120">
+    <button class="btn">Eintragen</button>
+  </form>
+  {% else %}
+  <p class="panel-note">Zuerst Gerichte zum Thema. Was Tischlein selbst nicht nehmen würde, steht unten mit dem Grund; wählen könnt ihr es trotzdem.</p>
+  {% endif %}
+
+  <form class="search" method="get" role="search" style="margin-bottom: 14px">
+    {% if nachtrag %}<input type="hidden" name="tag" value="{{ v.day.isoformat() }}">{% endif %}
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14"/></svg>
+    <input class="field" type="search" name="q" value="{{ v.query }}" placeholder="Rezept suchen" aria-label="Rezept suchen" autocomplete="off">
+  </form>
+
+  {% if v.choices %}
+  <ul class="choose-list">
+    {% for c in v.choices %}
+    <li>
+      <form method="post" action="{{ '/nachtrag' if nachtrag else '/tage/' ~ v.day.isoformat() ~ '/rezept' }}">
+        {% if nachtrag %}<input type="hidden" name="tag" value="{{ v.day.isoformat() }}"><input type="hidden" name="zurueck" value="{{ v.back }}">{% else %}<input type="hidden" name="woche" value="{{ v.which }}">{% endif %}
+        <input type="hidden" name="rezept_uid" value="{{ c.uid }}">
+        <button class="choose-item{% if c.hints %} is-flagged{% endif %}">
+          {{ thumb(c.uid, c.name, c.uid in v.photos, 40) }}
+          <span>
+            <strong>{{ c.name }}</strong>
+            <small>{% if c.themed and not nachtrag %}passt zum Thema{% endif %}{% if c.new %}{% if c.themed and not nachtrag %} · {% endif %}neu{% endif %}{% if c.hints %}{% if (c.themed and not nachtrag) or c.new %} · {% endif %}{{ c.hints | join(' · ') }}{% endif %}</small>
+          </span>
+        </button>
+      </form>
+    </li>
+    {% endfor %}
+  </ul>
+  {% if v.more %}<p class="list-foot">und {{ v.more }} weitere, die Suche grenzt ein</p>{% endif %}
+  {% else %}
+  <div class="empty-frame">Kein Rezept gefunden{% if v.query %} für „{{ v.query }}“{% endif %}.</div>
+  {% endif %}
+</section>
+{% endblock %}

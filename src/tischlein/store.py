@@ -15,7 +15,7 @@ from alembic.config import Config as AlembicConfig
 from sqlalchemy import create_engine
 from sqlalchemy.pool import StaticPool
 
-from .models import Meal, Recipe, Verdict, WeekPlan
+from .models import Cooked, Meal, Recipe, Verdict, WeekPlan
 
 
 def _locked(method):
@@ -146,11 +146,23 @@ class Store:
             )
             self.db.execute("DELETE FROM meals WHERE week_start = ?", (ws,))
             self.db.executemany(
-                "INSERT INTO meals (week_start, day, recipe_uid, name, theme, is_new, reason, skipped) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO meals (week_start, day, recipe_uid, name, theme, is_new, reason, skipped, chosen, "
+                "leftovers) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 [
-                    (ws, m.day.isoformat(), m.recipe_uid, m.name, m.theme, int(m.is_new), m.reason, int(m.skipped))
+                    (
+                        ws,
+                        m.day.isoformat(),
+                        m.recipe_uid,
+                        m.name,
+                        m.theme,
+                        int(m.is_new),
+                        m.reason,
+                        int(m.skipped),
+                        int(m.chosen),
+                        int(m.leftovers),
+                    )
                     for m in plan.meals
+                    if not m.logged  # a Nachtrag lives in `cooked`, never in the plan
                 ],
             )
             # portions belong to the dish on that day: a swapped or re-rolled day starts again
@@ -177,10 +189,15 @@ class Store:
 
     @_locked
     def last_cooked(self, before: date) -> dict[str, date]:
-        """Most recent day each recipe appeared in an approved plan before `before`."""
+        """Most recent day each recipe was cooked before `before`: in an approved plan (not as leftovers,
+        not on a day with a Nachtrag, which replaces it) or as a Nachtrag."""
         rows = self.db.execute(
-            "SELECT m.recipe_uid, MAX(m.day) FROM meals m JOIN plans p USING (week_start) "
-            "WHERE p.status = 'freigegeben' AND m.recipe_uid IS NOT NULL AND m.day < ? GROUP BY m.recipe_uid",
+            "SELECT recipe_uid, MAX(day) FROM ("
+            " SELECT m.recipe_uid, m.day FROM meals m JOIN plans p USING (week_start)"
+            " WHERE p.status = 'freigegeben' AND m.recipe_uid IS NOT NULL AND m.leftovers = 0"
+            " AND NOT EXISTS (SELECT 1 FROM cooked c WHERE c.day = m.day)"
+            " UNION ALL SELECT recipe_uid, day FROM cooked WHERE recipe_uid IS NOT NULL"
+            ") WHERE day < ? GROUP BY recipe_uid",
             (before.isoformat(),),
         ).fetchall()
         return {uid: date.fromisoformat(day) for uid, day in rows}
@@ -195,6 +212,8 @@ class Store:
             bool(m["is_new"]),
             m["reason"],
             bool(m["skipped"]),
+            chosen=bool(m["chosen"]),
+            leftovers=bool(m["leftovers"]),
         )
 
     def _migrate(self) -> None:
@@ -249,6 +268,53 @@ class Store:
             "SELECT day FROM quickdays WHERE day BETWEEN ? AND ?", (start.isoformat(), end.isoformat())
         ).fetchall()
         return {date.fromisoformat(d) for (d,) in rows}
+
+    # Theme per day -------------------------------------------------------------
+
+    @_locked
+    def set_themeday(self, day: date, theme: str | None) -> None:
+        """None goes back to the weekly schedule."""
+        with self.db:
+            if theme is None:
+                self.db.execute("DELETE FROM themedays WHERE day = ?", (day.isoformat(),))
+            else:
+                self.db.execute(
+                    "INSERT INTO themedays VALUES (?, ?) ON CONFLICT(day) DO UPDATE SET theme = excluded.theme",
+                    (day.isoformat(), theme),
+                )
+
+    @_locked
+    def themedays(self, start: date, end: date) -> dict[date, str]:
+        rows = self.db.execute(
+            "SELECT day, theme FROM themedays WHERE day BETWEEN ? AND ?", (start.isoformat(), end.isoformat())
+        ).fetchall()
+        return {date.fromisoformat(d): t for d, t in rows}
+
+    # Nachträge -----------------------------------------------------------------
+
+    @_locked
+    def set_cooked(self, day: date, recipe_uid: str | None, name: str, person: str = "") -> None:
+        now = datetime.now().isoformat(timespec="seconds")
+        with self.db:
+            self.db.execute(
+                "INSERT INTO cooked VALUES (?, ?, ?, ?, ?) ON CONFLICT(day) DO UPDATE SET "
+                "recipe_uid = excluded.recipe_uid, name = excluded.name, person = excluded.person, "
+                "created_at = excluded.created_at",
+                (day.isoformat(), recipe_uid, name, person, now),
+            )
+
+    @_locked
+    def remove_cooked(self, day: date) -> None:
+        with self.db:
+            self.db.execute("DELETE FROM cooked WHERE day = ?", (day.isoformat(),))
+
+    @_locked
+    def cooked(self, start: date = date.min, end: date = date.max) -> dict[date, Cooked]:
+        rows = self.db.execute(
+            "SELECT day, recipe_uid, name FROM cooked WHERE day BETWEEN ? AND ? ORDER BY day",
+            (start.isoformat(), end.isoformat()),
+        ).fetchall()
+        return {date.fromisoformat(d): Cooked(date.fromisoformat(d), u, n) for d, u, n in rows}
 
     # Portions ----------------------------------------------------------------
 

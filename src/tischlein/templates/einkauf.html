@@ -16,6 +16,7 @@
 </section>
 
 {% if hinweis %}<p class="notice" role="status">{{ hinweis }}</p>{% endif %}
+{% if v.updating %}<p class="notice" role="status">Der Plan hat sich geändert, die Liste wird gerade neu gesammelt …</p><script>setTimeout(() => navigator.onLine && location.reload(), 5000);</script>{% endif %}
 
 <div class="grid top" x-data="shopping('{{ v.which }}')">
   <section class="panel s8" aria-labelledby="list-h">
@@ -52,14 +53,18 @@
         <li class="shop-item" data-id="{{ i.id }}" x-data="{ done: {{ 'true' if i.done else 'false' }}, by: {{ i.done_by | tojson | forceescape }} }" x-show="!(hideDone && done)" :class="{ 'is-done': done }">
           <label>
             <input type="checkbox" :checked="done" @change="done = $event.target.checked; toggle({{ i.id }}, done).then(v => by = v)">
-            <span class="shop-name">{{ i.name }}</span>
-            {% if i.amount %}<span class="shop-amount num">{{ i.amount }}</span>{% endif %}
+            <span class="shop-text">
+              <span class="shop-name">{{ i.name }}</span>
+              {% if i.amount %}<span class="shop-amount num">{{ i.amount }}</span>{% endif %}
+            </span>
           </label>
           <span class="shop-meta">
             <span x-show="done && by" x-text="'abgehakt von ' + by"></span>
             {% if i.recipes and not i.manual %}<span x-show="!done">für {{ i.recipes }}</span>{% endif %}
           </span>
-          <button type="button" class="btn btn-ghost btn-sm" @click="remove({{ i.id }}, $el.closest('li'))" aria-label="{{ i.name }} löschen">Löschen</button>
+          <button type="button" class="btn btn-ghost btn-icon" @click="remove({{ i.id }}, $el.closest('li'))" aria-label="{{ i.name }} löschen" title="Löschen">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 4h11M6.5 4V2.5h3V4M4 4l.7 9.5h6.6L12 4M6.75 6.5v4.5M9.25 6.5v4.5"/></svg>
+          </button>
         </li>
         {% endfor %}
       </ul>

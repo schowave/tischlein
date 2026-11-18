@@ -15,6 +15,7 @@ QUICK_MINUTES = 30
 QUICK_TAG = "Schnell"
 AVOID_REASON = "Enthält etwas, das die Kinder nicht mögen; nichts anderes zum Thema übrig"
 QUICK_REASON = "Kein schnelles Rezept zum Thema"
+ANY_THEME = "Beliebig"  # Themenwechsel to "any lunch dish"
 
 
 def _hours(part: str) -> float:
@@ -77,6 +78,8 @@ class _View:
         return r.has_tag(self.config.main_tag) or any(r.has_tag(t) for t in self.config.themes)
 
     def with_theme(self, theme: str) -> list[Recipe]:
+        if theme == ANY_THEME:
+            return [r for r in self.recipes if self.is_lunch(r)]
         return [r for r in self.recipes if r.has_tag(theme)]
 
 
@@ -112,11 +115,12 @@ def plan_day(
     weights: Mapping[str, float] | None = None,
     avoid: set[str] = frozenset(),
     quick: bool = False,
+    new_slot: bool = True,
 ) -> Meal:
     cfg = view.config
     themed = view.with_theme(rule.theme)
 
-    if cfg.new_slot == rule.weekday:
+    if new_slot and cfg.new_slot == rule.weekday:
         new = [r for r in view.recipes if view.is_new(r) and view.is_lunch(r)]
         new = [r for r in new if r.uid not in avoid]
         if quick:  # a quick day keeps the new slot only for a quick new dish
@@ -127,15 +131,15 @@ def plan_day(
             if recipe:
                 return Meal(day, recipe.uid, recipe.name, rule.theme, is_new=True, reason=SAFE_HINT)
 
-    regular = [r for r in themed if not view.is_new(r)]
+    # dishes already planned this week are out first: a taken dish must not count as the alternative
+    regular = [r for r in themed if not view.is_new(r) and r.uid not in taken]
     kid_ok = [r for r in regular if view.kid_ok(r)]
     reason = ""
     pool = kid_ok
     if not kid_ok:
         pool = regular
         reason = f"Kein {cfg.kid_tag}-Rezept zum Thema {rule.theme}"
-    # drop dishes already planned this week first: a taken dish must not count as the alternative
-    pool, avoid_reason = _prefer([r for r in pool if r.uid not in taken], lambda r: r.uid not in avoid, AVOID_REASON)
+    pool, avoid_reason = _prefer(pool, lambda r: r.uid not in avoid, AVOID_REASON)
     quick_reason = ""
     if quick:
         pool, quick_reason = _prefer(pool, is_quick, QUICK_REASON)
@@ -165,6 +169,7 @@ def plan_week(
     weights: Mapping[str, float] | None = None,
     avoid: Iterable[str] = (),
     quick: Iterable[date] = (),
+    themes: Mapping[date, str] | None = None,
 ) -> list[Meal]:
     """Plan lunches for the week starting on week_start (a Monday).
 
@@ -173,7 +178,9 @@ def plan_week(
     Days in `skip` (date -> reason) get no lunch. `weights` multiplies a recipe's chance
     (from the family's ratings; 1.0 = neutral). Recipes in `avoid` (an ingredient the children
     don't like) are only picked when nothing else fits; on `quick` days dishes up to 30 minutes
-    (or tagged "Schnell") come first.
+    (or tagged "Schnell") come first. `themes` (date -> theme) replaces the weekly theme of a day
+    (Themenwechsel; ANY_THEME = any lunch dish). A new dish already kept (picked by hand) fills the
+    week's new slot: the slot day then gets a regular dish.
     """
     if week_start.weekday() != 0:
         raise ValueError("week_start muss ein Montag sein")
@@ -184,14 +191,17 @@ def plan_week(
     avoid, quick = set(avoid), set(quick)
 
     taken = {m.recipe_uid for m in keep.values() if m.recipe_uid} | set(exclude)
+    new_open = not any(m.is_new for m in keep.values())
     meals: list[Meal] = []
     for rule in config.days:
         day = week_start + timedelta(days=rule.weekday)
+        if themes and day in themes:
+            rule = DayRule(rule.weekday, themes[day])
         if skip and day in skip:
             meal = Meal(day, None, "Kein Mittagessen", rule.theme, reason=skip[day], skipped=True)
         else:
             meal = keep.get(day) or plan_day(
-                day, rule, view, taken, last_cooked, rng, weights, avoid=avoid, quick=day in quick
+                day, rule, view, taken, last_cooked, rng, weights, avoid=avoid, quick=day in quick, new_slot=new_open
             )
         if meal.recipe_uid:
             taken.add(meal.recipe_uid)

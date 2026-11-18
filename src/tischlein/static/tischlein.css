@@ -206,7 +206,7 @@ form.inline { display: inline; margin: 0; }
 /* ---------- the week ---------- */
 .days { display: grid; gap: 8px; }
 .day {
-  display: grid; grid-template-columns: 112px minmax(0, 1fr) auto auto; align-items: center; gap: 14px;
+  display: grid; grid-template-columns: 112px minmax(0, 1fr) auto; align-items: center; gap: 8px 14px;
   min-height: 63px; padding: 10px 12px 10px 16px; background: var(--raised); border: 1px solid var(--border);
   border-radius: var(--radius-row);
 }
@@ -226,7 +226,8 @@ form.inline { display: inline; margin: 0; }
 .day-status .not:hover { color: var(--accent); text-decoration: underline; }
 .dish-link { text-decoration: underline; text-decoration-color: transparent; text-underline-offset: 3px; text-decoration-thickness: 1px; transition: text-decoration-color var(--t); }
 .dish-link:hover, .dish-link:focus-visible { text-decoration-color: currentColor; }
-.day-act { min-width: 84px; display: flex; justify-content: flex-end; align-items: center; gap: 4px; }
+/* actions get their own row under the dish: however many there are, the dish keeps its width */
+.day-act { grid-column: 2 / -1; display: flex; flex-wrap: wrap; justify-content: flex-start; align-items: center; gap: 2px 4px; min-width: 0; }
 .portions { display: inline-flex; align-items: center; gap: 2px; margin-right: 6px; height: 32px; padding: 0 2px; border-radius: 999px; background: var(--surface); }
 .portions form { margin: 0; display: inline; }
 .portions .step { width: 28px; height: 28px; border: 0; border-radius: 50%; background: transparent; cursor: pointer; font-size: 16px; line-height: 1; color: var(--text); transition: background var(--t); }
@@ -250,6 +251,28 @@ form.inline { display: inline; margin: 0; }
 }
 .free-options form { margin: 0; }
 .free-options .chip { width: 100%; justify-content: flex-start; }
+.day-options { min-width: 240px; max-width: 320px; text-decoration: none; }
+.day-options a.chip { text-decoration: none; color: inherit; }
+.day-options .chips form { display: inline; }
+.day-options .chips .chip { width: auto; }
+.day-options .menu-h { font-size: 12px; color: var(--muted); margin-top: 4px; }
+.theme-note { color: var(--accent-ink); }
+.extras { margin: 10px 0 0; color: var(--muted); font-size: 13px; }
+.choose-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.choose-list form { margin: 0; }
+.choose-item {
+  width: 100%; display: flex; align-items: center; gap: 12px; padding: 8px 12px; min-height: 52px; text-align: left;
+  background: var(--raised); border: 1px solid var(--border); border-radius: var(--radius-row); cursor: pointer;
+  font: inherit; color: inherit; transition: border-color var(--t);
+}
+.choose-item:hover { border-color: var(--text); }
+.choose-item .thumb { width: 40px; height: 40px; flex: none; }
+.choose-item strong { display: block; font-weight: 500; }
+.choose-item small { display: block; color: var(--muted); font-size: 12px; line-height: 16px; }
+.choose-item.is-flagged strong { color: var(--muted); }
+.choose-free { display: flex; gap: 8px; margin-bottom: 18px; }
+.choose-free .field { flex: 1; height: 44px; }
+.choose-free .btn { height: 44px; }
 .btn.is-chosen { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-ink); }
 .week-empty { border: 1px dashed var(--control); border-radius: var(--radius-row); padding: 18px; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; background: var(--raised); }
 
@@ -499,9 +522,12 @@ details[open] summary { color: var(--text); }
   .day-when strong { display: inline; }
   .day-dish { grid-column: 1 / 2; }
   .day-status { grid-column: 2; grid-row: 2; min-width: 0; }
-  .day-act { grid-column: 1 / -1; justify-content: flex-start; min-width: 0; }
+  .day-act { grid-column: 1 / -1; justify-content: flex-start; min-width: 0; flex-wrap: wrap; row-gap: 2px; }
   .day-act .btn { margin-left: -12px; }
   .free-options { left: -12px; right: auto; max-width: calc(100vw - 48px); }
+  .day-act { position: relative; }
+  .day-menu { position: static; }
+  .day-options { left: 0; right: 0; max-width: none; }
   .day-feedback { grid-column: 1 / -1; }
   .chips.scroll { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; }
   .search { max-width: none; flex-basis: 100%; }
@@ -535,12 +561,15 @@ details[open] summary { color: var(--text); }
 }
 .shop-item label { display: flex; align-items: center; gap: 12px; cursor: pointer; min-width: 0; }
 .shop-item input[type="checkbox"] { width: 22px; height: 22px; accent-color: var(--accent); flex: none; }
-.shop-name { font-weight: 500; overflow-wrap: anywhere; }
-.shop-amount { color: var(--muted); white-space: nowrap; }
+.shop-text { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 10px; min-width: 0; }
+.shop-name { font-weight: 500; overflow-wrap: break-word; min-width: 0; }
+.shop-amount { color: var(--muted); }
 .shop-meta { grid-column: 1 / -1; padding-left: 34px; color: var(--muted); font-size: 13px; line-height: 18px; }
 .shop-meta:empty { display: none; }
 .shop-item.is-done .shop-name { text-decoration: line-through; color: var(--muted); }
 .shop-item .btn { grid-row: 1; grid-column: 2; }
+.btn-icon { width: 44px; height: 44px; padding: 0; display: inline-grid; place-items: center; margin: -6px -8px -6px 0; }
+.btn-icon svg { width: 18px; height: 18px; }
 .add-row { display: flex; gap: 8px; margin-bottom: 18px; }
 .add-row .field { height: 44px; }
 .add-row .add-amount { flex: 0 0 120px; }

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import random
 import re
@@ -12,6 +13,7 @@ import time
 import urllib.request
 import uuid
 from collections.abc import Callable
+from contextlib import contextmanager
 from dataclasses import replace
 from datetime import date, datetime, timedelta
 from datetime import time as dtime
@@ -21,15 +23,16 @@ from . import ics, ideas, shopping
 from .config import WEEKDAY_NAMES, PlanConfig
 from .holidays import holidays_between
 from .llm import LLMClient, LLMError
-from .models import Recipe, Verdict, WeekPlan
+from .models import Meal, Recipe, Verdict, WeekPlan, with_cooked
 from .paprika import recipe_from_json
 from .paprika_sync import CachedRecipe, PaprikaClient, PaprikaError
-from .planner import is_quick, plan_week, week_start_of
+from .planner import ANY_THEME, is_quick, plan_week, week_start_of
 from .prep import prep_hints
 from .store import Store
 from .tagging import Change, apply_changes
 
 OVERRIDE = "-"  # skipdays marker: cook on this holiday after all
+log = logging.getLogger(__name__)
 
 
 def _download(url: str) -> bytes:
@@ -73,6 +76,8 @@ def from_env() -> Tischlein:
 
 
 class Tischlein:
+    shopping_delay: float | None = 3.0  # seconds to wait for more plan changes; None = collect right away
+
     def __init__(
         self,
         store: Store,
@@ -99,6 +104,7 @@ class Tischlein:
         self._counters_after_sync: str | None = None
         self._auto_thread: threading.Thread | None = None
         self._auto_stop = threading.Event()
+        self._shopping_pending: dict[date, threading.Timer | None] = {}
         self._llm_transport = None  # tests inject a fake transport
         self._user_agent = user_agent
 
@@ -174,7 +180,7 @@ class Tischlein:
         s = self.calendar_settings()
         hour, minute = (int(x) for x in s["uhrzeit"].split(":"))
         cfg = replace(self.config, lunch_time=dtime(hour, minute), lunch_minutes=s["minuten"])
-        return ics.render(self.store.approved_plans(), cfg, name=s["name"])
+        return ics.render([self.eaten(p) for p in self.store.approved_plans()], cfg, name=s["name"])
 
     # Recipes -----------------------------------------------------------------
 
@@ -453,9 +459,10 @@ class Tischlein:
         """(meal, raw recipe, its own portions, planned portions, changed?) per cooked day of the week."""
         plan = self.store.plan(week_start)
         chosen = self.store.servings(week_start, week_start + timedelta(days=6))
+        cooked = self.store.cooked(week_start, week_start + timedelta(days=6))  # already eaten: nothing to buy
         out = []
         for m in plan.meals if plan else []:
-            if not m.recipe_uid or m.skipped:
+            if not m.recipe_uid or m.skipped or m.leftovers or m.day in cooked:
                 continue
             entry = self.store.raw_recipe(m.recipe_uid)
             raw = entry[1] if entry else {}
@@ -473,10 +480,11 @@ class Tischlein:
         """Portions for the dish cooked on `day` (1-30). Returns what is now planned."""
         plan = self.store.plan(week_start_of(day))
         meal = next((m for m in plan.meals if m.day == day and m.recipe_uid and not m.skipped), None) if plan else None
-        if meal is None:
+        if meal is None or meal.leftovers:
             raise KeyError(f"Am {day:%d.%m.} ist kein Gericht geplant.")
         servings = max(1, min(30, servings))
-        self.store.set_servings(day, meal.recipe_uid, None if servings == self.config.portions else servings)
+        with self._watch(week_start_of(day)):
+            self.store.set_servings(day, meal.recipe_uid, None if servings == self.config.portions else servings)
         return servings
 
     def _week_recipes(self, week_start: date) -> list[dict]:
@@ -520,6 +528,56 @@ class Tischlein:
         ]
         self.push_bring(week_start, gone)  # dishes swapped out: their ingredients leave Bring too
         return how
+
+    def has_shopping(self, week_start: date) -> bool:
+        """Was the week's list collected (even if every collected ingredient was deleted since)?"""
+        items = self.store.shopping(week_start)
+        return any(not i["manual"] for i in items) or bool(self.store.removed_shopping(week_start))
+
+    def shopping_updating(self, week_start: date) -> bool:
+        return week_start in self._shopping_pending
+
+    def _dish_key(self, week_start: date) -> list:
+        """What the list depends on: each dish with its portions, not the day it is cooked."""
+        return sorted((m.recipe_uid, round(n / base, 4)) for m, _, base, n, _ in self._planned(week_start))
+
+    @contextmanager
+    def _watch(self, week_start: date):
+        """Collect the list again when the dishes of a collected week change."""
+        before = self._dish_key(week_start)
+        yield
+        if self._dish_key(week_start) != before and self.has_shopping(week_start):
+            self.refresh_shopping(week_start)
+
+    def refresh_shopping(self, week_start: date) -> None:
+        """Collect the list in the background, `shopping_delay` seconds after the last change, so a few
+        clicks in a row call the LLM once. Ticks, Bring state and own entries stay (generate_shopping)."""
+
+        def run() -> None:
+            try:
+                self.generate_shopping(week_start)
+            except KeyError:
+                pass  # no dish left this week
+            except Exception:
+                log.exception("Einkaufsliste für %s nicht neu gesammelt", week_start)
+            finally:
+                with self._state_lock:
+                    if self._shopping_pending.get(week_start) is timer:
+                        del self._shopping_pending[week_start]
+
+        timer = None
+        if self.shopping_delay is None:
+            self._shopping_pending[week_start] = None
+            run()
+            return
+        with self._state_lock:
+            old = self._shopping_pending.get(week_start)
+            if old is not None:
+                old.cancel()
+            timer = threading.Timer(self.shopping_delay, run)
+            timer.daemon = True
+            self._shopping_pending[week_start] = timer
+        timer.start()
 
     # Ideas ---------------------------------------------------------------------
 
@@ -653,7 +711,7 @@ class Tischlein:
 
     def day_info(self, day: date, approved_only: bool = False) -> dict:
         """What is for lunch on `day`, with preparation hints (for Home Assistant)."""
-        plan = self.store.plan(week_start_of(day))
+        plan = self.eaten_plan(week_start_of(day))
         meal = next((m for m in plan.meals if m.day == day), None) if plan else None
         info = {"datum": day.isoformat(), "gericht": "nichts geplant", "frei": False, "vorbereitung": []}
         skip = self.skip_map(week_start_of(day))
@@ -976,12 +1034,15 @@ class Tischlein:
         return self._replan_day(day)
 
     def set_day_cooking(self, day: date) -> WeekPlan | None:
+        self._mark_cooking(day)
+        return self._replan_day(day)
+
+    def _mark_cooking(self, day: date) -> None:
         week_start = week_start_of(day)
         if day in holidays_between(week_start, week_start + timedelta(days=6), self.config.holiday_state):
             self.store.set_skipday(day, OVERRIDE)  # cook on a holiday after all
         else:
             self.store.remove_skipday(day)
-        return self._replan_day(day)
 
     def _replan_day(self, day: date) -> WeekPlan | None:
         week_start = week_start_of(day)
@@ -990,8 +1051,38 @@ class Tischlein:
             return None
         keep = {m.day: m for m in plan.meals if m.day != day}
         plan.meals = self._plan(week_start, keep=keep)
-        self.store.save_plan(plan)
+        self._save(plan)
         return plan
+
+    def _save(self, plan: WeekPlan) -> None:
+        """Every plan change ends here: leftovers follow their dish, and a collected list follows the dishes."""
+        self._relink_leftovers(plan)
+        with self._watch(plan.week_start):
+            self.store.save_plan(plan)
+
+    def _relink_leftovers(self, plan: WeekPlan) -> None:
+        """A Reste-Tag eats the dish of the lunch before it. If that is no longer the same dish
+        (swapped, made free, picked anew), the Reste-Tag is planned like any other day."""
+        stale, prev = set(), None
+        for m in sorted(plan.meals, key=lambda m: m.day):
+            if m.skipped:
+                continue
+            if m.leftovers and (prev is None or prev.leftovers or prev.recipe_uid != m.recipe_uid):
+                stale.add(m.day)
+            prev = m
+        if stale:
+            keep = {m.day: m for m in plan.meals if m.day not in stale}
+            plan.meals = self._plan(plan.week_start, keep=keep)
+
+    def eaten(self, plan: WeekPlan) -> WeekPlan:
+        """The plan as it was eaten: Nachträge replace or add meals."""
+        end = plan.week_start + timedelta(days=6)
+        cooked = self.store.cooked(plan.week_start, end)
+        return replace(plan, meals=with_cooked(plan.meals, cooked, (plan.week_start, end))) if cooked else plan
+
+    def eaten_plan(self, week_start: date) -> WeekPlan | None:
+        plan = self.store.plan(week_start)
+        return self.eaten(plan) if plan else None
 
     # Ratings -----------------------------------------------------------------
 
@@ -1029,6 +1120,7 @@ class Tischlein:
             weights=self.rating_weights(),
             avoid=self.avoided_uids(),
             quick=self.store.quickdays(week_start, week_start + timedelta(days=6)),
+            themes=self.store.themedays(week_start, week_start + timedelta(days=6)),
         )
 
     # Dislikes and quick days ---------------------------------------------------
@@ -1098,14 +1190,19 @@ class Tischlein:
         new = self._replan_day(day)
         picked = next((m for m in new.meals if m.day == day), None) if new else None
         if picked is None or picked.recipe_uid not in recipes or not is_quick(recipes[picked.recipe_uid]):
-            self.store.save_plan(plan)  # nothing quick for this theme: keep what was planned
+            self._save(plan)  # nothing quick for this theme: keep what was planned
             return plan
         return new
 
     def generate(self, week_start: date, notify: bool = False) -> WeekPlan:
-        meals = self._plan(week_start)
-        plan = WeekPlan(week_start, "entwurf", meals)
-        self.store.save_plan(plan)
+        """Plan the week anew. Dishes picked by hand stay, and so do their leftovers."""
+        old = self.store.plan(week_start)
+        keep = {m.day: m for m in old.meals if m.chosen} if old else {}
+        for m in old.meals if old else []:
+            if m.leftovers and any(k.recipe_uid == m.recipe_uid for k in keep.values()):
+                keep[m.day] = m
+        plan = WeekPlan(week_start, "entwurf", self._plan(week_start, keep=keep))
+        self._save(plan)
         if notify:
             self._notify(plan)
         return plan
@@ -1124,14 +1221,248 @@ class Tischlein:
                 else m
                 for m in plan.meals
             ]
-        self.store.save_plan(plan)
+        self._save(plan)
         return plan
+
+    # Moving, picking, themes, leftovers -------------------------------------------
+
+    def theme_of(self, day: date) -> str:
+        """The day's theme: a Themenwechsel for this week, else the weekly schedule."""
+        override = self.store.themedays(day, day).get(day)
+        rule = next((r for r in self.config.days if r.weekday == day.weekday()), None)
+        return override or (rule.theme if rule else "")
+
+    def theme_choices(self) -> list[str]:
+        return [*self.config.themes, ANY_THEME]
+
+    @staticmethod
+    def _meal_on(plan: WeekPlan, day: date) -> Meal:
+        meal = next((m for m in plan.meals if m.day == day), None)
+        if meal is None:
+            raise KeyError(f"Am {day:%d.%m.} ist kein Tag im Plan.")
+        return meal
+
+    @staticmethod
+    def next_lunch(plan: WeekPlan, day: date) -> Meal | None:
+        """The next day of the week with lunch after `day` (where its leftovers would go)."""
+        return next((m for m in sorted(plan.meals, key=lambda m: m.day) if m.day > day and not m.skipped), None)
+
+    def move(self, day: date, to: date, today: date | None = None) -> WeekPlan:
+        """Verschieben: the two days swap their dishes (a free day swaps too). The theme stays with the
+        weekday; leftovers move with their dish to the lunch after its new day."""
+        today = today or date.today()
+        week_start = week_start_of(day)
+        if week_start_of(to) != week_start or day == to:
+            raise ValueError("Verschieben geht nur auf einen anderen Tag derselben Woche.")
+        if min(day, to) < today:
+            raise ValueError("Vergangene Tage lassen sich nicht verschieben.")
+        plan = self._require(week_start)
+        a, b = self._meal_on(plan, day), self._meal_on(plan, to)
+        if a.leftovers or b.leftovers:
+            raise ValueError("Ein Reste-Tag zieht mit seinem Gericht mit und lässt sich nicht selbst verschieben.")
+        if a.skipped and b.skipped:
+            return plan
+        if a.skipped != b.skipped:  # the free day moves too
+            free, cook = (day, to) if a.skipped else (to, day)
+            reason = (a if a.skipped else b).reason
+            self._mark_cooking(free)
+            self.store.set_skipday(cook, reason)
+        servings = self.store.servings(week_start, week_start + timedelta(days=6))
+
+        def moved(m: Meal, dest: date, src: date) -> Meal:
+            if m.skipped:
+                return replace(m, day=dest, theme=self.theme_of(dest))
+            why = f"Verschoben von {WEEKDAY_NAMES[src.weekday()]}"
+            return replace(m, day=dest, theme=self.theme_of(dest), reason=why)
+
+        owners = {m.recipe_uid for m in plan.meals if m.leftovers}
+        movers = [m for m in (a, b) if m.recipe_uid in owners and not m.skipped]
+        meals = {m.day: m for m in plan.meals if m.day not in (day, to)}
+        for m in plan.meals:  # their old Reste-Tag is planned anew
+            if m.leftovers and any(x.recipe_uid == m.recipe_uid for x in movers):
+                meals.pop(m.day, None)
+        meals[day], meals[to] = moved(b, day, to), moved(a, to, day)
+        lunch_days = sorted(m.day for m in plan.meals if not meals.get(m.day, m).skipped)
+        for m in movers:
+            dish = meals[to if m is a else day]
+            nxt = next((d for d in lunch_days if d > dish.day), None)
+            if nxt is not None and not (nxt in meals and meals[nxt].leftovers):
+                meals[nxt] = self._leftovers(dish, nxt)
+        plan.meals = self._plan(week_start, keep=meals)
+        self._save(plan)
+        for src, dest, m in ((day, to, a), (to, day, b)):  # chosen portions go with the dish
+            if m.recipe_uid and (src, m.recipe_uid) in servings:
+                self.store.set_servings(dest, m.recipe_uid, servings[(src, m.recipe_uid)])
+        return plan
+
+    def _leftovers(self, dish: Meal, on: date) -> Meal:
+        return Meal(
+            on,
+            dish.recipe_uid,
+            f"Reste: {dish.name}",
+            self.theme_of(on),
+            reason=f"Reste von {WEEKDAY_NAMES[dish.day.weekday()]}",
+            leftovers=True,
+        )
+
+    def set_leftovers(self, day: date, on: bool) -> WeekPlan:
+        """Reste-Tag: the next lunch day of the week eats what `day` cooks (no cooking, no shopping)."""
+        plan = self._require(week_start_of(day))
+        meal = self._meal_on(plan, day)
+        if meal.skipped or meal.leftovers or not meal.recipe_uid:
+            raise ValueError("Reste gibt es nur von einem geplanten Gericht.")
+        nxt = self.next_lunch(plan, day)
+        if on:
+            if nxt is None:
+                raise ValueError("Reste gibt es nur innerhalb der Woche.")
+            plan.meals = [self._leftovers(meal, nxt.day) if m.day == nxt.day else m for m in plan.meals]
+            self._save(plan)
+            return plan
+        if nxt is not None and nxt.leftovers:
+            return self._replan_day(nxt.day) or plan
+        return plan
+
+    def has_leftovers(self, plan: WeekPlan, day: date) -> bool:
+        nxt = self.next_lunch(plan, day)
+        return bool(nxt and nxt.leftovers)
+
+    def set_theme(self, day: date, theme: str | None, today: date | None = None) -> WeekPlan | None:
+        """Themenwechsel for one day of one week; None or the weekly theme goes back to the schedule.
+        The day is planned anew right away (a free day or a Reste-Tag keeps what it has)."""
+        today = today or date.today()
+        if day < today:
+            raise ValueError("Für vergangene Tage lässt sich das Thema nicht mehr ändern.")
+        rule = next((r for r in self.config.days if r.weekday == day.weekday()), None)
+        if rule is None:
+            raise KeyError(f"Am {day:%d.%m.} wird nicht geplant.")
+        if theme is not None and theme not in self.theme_choices():
+            raise ValueError(f"Unbekanntes Thema: {theme}")
+        self.store.set_themeday(day, None if theme in (None, rule.theme) else theme)
+        plan = self.store.plan(week_start_of(day))
+        meal = next((m for m in plan.meals if m.day == day), None) if plan else None
+        if meal is None or meal.skipped or meal.leftovers:
+            return plan
+        return self._replan_day(day)
+
+    def choice_hints(self, r: Recipe, day: date) -> list[str]:
+        """Why the planner would not pick this dish on `day`; shown, never enforced (Rezept wählen)."""
+        hints = []
+        last = self.store.last_cooked(day).get(r.uid)
+        if last and last > day - timedelta(weeks=self.config.cooldown_weeks):
+            hints.append(f"zuletzt am {last:%d.%m.}")
+        new = r.has_tag(self.config.new_tag) and r.uid not in self.store.feedback()
+        if not new and not (r.has_tag(self.config.kid_tag) or self.store.feedback().get(r.uid) == "ok"):
+            hints.append(f"nicht {self.config.kid_tag}")
+        if r.uid in self.avoided_uids():
+            hints.append("enthält eine Abneigung")
+        return hints
+
+    def recipe_choices(self, day: date, query: str = "", hints: bool = True) -> list[dict]:
+        """Recipes for Rezept wählen / Nachtrag: the day's theme first, flagged ones last."""
+        theme = self.theme_of(day)
+        feedback = self.store.feedback()
+        q = query.strip().casefold()
+        cfg = self.config
+
+        def themed(r: Recipe) -> bool:
+            if theme == ANY_THEME:
+                return r.has_tag(cfg.main_tag) or any(r.has_tag(t) for t in cfg.themes)
+            return bool(theme) and r.has_tag(theme)
+
+        plan = self.store.plan(week_start_of(day)) if hints else None
+        elsewhere = {
+            m.recipe_uid: WEEKDAY_NAMES[m.day.weekday()]
+            for m in (plan.meals if plan else [])
+            if m.recipe_uid and m.day != day and not m.leftovers
+        }
+        out = []
+        for r in self.store.recipes():
+            if feedback.get(r.uid) == "nein" or (q and q not in r.name.casefold()):
+                continue
+            lunch = r.has_tag(cfg.main_tag) or any(r.has_tag(t) for t in cfg.themes)
+            flags = self.choice_hints(r, day) if hints else []
+            if r.uid in elsewhere:  # picking it here plans that day anew
+                flags.insert(0, f"schon am {elsewhere[r.uid]}")
+            out.append(
+                {
+                    "uid": r.uid,
+                    "name": r.name,
+                    "themed": themed(r),
+                    "lunch": lunch,
+                    "new": r.has_tag(cfg.new_tag) and r.uid not in feedback,
+                    "hints": flags,
+                }
+            )
+        out.sort(key=lambda x: (bool(x["hints"]), not x["themed"], not x["lunch"], x["name"].casefold()))
+        return out
+
+    def choose(self, day: date, recipe_uid: str, today: date | None = None) -> WeekPlan:
+        """Rezept wählen: put this dish on `day`. It stays when the week is re-rolled; rules only show
+        as hints. A new dish picked by hand fills the week's new slot."""
+        today = today or date.today()
+        if day < today:
+            raise ValueError("Was an einem vergangenen Tag gekocht wurde, kommt als Nachtrag dazu.")
+        week_start = week_start_of(day)
+        plan = self._require(week_start)
+        current = self._meal_on(plan, day)
+        if current.skipped:
+            raise ValueError("An einem freien Tag erst „Doch kochen“ wählen.")
+        r = self.store.recipe(recipe_uid)
+        if r is None:
+            raise KeyError(f"Rezept {recipe_uid} nicht gefunden")
+        is_new = r.has_tag(self.config.new_tag) and r.uid not in self.store.feedback()
+        hints = self.choice_hints(r, day)
+        meal = Meal(
+            day,
+            r.uid,
+            r.name,
+            self.theme_of(day),
+            is_new=is_new,
+            reason="; ".join(["Von Hand gewählt", *hints]),
+            chosen=True,
+        )
+        keep = {
+            m.day: m
+            for m in plan.meals
+            if m.day != day and m.recipe_uid != r.uid and not (is_new and m.is_new and not m.chosen)
+        }
+        keep[day] = meal
+        plan.meals = self._plan(week_start, keep=keep)
+        self._save(plan)
+        return plan
+
+    # Nachträge -------------------------------------------------------------------
+
+    def log_cooked(
+        self, day: date, recipe_uid: str | None = None, name: str = "", person: str = "", today: date | None = None
+    ) -> None:
+        """Nachtrag: what was cooked on `day`, planned or not. A recipe from Paprika counts like any
+        cooked meal (cooldown, rating); free text only shows in the review."""
+        today = today or date.today()
+        if day > today:
+            raise ValueError("Nachtragen geht für heute und vergangene Tage.")
+        if recipe_uid:
+            r = self.store.recipe(recipe_uid)
+            if r is None:
+                raise KeyError(f"Rezept {recipe_uid} nicht gefunden")
+            name = r.name
+        name = name.strip()
+        if not name:
+            raise ValueError("Was gab es? Ein Rezept wählen oder einen Namen eintragen.")
+        with self._watch(week_start_of(day)):
+            self.store.set_cooked(day, recipe_uid or None, name[:120], person)
+
+    def remove_cooked(self, day: date) -> None:
+        with self._watch(week_start_of(day)):
+            self.store.remove_cooked(day)
 
     def set_status(self, week_start: date, status: str, person: str = "") -> WeekPlan:
         plan = self._require(week_start)
         before = plan.status
         plan.status = status  # type: ignore[assignment]
-        self.store.save_plan(plan)
+        self._save(plan)
+        if status == "freigegeben" and not self.has_shopping(week_start) and self._planned(week_start):
+            self.refresh_shopping(week_start)  # the first list comes with the approval
         if status == "freigegeben" and before != "freigegeben" and self.webhook_url:
             days = ", ".join(
                 f"{WEEKDAY_NAMES[m.day.weekday()][:2]} {m.name}" for m in plan.meals if m.recipe_uid and not m.skipped
