@@ -15,7 +15,7 @@ jobs:
     name: Lint und Tests
     runs-on: ubuntu-26.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: mise-Version aus mise.toml lesen
         id: pins
         run: |
@@ -37,7 +37,7 @@ jobs:
     runs-on: ubuntu-26.04
     needs: check
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: mise-Version aus mise.toml lesen
         id: pins
         run: |
