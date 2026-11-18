@@ -9,10 +9,10 @@ lockfile = true
 [tools]
 # Exakt gepinnt: Der Docker-Build (Dockerfile) und das CI installieren dieselben Versionen über mise.
 python = "3.15.2"
-uv = "0.13.7"
-ruff = "0.17.4"
+uv = "0.13.9"
+ruff = "0.17.5"
 shellcheck = "0.11.0"
-node = "26.13.0"   # nur für die Syntaxprüfung der statischen Skripte (kein Build)
+node = "26.13.1"   # nur für die Syntaxprüfung der statischen Skripte (kein Build)
 
 [env]
 # mise legt .venv mit dem gepinnten Python an und aktiviert es; uv sync installiert hinein.
