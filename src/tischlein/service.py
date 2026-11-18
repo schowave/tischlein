@@ -23,14 +23,14 @@ from datetime import date, datetime, timedelta
 from datetime import time as dtime
 from pathlib import Path
 
-from . import ics, ideas, shopping, webrecipe
+from . import ics, ideas, proposals, season, shopping, webrecipe
 from .config import WEEKDAY_NAMES, PlanConfig
 from .holidays import holidays_between
 from .llm import LLMClient, LLMError
 from .models import Meal, Recipe, Verdict, WeekPlan, with_cooked
 from .paprika import recipe_from_json
 from .paprika_sync import CachedRecipe, PaprikaClient, PaprikaError
-from .planner import ANY_THEME, is_lunch, is_quick, plan_week, week_start_of
+from .planner import ANY_THEME, is_lunch, is_quick, minutes, plan_week, week_start_of
 from .prep import prep_hints
 from .store import Store
 from .tagging import Change, apply_changes
@@ -147,6 +147,9 @@ class Tischlein:
         self._sync_thread: threading.Thread | None = None
         self._ideas_state = {"laeuft": False, "fertig": 0, "gesamt": 0, "ergebnis": None, "fehler": None}
         self._ideas_thread: threading.Thread | None = None
+        self._proposal_state = {"laeuft": False, "fertig": 0, "gesamt": 0, "ergebnis": None, "fehler": None}
+        self._proposal_thread: threading.Thread | None = None
+        self._kid_thread: threading.Thread | None = None
         self._counters_after_sync: str | None = None
         self._auto_thread: threading.Thread | None = None
         self._auto_stop = threading.Event()
@@ -265,6 +268,10 @@ class Tischlein:
         recipe = recipe_from_json(raw, names)
         self.store.upsert_recipe(recipe, raw.get("hash", ""), raw)
         self.store.set_meta("paprika_categories", json.dumps(sorted(set(names.values())), ensure_ascii=False))
+        kid, new = self.config.kid_tag.casefold(), self.config.new_tag
+        if any(x.casefold() == kid for x in remove) and not recipe.has_tag(new):
+            if self.store.feedback().get(uid) == "ok":  # Kinder-OK learned from a rating goes with the category
+                self.store.remove_feedback(uid)
         return recipe
 
     # Photos and details --------------------------------------------------------
@@ -900,6 +907,90 @@ class Tischlein:
         self._post_webhook({"titel": "Tischlein", "nachricht": text, "morgen": info})
         return True
 
+    def _settle(self, key: str, value: str, sent: bool = True) -> bool:
+        """Remember that the message `key` is done for `value` (a day or a week). Not when Home
+        Assistant did not take it (`sent` False): then the next tick, a minute later, tries again."""
+        if sent:
+            self.store.set_meta(key, value)
+        return sent
+
+    def rating_tick(self, now: datetime | None = None) -> bool:
+        """„Wie war's?“ once after lunch, when today's dish has no rating yet. Home Assistant shows
+        the answers as buttons and sends the chosen one to /api/bewertung."""
+        now = now or datetime.now()
+        if not (self.webhook_url and self.config.rating_time) or f"{now:%H:%M}" < self.config.rating_time:
+            return False
+        today = now.date()
+        key = "bewertung_gefragt"
+        if self.store.meta(key) == today.isoformat():
+            return False
+        plan = self.eaten_plan(week_start_of(today))
+        meal = next((m for m in plan.meals if m.day == today), None) if plan else None
+        nothing = meal is None or not meal.recipe_uid or meal.skipped or meal.leftovers
+        if nothing or (plan.status != "freigegeben" and not meal.logged):
+            return False  # a Nachtrag later today may still be asked about
+        if any(r["uid"] == meal.recipe_uid and r["day"] == today for r in self.store.ratings()):
+            return not self._settle(key, today.isoformat())
+        payload = {
+            "titel": "Tischlein",
+            "nachricht": f"Wie war {meal.name}?",
+            "art": "bewertung",
+            "datum": today.isoformat(),
+            "gericht": meal.name,
+        }
+        return self._settle(key, today.isoformat(), self._post_webhook(payload))
+
+    @staticmethod
+    def _due(now: datetime, when: tuple[int, str] | None) -> bool:
+        """Is it, within this week, at or after weekday and time `when`?"""
+        return when is not None and (now.weekday(), f"{now:%H:%M}") >= when
+
+    def _draft_message(self, plan: WeekPlan, lead: str) -> dict:
+        days = ", ".join(
+            f"{WEEKDAY_NAMES[m.day.weekday()][:2]} {m.name}" for m in plan.meals if m.recipe_uid and not m.skipped
+        )
+        return {
+            "titel": "Tischlein",
+            "nachricht": f"{lead} {days}." if days else lead,
+            "art": "entwurf",
+            "woche": plan.week_start.isoformat(),
+        }
+
+    def draft_tick(self, now: datetime | None = None) -> bool:
+        """Once a week: make sure next week has a draft and tell the family (never approves by itself)."""
+        now = now or datetime.now()
+        if not self._due(now, self.config.draft_time):
+            return False
+        week_start = week_start_of(now.date()) + timedelta(weeks=1)
+        key, week = "entwurf_fuer", week_start.isoformat()
+        if self.store.meta(key) == week:
+            return False
+        plan = self.store.plan(week_start)
+        if plan is None:
+            self.try_sync_paprika()
+            if not self.store.recipes():
+                return False  # nothing to plan with yet; the next tick looks again
+            plan = self._generate(week_start, today=now.date())
+        if plan.status == "freigegeben" or not self.webhook_url:
+            return not self._settle(key, week)
+        lead = f"Entwurf für die Woche ab {week_start:%d.%m.}:"
+        return self._settle(key, week, self._post_webhook(self._draft_message(plan, lead)))
+
+    def approve_tick(self, now: datetime | None = None) -> bool:
+        """Once, late in the week: remind when next week's draft still waits for approval."""
+        now = now or datetime.now()
+        if not (self.webhook_url and self._due(now, self.config.approve_time)):
+            return False
+        week_start = week_start_of(now.date()) + timedelta(weeks=1)
+        key, week = "freigabe_erinnert", week_start.isoformat()
+        if self.store.meta(key) == week:
+            return False
+        plan = self.store.plan(week_start)
+        if plan is None or plan.status == "freigegeben":
+            return not self._settle(key, week)
+        lead = f"Die Woche ab {week_start:%d.%m.} ist noch nicht freigegeben:"
+        return self._settle(key, week, self._post_webhook(self._draft_message(plan, lead)))
+
     def bring_lists(self) -> list[dict]:
         """Bring lists as Home Assistant last reported them: [{entity_id, name}]."""
         try:
@@ -1165,7 +1256,11 @@ class Tischlein:
                     if minutes > 0 and time.monotonic() >= next_sync:
                         next_sync = time.monotonic() + minutes * 60
                         self.auto_sync_tick()
-                    self.reminder_tick()
+                    for tick in (self.reminder_tick, self.rating_tick, self.draft_tick, self.approve_tick):
+                        try:
+                            tick()
+                        except Exception:  # noqa: BLE001 - one failing message must not stop the others
+                            logging.getLogger(__name__).exception("Meldung fehlgeschlagen")
                 except Exception:  # noqa: BLE001 - never let the scheduler die
                     pass
                 if self._auto_stop.wait(60):
@@ -1268,18 +1363,66 @@ class Tischlein:
 
     # Ratings -----------------------------------------------------------------
 
-    def rate(self, recipe_uid: str, day: date, verdict: str, person: str = "") -> None:
-        """Rating after a meal: gut / mittel / schlecht, or "nie" (never plan again)."""
+    def rate(self, recipe_uid: str, day: date, verdict: str, person: str = "") -> bool:
+        """Rating after a meal: gut / mittel / schlecht, or "nie" (never plan again). Returns whether
+        the dish just became Kinder-OK: a "gut" as its very first rating does that (and writes the
+        category to Paprika). A Neu dish joins the rotation as before, without the announcement."""
         if verdict not in ("gut", "mittel", "schlecht", "nie"):
             raise ValueError("Bewertung: gut, mittel, schlecht oder nie")
+        learned = False
         if verdict == "nie":
             self.store.set_feedback(recipe_uid, "nein")
             verdict = "schlecht"
         elif verdict == "gut":
             r = self.store.recipe(recipe_uid)
-            if r and r.has_tag(self.config.new_tag) and recipe_uid not in self.store.feedback():
-                self.store.set_feedback(recipe_uid, "ok")  # a new dish that went down well joins the rotation
+            if r and recipe_uid not in self.store.feedback():
+                rated_before = any(x["uid"] == recipe_uid for x in self.store.ratings())
+                if r.has_tag(self.config.new_tag):
+                    self.store.set_feedback(recipe_uid, "ok")  # a new dish that went down well joins the rotation
+                elif not r.has_tag(self.config.kid_tag) and not rated_before:
+                    # only the very first rating teaches: a "gut" after "ging so", or after the family
+                    # took Kinder-OK back, changes the weight and nothing else
+                    learned = True
+                    self.store.set_feedback(recipe_uid, "ok")  # counts at once, also if Paprika is away
+                    self._write_kid_tag(recipe_uid, True)
         self.store.set_rating(recipe_uid, day, verdict, person)
+        return learned
+
+    def rate_day(self, day: date, verdict: str, person: str = "") -> str:
+        """Rate what was eaten on `day` (the answer to „Wie war's?“). Returns the dish's name."""
+        plan = self.eaten_plan(week_start_of(day))
+        meal = next((m for m in plan.meals if m.day == day), None) if plan else None
+        if meal is None or not meal.recipe_uid or meal.skipped or meal.leftovers:
+            raise KeyError(f"Am {day:%d.%m.} gibt es kein Gericht zum Bewerten.")
+        self.rate(meal.recipe_uid, day, verdict, person)
+        return meal.name
+
+    def _write_kid_tag(self, uid: str, on: bool) -> None:
+        """Kinder-OK to Paprika in the background; best effort, the local Rückmeldung already counts."""
+        if self.paprika is None:
+            return
+
+        previous = self._kid_thread
+
+        def run() -> None:
+            tag = [self.config.kid_tag]
+            if previous is not None:
+                previous.join()  # add, then take back: in the order the family did it
+            try:
+                self.edit_recipe_tags(uid, tag if on else [], [] if on else tag)
+            except (PaprikaError, KeyError, RuntimeError, OSError) as e:
+                logging.getLogger(__name__).warning("Kinder-OK für %s nicht nach Paprika geschrieben: %s", uid, e)
+
+        self._kid_thread = threading.Thread(target=run, name="kinder-ok", daemon=True)
+        self._kid_thread.start()
+
+    def unlearn_kid_ok(self, recipe_uid: str) -> None:
+        """Take back „jetzt Kinder-OK“ after a rating: the Rückmeldung goes, and the category in Paprika."""
+        r = self.store.recipe(recipe_uid)
+        if r is None or self.store.feedback().get(recipe_uid) != "ok" or r.has_tag(self.config.new_tag):
+            raise ValueError("Das Rezept ist nicht über eine Bewertung Kinder-OK geworden.")
+        self.store.remove_feedback(recipe_uid)
+        self._write_kid_tag(recipe_uid, False)
 
     def rating_weights(self) -> dict[str, float]:
         """Chance multiplier per recipe from the family's ratings (1.0 = neutral, 0.4..1.6)."""
@@ -1288,10 +1431,41 @@ class Tischlein:
             scores.setdefault(r["uid"], []).append({"gut": 1, "mittel": 0, "schlecht": -1}[r["verdict"]])
         return {uid: max(0.4, min(1.6, 1 + 0.6 * sum(s) / len(s))) for uid, s in scores.items()}
 
+    def planning_recipes(self) -> list[Recipe]:
+        """Recipes as the planner sees them: a confirmed cooking time fills in where Paprika has none."""
+        times = self.store.cooktimes()
+        return [
+            replace(r, total_time=f"{times[r.uid]} Min.") if r.uid in times and minutes(r.total_time) is None else r
+            for r in self.store.recipes()
+        ]
+
+    def season_of(self, month: int) -> dict[str, tuple[list[str], list[str]]]:
+        """Per recipe: (produce in season, clearly seasonal produce out of season) in `month`;
+        only recipes that name any. Rebuilt when the raw recipe cache changes."""
+        cached = getattr(self, "_season", None)
+        if cached is None or cached[0] != self.store.cache_generation:
+            cached = self._season = (self.store.cache_generation, {})
+        if month in cached[1]:
+            return cached[1][month]
+        out = {}
+        for uid, (_, raw) in self.store.paprika_cache().items():
+            found = season.seasonal(shopping.ingredient_lines(raw.get("ingredients") or ""), month)
+            if found[0] or found[1]:
+                out[uid] = found
+        cached[1][month] = out
+        return out
+
+    def plan_weights(self, week_start: date) -> dict[str, float]:
+        """Chance factor per recipe: the family's ratings times the season of that week."""
+        weights = dict(self.rating_weights())
+        for uid, (_ins, outs) in self.season_of((week_start + timedelta(days=2)).month).items():
+            weights[uid] = weights.get(uid, 1.0) * (season.OUT_OF_SEASON if outs else season.IN_SEASON)
+        return weights
+
     def _plan(self, week_start: date, keep=None, exclude=()) -> list:
         return plan_week(
             week_start,
-            self.store.recipes(),
+            self.planning_recipes(),
             self.config,
             last_cooked=self.store.last_cooked(week_start),
             feedback=self.store.feedback(),
@@ -1299,7 +1473,7 @@ class Tischlein:
             keep=keep,
             exclude=exclude,
             skip=self.skip_map(week_start),
-            weights=self.rating_weights(),
+            weights=self.plan_weights(week_start),
             avoid=self.avoided_uids(),
             quick=self.store.quickdays(week_start, week_start + timedelta(days=6)),
             themes=self.store.themedays(week_start, week_start + timedelta(days=6)),
@@ -1362,7 +1536,7 @@ class Tischlein:
         if plan is None or plan.status != "entwurf" or not on:
             return plan
         current = next((m for m in plan.meals if m.day == day), None)
-        recipes = {r.uid: r for r in self.store.recipes()}
+        recipes = {r.uid: r for r in self.planning_recipes()}
         if (
             current is None
             or current.skipped
@@ -1376,7 +1550,7 @@ class Tischlein:
             return plan
         return new
 
-    def _generate(self, week_start: date, notify: bool = False) -> WeekPlan:
+    def _generate(self, week_start: date, notify: bool = False, today: date | None = None) -> WeekPlan:
         """Plan the week anew. Dishes picked by hand stay, and so do their leftovers. An approved
         week is never re-rolled (Sous-Chef: only the family changes what is in the calendar)."""
         old = self.store.plan(week_start)
@@ -1386,11 +1560,253 @@ class Tischlein:
         for m in old.meals if old else []:
             if m.leftovers and any(k.recipe_uid == m.recipe_uid for k in keep.values()):
                 keep[m.day] = m
+        wished = self._wished(week_start, keep, today)
+        keep.update(wished)
         plan = WeekPlan(week_start, "entwurf", self._plan(week_start, keep=keep))
         self._save(plan)
+        for m in wished.values():
+            self.store.set_wish(m.recipe_uid, False)
         if notify:
             self._notify(plan)
         return plan
+
+    # Wunschliste ---------------------------------------------------------------
+
+    def _wish_day(self, r: Recipe, days: list[date]) -> date | None:
+        """The first of `days` whose theme the recipe has, else the first one."""
+        fits = (d for d in days if self.theme_of(d) == ANY_THEME or r.has_tag(self.theme_of(d)))
+        return next(fits, days[0] if days else None)
+
+    def _wished(self, week_start: date, keep: dict[date, Meal], today: date | None = None) -> dict[date, Meal]:
+        """Wished recipes for a coming week, each on a free planning day (its theme day if there is
+        one), oldest wish first. They count as picked by hand."""
+        today = today or date.today()
+        if week_start <= today:  # the wish list is for the weeks ahead
+            return {}
+        skip = self.skip_map(week_start)
+        days = [week_start + timedelta(days=rule.weekday) for rule in self.config.days]
+        days = [d for d in days if d not in keep and d not in skip]
+        taken = {m.recipe_uid for m in keep.values()}
+        feedback = self.store.feedback()
+        out: dict[date, Meal] = {}
+        for uid in self.store.wishes():
+            r = self.store.recipe(uid)
+            if r is None or feedback.get(uid) == "nein" or uid in taken:
+                self.store.set_wish(uid, False)  # gone from Paprika, ruled out, or already in the week
+                continue
+            day = self._wish_day(r, days)
+            if day is None:
+                break  # the week is full; the rest waits for the next one
+            is_new = r.has_tag(self.config.new_tag) and uid not in feedback
+            out[day] = Meal(day, uid, r.name, self.theme_of(day), is_new=is_new, reason="Gewünscht", chosen=True)
+            days.remove(day)
+        return out
+
+    def wishes(self) -> list[Recipe]:
+        known = {r.uid: r for r in self.store.recipes()}
+        return [known[u] for u in self.store.wishes() if u in known]
+
+    def add_wish(self, recipe_uid: str, today: date | None = None) -> str:
+        """„Nächste Woche einplanen“: into next week's draft right away if there is one, else onto the
+        wish list for the next draft. Returns what happened, for the family to read."""
+        today = today or date.today()
+        r = self.store.recipe(recipe_uid)
+        if r is None:
+            raise KeyError(f"Rezept {recipe_uid} nicht gefunden")
+        if self.store.feedback().get(recipe_uid) == "nein":
+            raise ValueError(f"{r.name} ist als „nie wieder“ markiert und wird nicht geplant.")
+        week_start = week_start_of(today) + timedelta(weeks=1)
+        plan = self.store.plan(week_start)
+        if plan is not None and any(m.recipe_uid == recipe_uid and not m.leftovers for m in plan.meals):
+            day = next(m.day for m in plan.meals if m.recipe_uid == recipe_uid)
+            return f"{r.name} steht schon am {WEEKDAY_NAMES[day.weekday()]} im Plan."
+        if plan is not None and plan.status == "entwurf":
+            open_days = [m.day for m in plan.meals if not (m.chosen or m.skipped or m.leftovers)]
+            day = self._wish_day(r, sorted(open_days))
+            if day is not None:
+                with self._undoable(week_start) as note:
+                    self._choose(day, recipe_uid, today)
+                    note["label"] = f"{r.name} am {self._wd(day)} eingeplant"
+                return f"{r.name} steht jetzt am {WEEKDAY_NAMES[day.weekday()]} im Entwurf für nächste Woche."
+        self.store.set_wish(recipe_uid, True)
+        if plan is not None and plan.status == "freigegeben":
+            return f"Die nächste Woche ist schon freigegeben. {r.name} kommt in den Entwurf danach."
+        return f"{r.name} kommt in den nächsten Wochenentwurf."
+
+    def remove_wish(self, recipe_uid: str) -> None:
+        self.store.set_wish(recipe_uid, False)
+
+    # Vorschläge für Thema und Kochzeit ----------------------------------------------
+
+    def _proposal_candidates(self) -> list[tuple[Recipe, bool, bool]]:
+        """Lunch dishes that lack a theme or a cooking time and were not asked about yet:
+        (recipe, needs theme, needs time)."""
+        asked = {(p["uid"], p["kind"]) for p in self.store.proposals(None)}
+        times = self.store.cooktimes()
+        feedback = self.store.feedback()
+        out = []
+        for r in sorted(self.store.recipes(), key=lambda r: r.name.casefold()):
+            if not is_lunch(r, self.config) or feedback.get(r.uid) == "nein":
+                continue
+            theme = not any(r.has_tag(t) for t in self.config.themes) and (r.uid, "thema") not in asked
+            timed = minutes(r.total_time) is not None or r.uid in times or r.has_tag("Schnell")
+            need_time = not timed and (r.uid, "zeit") not in asked
+            if theme or need_time:
+                out.append((r, theme, need_time))
+        return out
+
+    def proposal_backlog(self) -> int:
+        return len(self._proposal_candidates())
+
+    def generate_proposals(self, progress=None) -> int:
+        """Ask the LLM, a dozen recipes per request, and keep its proposals for the family to confirm."""
+        client = self.llm()
+        if client is None:
+            raise LLMError("Kein LLM eingerichtet. In den Einstellungen Basis-URL, Schlüssel und Modell eintragen.")
+        todo = self._proposal_candidates()
+        themes = list(self.config.themes)
+        index = self.ingredient_index()
+        batches = [todo[i : i + proposals.BATCH] for i in range(0, len(todo), proposals.BATCH)]
+        found, error = 0, None
+        if progress:
+            progress(0, len(batches))
+        for n, batch in enumerate(batches):
+            listing = [
+                {"nr": i + 1, "name": r.name, "zutaten": index.get(r.uid, [])} for i, (r, _, _) in enumerate(batch)
+            ]
+            try:
+                answer = client.chat_json(proposals.SYSTEM, proposals.build_prompt(listing, themes), temperature=0.1)
+                parsed = proposals.parse_answer(answer, themes, len(batch))
+            except LLMError as e:
+                error, parsed = e, {}
+            for i, (r, need_theme, need_time) in enumerate(batch):
+                got = parsed.get(i + 1)
+                if got is None:
+                    continue
+                if need_theme:
+                    self.store.add_proposals([(r.uid, "thema", got["thema"])])
+                    if not got["thema"]:  # no theme fits: remember, so it is not asked again
+                        self.store.set_proposal(r.uid, "thema", "abgelehnt")
+                    found += bool(got["thema"])
+                if need_time:
+                    self.store.add_proposals([(r.uid, "zeit", str(got["minuten"] or ""))])
+                    if not got["minuten"]:  # the model named no time: do not ask again
+                        self.store.set_proposal(r.uid, "zeit", "abgelehnt")
+                    found += bool(got["minuten"])
+            if progress:
+                progress(n + 1, len(batches))
+        if not found and error is not None:
+            raise error
+        return found
+
+    def proposals_status(self) -> dict:
+        with self._state_lock:
+            return dict(self._proposal_state)
+
+    def _start_proposal_job(self, work, total: int) -> dict:
+        with self._state_lock:
+            if self._proposal_state["laeuft"]:
+                return dict(self._proposal_state)
+            self._proposal_state = {"laeuft": True, "fertig": 0, "gesamt": total, "ergebnis": None, "fehler": None}
+            state = dict(self._proposal_state)
+
+        def progress(done: int, of: int) -> None:
+            with self._state_lock:
+                self._proposal_state.update(fertig=done, gesamt=of)
+
+        def run() -> None:
+            result: dict = {}
+            try:
+                result["ergebnis"] = work(progress)
+            except (LLMError, PaprikaError, KeyError) as e:
+                result["fehler"] = str(e.args[0]) if isinstance(e, KeyError) else str(e)
+            except Exception as e:  # noqa: BLE001 - show it instead of a silently dead thread
+                result["fehler"] = f"Unerwarteter Fehler: {e}"
+                raise
+            finally:
+                with self._state_lock:
+                    self._proposal_state.update(laeuft=False, **result)
+
+        self._proposal_thread = threading.Thread(target=run, name="vorschlaege", daemon=True)
+        self._proposal_thread.start()
+        return state
+
+    def start_proposals(self) -> dict:
+        if self.llm() is None:
+            raise LLMError("Kein LLM eingerichtet. In den Einstellungen Basis-URL, Schlüssel und Modell eintragen.")
+        total = -(-len(self._proposal_candidates()) // proposals.BATCH)
+        return self._start_proposal_job(self.generate_proposals, total)
+
+    def open_proposals(self) -> list[dict]:
+        """Open proposals per recipe: {"uid", "name", "thema", "minuten"} (either may be missing)."""
+        known = {r.uid: r for r in self.store.recipes()}
+        rows: dict[str, dict] = {}
+        for p in self.store.proposals("offen"):
+            r = known.get(p["uid"])
+            if r is None:
+                continue
+            if p["kind"] == "thema" and any(r.has_tag(t) for t in self.config.themes):
+                self.store.set_proposal(r.uid, "thema", None)  # got a theme by hand meanwhile
+                continue
+            row = rows.setdefault(r.uid, {"uid": r.uid, "name": r.name, "thema": "", "minuten": None})
+            if p["kind"] == "thema":
+                row["thema"] = p["value"]
+            elif p["value"].isdigit():
+                row["minuten"] = int(p["value"])
+        return sorted(rows.values(), key=lambda x: x["name"].casefold())
+
+    def answer_proposal(self, recipe_uid: str, kind: str, accept: bool) -> None:
+        """Confirm or decline one proposal. A theme goes to Paprika as a category; a cooking time
+        stays in Tischlein (Paprika is not filled with guessed times)."""
+        self.open_proposals()  # drops what was settled by hand meanwhile
+        p = next((x for x in self.store.proposals("offen") if x["uid"] == recipe_uid and x["kind"] == kind), None)
+        if p is None:
+            raise KeyError("Diesen Vorschlag gibt es nicht mehr.")
+        if not accept:
+            self.store.set_proposal(recipe_uid, kind, "abgelehnt")
+            return
+        if kind == "thema":
+            self.edit_recipe_tags(recipe_uid, [p["value"]], [])
+        else:
+            self.store.set_cooktime(recipe_uid, int(p["value"]))
+        self.store.set_proposal(recipe_uid, kind, None)
+
+    def start_accept_proposals(self) -> dict:
+        """Confirm every open proposal; the themes go to Paprika one by one in the background."""
+        self.open_proposals()  # drops what was settled by hand meanwhile
+        todo = [(p["uid"], p["kind"]) for p in self.store.proposals("offen")]
+        todo.sort(key=lambda x: x[1] == "thema")  # times first: they need no Paprika
+        if any(kind == "thema" for _, kind in todo) and self.paprika is None:
+            raise PaprikaError("Zum Übernehmen der Themen muss Paprika verbunden sein.")
+
+        def work(progress) -> int:
+            for n, (uid, kind) in enumerate(todo):
+                try:
+                    self.answer_proposal(uid, kind, True)
+                except KeyError:
+                    pass  # answered meanwhile, or the recipe is gone
+                progress(n + 1, len(todo))
+            return len(todo)
+
+        return self._start_proposal_job(work, len(todo))
+
+    # Stöbern -----------------------------------------------------------------------
+
+    def search_web(self, query: str) -> list[dict]:
+        """Browse Chefkoch (at least 4 stars, no paid recipes). Results are not kept; what the family
+        takes goes the way of every Web-Rezept. Raises ValueError when the search does not answer."""
+        query = " ".join(query.split())[:80]
+        if not query:
+            return []
+        try:
+            body, _ = self.web_get(webrecipe.search_url(query), 2_000_000, ("application/json",))
+            results = webrecipe.search_results(json.loads(body))
+        except (ValueError, TypeError) as e:
+            raise ValueError("Die Suche bei Chefkoch antwortet gerade nicht. Ein Rezept-Link geht weiterhin.") from e
+        have = {webrecipe.normalize_url(r.source_url): r.uid for r in self.store.recipes() if r.source_url}
+        for r in results:
+            r["uid"] = have.get(webrecipe.normalize_url(r["url"]), "")
+        return results
 
     def _swap(self, week_start: date, day: date) -> WeekPlan:
         plan = self._require(week_start)
@@ -1424,12 +1840,15 @@ class Tischlein:
         leaves the last step alone. The step also remembers the week as it was right after, so
         Rückgängig never throws away anything done later (portions, someone else's change)."""
         before = self.store.week_state(week_start)
+        wishes = self.store.wishes()
         note = {"label": ""}
         yield note
         after = self.store.week_state(week_start)
         if note["label"] and after != before:
             record = {
                 "label": note["label"],
+                # wishes this change used up: Rückgängig puts them back on the list
+                "wishes": [u for u in wishes if u not in self.store.wishes()],
                 "at": datetime.now().isoformat(timespec="seconds"),
                 "state": before,
                 "after": self._fingerprint(after),
@@ -1463,6 +1882,8 @@ class Tischlein:
             )
         with self._watch(week_start):
             self.store.restore_week_state(week_start, record["state"])
+        for uid in record.get("wishes", []):
+            self.store.set_wish(uid, True)
         self.store.set_meta(f"rueckgaengig:{week_start.isoformat()}", "")
         return record["label"]
 
@@ -1525,15 +1946,15 @@ class Tischlein:
             note["label"] = f"{self._wd(day)}: wenig Zeit" if on else f"{self._wd(day)}: wieder normal"
         return plan
 
-    def generate(self, week_start: date, notify: bool = False) -> WeekPlan:
+    def generate(self, week_start: date, notify: bool = False, today: date | None = None) -> WeekPlan:
         with self._undoable(week_start) as note:
-            plan = self._generate(week_start, notify)
+            plan = self._generate(week_start, notify, today)
             note["label"] = "Woche neu geplant"
         return plan
 
-    def set_status(self, week_start: date, status: str, person: str = "") -> WeekPlan:
+    def set_status(self, week_start: date, status: str, person: str = "", notify: bool = True) -> WeekPlan:
         with self._undoable(week_start) as note:
-            plan = self._set_status(week_start, status, person)
+            plan = self._set_status(week_start, status, person, notify)
             note["label"] = "Woche freigegeben" if status == "freigegeben" else "Woche wieder in Bearbeitung"
         return plan
 
@@ -1781,14 +2202,14 @@ class Tischlein:
         with self._watch(week_start_of(day)):
             self.store.remove_cooked(day)
 
-    def _set_status(self, week_start: date, status: str, person: str = "") -> WeekPlan:
+    def _set_status(self, week_start: date, status: str, person: str = "", notify: bool = True) -> WeekPlan:
         plan = self._require(week_start)
         before = plan.status
         plan.status = status  # type: ignore[assignment]
         self._save(plan)
         if status == "freigegeben" and not self.has_shopping(week_start) and self._planned(week_start):
             self.refresh_shopping(week_start)  # the first list comes with the approval
-        if status == "freigegeben" and before != "freigegeben" and self.webhook_url:
+        if status == "freigegeben" and before != "freigegeben" and self.webhook_url and notify:
             days = ", ".join(
                 f"{WEEKDAY_NAMES[m.day.weekday()][:2]} {m.name}" for m in plan.meals if m.recipe_uid and not m.skipped
             )

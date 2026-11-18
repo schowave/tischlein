@@ -38,14 +38,19 @@ landen im Kalender.
 | Im Wagen | Abgehakte Zutaten, unten auf der Einkaufsliste eingeklappt | |
 | Nachtrag | Gekochte Mahlzeit, die nicht vom Planer kommt: „stattdessen“ ersetzt das geplante Gericht des Tages, an Tagen ohne Plan kommt sie dazu; zählt für Cooldown, Rückblick, Bewertung und Rückmeldung; auch als Freitext ohne Paprika-Rezept (dann nur Rückblick); Kalender und Home Assistant zeigen das tatsächlich Gekochte | `Cooked`, `with_cooked`, `cooked` |
 | Rückmeldung | Nach einem Neu-Rezept: `ok` (in die Rotation) oder `nein` (nie wieder) | `Feedback` |
-| Bewertung | Nach jedem Essen: gut / mittel / schlecht, pro Tag und Person; steuert die Gewichtung | `ratings` |
-| Freier Tag | Kein Mittagessen (Urlaub, Feiertag, Kita …); Feiertage automatisch, „Doch kochen“ überstimmt | `skipdays`, `holidays.py` |
+| Bewertung | Nach jedem Essen: gut / mittel / schlecht, eine pro Mahlzeit (wer bewertet hat, wird vermerkt); steuert die Gewichtung; „gut“ als allererste Bewertung macht ein Rezept Kinder-OK (auch in Paprika; ein Neu-Rezept kommt wie bisher in die Rotation), zurücknehmbar in der Meldung oder über den Kinder-OK-Schalter der Rezepte; Home Assistant fragt nach dem Mittagessen „Wie war's?“ mit Knöpfen | `ratings`, `rate`, `rating_tick` |
+| Freier Tag | Kein Mittagessen (Urlaub, Feiertag, Kita, „Reste vom Vortag“ …); Feiertage automatisch, „Doch kochen“ überstimmt; nicht zu verwechseln mit dem Reste-Tag eines Gerichts | `skipdays`, `holidays.py` |
 | Einkaufsliste | Zutaten der Woche ohne Vorräte, auf die Portionen umgerechnet, gleiche Zutaten zusammengeführt und nach Gang sortiert (mit LLM oder per Regeln); gelöschte Zutaten bleiben für die Woche weg, solange kein anderes Gericht sie braucht; zum ersten Mal gesammelt bei Freigabe (oder von Hand), danach sammelt sie sich bei jeder Änderung der Gerichte selbst neu | `shopping.py`, `shopping`, `shopping_removed` |
 | Bring-Abgleich | Einkaufsliste ↔ Bring über Home Assistant; pro Eintrag `bring` 0/1/2 (nicht drin, offen, abgehakt), nur Änderungen werden geschickt | `push_bring`, `apply_bring_state` |
 | Abneigung | Zutat, die die Kinder nicht mögen (Einstellungen); solche Rezepte plant Tischlein zuletzt | `dislikes`, `avoid` |
 | Schneller Tag | Tag mit wenig Zeit: Gerichte bis 30 Minuten zuerst | `quickdays`, `quick` |
 | Portionen | Pro geplantem Gericht, Standard `portionen` aus tischlein.toml; skaliert die Mengen | `config.portions`, `servings` |
 | Idee | Vorschlag des LLM für ein neues Gericht; übernommen landet es mit „Neu“ in Paprika | `ideas.py`, `ideas` |
+| Saison | Gemüse und Obst, das in Deutschland gerade Saison hat (Feld und Lager; Ganzjähriges, TK und Dose zählen nicht); gewichtet den Plan, schließt nie aus; sichtbar am Gericht, als Filter „Jetzt Saison“ und als Vorschläge beim Stöbern | `season.py`, `plan_weights` |
+| Wunschliste | Rezepte mit „Nächste Woche einplanen“: Gibt es für die nächste Woche schon einen Entwurf, kommt das Rezept sofort hinein, sonst in den nächsten Entwurf einer kommenden Woche, am passenden Thementag, als von Hand gewählt | `wishes`, `add_wish` |
+| Vorschlag | Das LLM schlägt für Mittagsgerichte ohne Thema ein Thema und ohne Kochzeit eine Zeit vor; die Familie bestätigt oder lehnt ab (wird dann nicht wieder gefragt); ein Thema geht als Kategorie nach Paprika, die Zeit bleibt als Schätzung in Tischlein | `proposals.py`, `proposals`, `cooktimes` |
+| Stöbern | Suche bei Chefkoch (mindestens 4 Sterne, ohne Plus-Rezepte) über deren inoffizielle App-Schnittstelle; Treffer werden nicht gespeichert, ein Treffer öffnet die Vorschau eines Web-Rezepts | `search_web`, `webrecipe.search_results` |
+| Entwurf von selbst | Freitags legt Tischlein den Entwurf der nächsten Woche an und meldet ihn mit „Freigeben“; sonntags erinnert es einmal; freigeben tut nur die Familie | `draft_tick`, `approve_tick` |
 | Web-Rezept | Rezept von einer fremden Seite (z. B. Chefkoch), per Link geholt; nach einer Vorschau übernommen landet es mit „Neu“, Quelle und Foto (JPEG) in Paprika; gibt es die Quelle schon, wird nicht doppelt übernommen | `webrecipe.py`, `accept_web_recipe` |
 
 ## Planungsregeln
@@ -79,6 +84,12 @@ landen im Kalender.
     ein Nachtrag ersetzt das geplante Gericht seines Tages (Cooldown, Rückblick, Kalender).
 15. Eine freigegebene Woche wird nicht neu gewürfelt (weder ganz noch ein Tag); ändern lässt sie
     sich nur gezielt: Verschieben, Rezept wählen, Thema, Reste, freier Tag, Nachtrag.
+16. Saison: Rezepte mit Saisonzutat kommen 1,5-mal so wahrscheinlich; mit einer klaren Saisonzutat
+    außerhalb ihrer Zeit (Spargel, Erdbeeren, Rhabarber, Bärlauch, Kürbis, Grünkohl, Pfifferlinge)
+    nur mit 0,3. Der Faktor multipliziert sich mit dem aus den Bewertungen. Von Hand geht immer alles.
+17. Wunschliste: Gewünschte Rezepte stehen im Entwurf einer kommenden Woche wie von Hand gewählt,
+    am ersten freien Tag mit passendem Thema, sonst am ersten freien Tag; die laufende Woche lässt
+    die Wunschliste in Ruhe.
 
 ## Architektur
 
@@ -97,6 +108,8 @@ src/tischlein/
   static/      tischlein.css; rezepte.js, ideen.js, einkauf.js = Alpine-Komponenten (Markup im Template);
                stay.js: Formulare mit data-stay schicken ohne Neuladen ab (keine springende Seite);
                menus.js: Dropdowns (details.free-menu) schließen sich gegenseitig, bei Klick daneben und Escape;
+               die Leiste hat drei Bereiche (Woche, Einkauf, Rezepte); „Neues finden“ (ideen.html: Stöbern, Link, Ideen)
+               hängt unter Rezepte, der Rückblick unter der Woche;
                sw.js = Service Worker (unter /sw.js), nur damit die Einkaufsliste offline öffnet;
                manifest.webmanifest + icons/ für den Home-Bildschirm (display: browser, wegen Cloudflare Access);
                vendor/alpine-<version>.min.js, nur über `mise run vendor:alpine` aktualisieren
@@ -107,6 +120,8 @@ src/tischlein/
   prep.py      Vorbereitungshinweise aus Zutaten (Regeln: TK auftauen, einweichen, marinieren …)
   shopping.py  Einkaufsliste: Zutaten sammeln, Vorräte filtern, LLM-Prompt und -Antwort
   ideas.py     Rezeptideen: LLM-Prompt, Antwort prüfen, neues Paprika-Rezept bauen
+  season.py    Saisonkalender für Deutschland, Saisonzutaten eines Rezepts, Gewichtungsfaktor
+  proposals.py Vorschläge für Thema und Kochzeit: LLM-Prompt und -Antwort
   webrecipe.py Web-Rezepte: schema.org-Rezept oder LLM-Antwort lesen, Thema vorschlagen, Paprika-Rezept
                bauen; das Abrufen (nur öffentliche Adressen, 3 MB, 10 s) macht service.py
   llm.py       Client für OpenAI-kompatible Chat-API (z. B. LiteLLM), Transport injizierbar

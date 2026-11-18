@@ -29,7 +29,8 @@
 {% macro nav_link(key, href, label) -%}
 <a href="{{ href }}" title="{{ label }}" {% if nav == key %}aria-current="page"{% endif %}>{{ icon(key) }}<span>{{ label }}</span></a>
 {%- endmacro %}
-{% set sections = [('woche', '/', 'Woche'), ('einkauf', '/einkauf', 'Einkauf'), ('rezepte', '/rezepte', 'Rezepte'), ('ideen', '/ideen', 'Ideen'), ('rueckblick', '/rueckblick', 'Rückblick')] %}
+{# Three areas: the week, the shopping, the recipes. Stöbern/Ideen live under Rezepte, the Rückblick under the week. #}
+{% set sections = [('woche', '/', 'Woche'), ('einkauf', '/einkauf', 'Einkauf'), ('rezepte', '/rezepte', 'Rezepte')] %}
 <div class="shell">
   <header class="side">
     <a class="brand" href="/" aria-label="Tischlein, zur Woche">

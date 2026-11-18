@@ -35,6 +35,11 @@
   um `[erinnerung] uhrzeit` „Morgen gibt's …“ samt Vorbereitung (nur freigegebene Pläne, einmal
   am Tag). Trägt jemand von Hand etwas in die Einkaufsliste ein, kommt
   „<Name> hat Kaffee (500 g) auf die Liste gesetzt.“ mit `art: einkauf`, `von`, `eintrag`, `menge`.
+  Nach dem Mittagessen (`[erinnerung] bewertung`) kommt „Wie war …?“ mit `art: bewertung` und `datum`;
+  freitags (`entwurf`) legt Tischlein den Entwurf der nächsten Woche an und meldet ihn mit `art: entwurf`
+  und `woche`, sonntags (`freigabe`) erinnert es einmal mit derselben Art. `notify_tischlein` hängt an
+  beide Knöpfe; `tischlein_antwort` schickt den Tap an `POST /api/bewertung` (`datum`, `urteil`:
+  gut, mittel, nie) bzw. `POST /api/plaene/freigeben` (`woche`).
   Gibt jemand eine Woche frei, kommt „<Name> hat die Woche ab 16.11. freigegeben: Mo …“ mit `art: freigabe`.
   **Bring-Abgleich** (Einstellungen → Bring, „Automatisch abgleichen“): Tischlein schickt nach jeder
   Änderung nur das Geänderte als `art: bring_sync` (`offen` [{name, menge}], `erledigt` [name], `liste`);

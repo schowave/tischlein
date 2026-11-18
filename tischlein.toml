@@ -22,7 +22,11 @@ vorrat = ["Salz", "Pfeffer", "Zucker", "Mehl", "Öl", "Olivenöl", "Rapsöl", "S
           "Essig", "Paprikapulver", "Currypulver", "Gemüsebrühe", "Brühe"]
 
 [erinnerung]
-uhrzeit = "18:00"            # Vorabend-Meldung an Home Assistant (HA_WEBHOOK_URL); "" = aus
+# Meldungen an Home Assistant (HA_WEBHOOK_URL); "" schaltet die jeweilige Meldung ab
+uhrzeit = "18:00"            # Vorabend: „Morgen gibt's …“ samt Vorbereitung
+bewertung = "13:00"          # nach dem Mittagessen: „Wie war's?“ mit Knöpfen
+entwurf = "fr 17:00"         # Entwurf für die nächste Woche anlegen und melden
+freigabe = "so 18:00"        # einmal erinnern, wenn die nächste Woche noch nicht freigegeben ist
 
 [[tage]]
 tag = "mo"

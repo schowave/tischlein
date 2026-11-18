@@ -172,3 +172,15 @@ def test_instructions_as_one_text_become_steps():
         "Servieren.",
     ]
     assert webrecipe._steps("<p>Schritt <b>eins</b></p><p>Schritt zwei</p>") == ["Schritt eins", "Schritt zwei"]
+
+
+def test_accepting_with_einplanen_puts_the_recipe_on_the_wish_list(svc):
+    from fastapi.testclient import TestClient
+
+    from tischlein.app import create_app
+
+    c = TestClient(create_app(svc))
+    assert "Nächste Woche einplanen" in c.get("/rezept-holen", params={"url": URL}).text
+    r = c.post("/rezept-holen", data={"url": URL, "kategorien": ["Neu"], "einplanen": "1"}, follow_redirects=False)
+    assert "hinweis=" in r.headers["location"]
+    assert [x.name for x in svc.wishes()] == ["Tofu-Curry mit Brokkoli"]

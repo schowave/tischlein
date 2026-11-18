@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from datetime import date, timedelta
 
-from . import shopping
+from . import season, shopping
 from .config import WEEKDAY_NAMES
 from .models import Recipe, WeekPlan, with_cooked
 from .planner import is_lunch, week_start_of
@@ -43,7 +43,8 @@ def is_kid_ok(svc: Tischlein, r: Recipe | None, feedback: dict) -> bool:
     return r.has_tag(svc.config.kid_tag) or feedback.get(r.uid) == "ok"
 
 
-def recipe_json(svc: Tischlein, r: Recipe, feedback: dict) -> dict:
+def recipe_json(svc: Tischlein, r: Recipe, feedback: dict, wishes: set[str] | None = None) -> dict:
+    wishes = set(svc.store.wishes()) if wishes is None else wishes
     themes = [t for t in svc.config.themes if r.has_tag(t)]
     return {
         "uid": r.uid,
@@ -56,6 +57,8 @@ def recipe_json(svc: Tischlein, r: Recipe, feedback: dict) -> dict:
         "hauptspeise": r.has_tag(svc.config.main_tag),
         "rueckmeldung": feedback.get(r.uid),
         "bild": r.uid in svc_photos(svc),
+        "saison": svc.season_of(date.today().month).get(r.uid, ([], []))[0],
+        "gewuenscht": r.uid in wishes,
     }
 
 
@@ -143,7 +146,7 @@ def cook_view(svc: Tischlein, day: date) -> dict:
     }
 
 
-def week_view(svc: Tischlein, which: str | None, today: date, toast: str = "") -> dict:
+def week_view(svc: Tischlein, which: str | None, today: date, toast: str = "", learned: str = "") -> dict:
     cfg = svc.config
     feedback = svc.store.feedback()
     recipes = {r.uid: r for r in svc.store.recipes()}
@@ -171,6 +174,9 @@ def week_view(svc: Tischlein, which: str | None, today: date, toast: str = "") -
         logged = bool(meal and meal.logged)
         movable = bool(planned and not planned.leftovers and not logged and d >= today)
         cookable = bool(planned and planned.recipe_uid and not planned.skipped and not planned.leftovers and not logged)
+        # the theme explains what the planner rolled; next to the family's own choice it only confuses
+        own = bool(meal and (meal.chosen or meal.logged or meal.reason.startswith("Verschoben von")))
+        in_season = svc.season_of(d.month).get(meal.recipe_uid, ([], []))[0] if meal and meal.recipe_uid else []
         days.append(
             {
                 "date": d,
@@ -178,6 +184,8 @@ def week_view(svc: Tischlein, which: str | None, today: date, toast: str = "") -
                 "short": f"{d.day}.{d.month}.",
                 "theme": changed_themes.get(d, rule.theme),
                 "theme_changed": d in changed_themes,
+                "show_theme": not own,
+                "season": ", ".join(in_season) if meal and not meal.leftovers and not meal.skipped else "",
                 "themes": svc.theme_choices(),
                 "past": d < today,
                 "logged": bool(meal and meal.logged),
@@ -258,6 +266,9 @@ def week_view(svc: Tischlein, which: str | None, today: date, toast: str = "") -
         "finding": finding,
         # only the note of the week that was just changed (meldung=<its Monday>)
         "toast": svc.last_change(start) if toast == start.isoformat() else None,
+        # a rating just made this dish Kinder-OK: say so, with a way back
+        "learned": recipes.get(learned) if learned and feedback.get(learned) == "ok" else None,
+        "wishes": svc.wishes(),
         "new_tag": cfg.new_tag,
         "kid_tag": cfg.kid_tag,
         "sync_enabled": svc.paprika is not None,
@@ -276,12 +287,16 @@ def recipes_view(svc: Tischlein) -> dict:
     themes = list(cfg.themes)
     taken = {t.casefold() for t in family + themes}
     others = [c for c in svc.categories() if c.casefold() not in taken]
-    items = [recipe_json(svc, r, feedback) for r in recipes]
+    wishes = set(svc.store.wishes())
+    items = [recipe_json(svc, r, feedback, wishes) for r in recipes]
     index = svc.ingredient_index()
     for i in items:  # ingredient names for "what can I cook with ...?"; no amounts, no headings
         i["zutaten"] = index.get(i["uid"], [])
     mains = [i for i in items if i["hauptspeise"]]
     return {
+        "proposals": svc.open_proposals(),
+        "backlog": svc.proposal_backlog() if svc.llm() is not None else 0,
+        "season": season.in_season(date.today().month),
         "data": {
             "recipes": items,
             "groups": [
@@ -346,7 +361,7 @@ def settings_view(svc: Tischlein, base_url: str) -> dict:
     }
 
 
-FREE_REASONS = ["Urlaub", "Auswärts essen", "Kita / Schule", "Reste", "Kein Mittagessen"]
+FREE_REASONS = ["Urlaub", "Auswärts essen", "Kita / Schule", "Reste vom Vortag", "Kein Mittagessen"]
 
 
 def shopping_view(svc: Tischlein, week_start: date, which: str) -> dict:
@@ -440,12 +455,22 @@ def web_view(svc: Tischlein, url: str) -> dict:
     return v
 
 
-def ideas_view(svc: Tischlein) -> dict:
+def ideas_view(svc: Tischlein, query: str = "", today: date | None = None) -> dict:
     cfg = svc.config
     feedback = svc.store.feedback()
+    results, search_error = [], ""
+    if query.strip():
+        try:
+            results = svc.search_web(query)
+        except ValueError as e:
+            search_error = str(e)
 
     trial = [r for r in svc.store.recipes() if r.has_tag(cfg.new_tag) and is_lunch(r, cfg) and r.uid not in feedback]
     return {
+        "query": " ".join(query.split()),
+        "results": results,
+        "search_error": search_error,
+        "season": season.in_season((today or date.today()).month)[:8],
         "ideas": svc.store.ideas("neu"),
         "accepted": svc.store.ideas("uebernommen")[:6],
         "llm": svc.llm() is not None,
@@ -502,6 +527,8 @@ def review_view(svc: Tischlein, today: date, weeks: int) -> dict:
 
     weeks_out = []
     for p in sorted(plans, key=lambda p: p.week_start, reverse=True):
+        if not any(m in meals for m in p.meals):
+            continue  # nothing cooked that week (all free, or still ahead): nothing to look back on
         weeks_out.append(
             {
                 "range": span(p.week_start, p.week_start + timedelta(days=4)),

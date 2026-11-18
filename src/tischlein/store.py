@@ -615,3 +615,64 @@ class Store:
     @_locked
     def feedback(self) -> dict[str, Verdict]:
         return dict(self.db.execute("SELECT recipe_uid, verdict FROM feedback").fetchall())
+
+    @_locked
+    def remove_feedback(self, recipe_uid: str) -> None:
+        with self.db:
+            self.db.execute("DELETE FROM feedback WHERE recipe_uid = ?", (recipe_uid,))
+
+    # Wishes ------------------------------------------------------------------
+
+    @_locked
+    def set_wish(self, recipe_uid: str, on: bool) -> None:
+        with self.db:
+            if on:
+                self.db.execute(
+                    "INSERT OR IGNORE INTO wishes VALUES (?, ?)",
+                    (recipe_uid, datetime.now().isoformat(timespec="seconds")),
+                )
+            else:
+                self.db.execute("DELETE FROM wishes WHERE recipe_uid = ?", (recipe_uid,))
+
+    @_locked
+    def wishes(self) -> list[str]:
+        """Wished recipes, oldest wish first."""
+        rows = self.db.execute("SELECT recipe_uid FROM wishes ORDER BY created_at, rowid").fetchall()
+        return [r[0] for r in rows]
+
+    # Proposals and cooking times -----------------------------------------------
+
+    @_locked
+    def add_proposals(self, rows: list[tuple[str, str, str]]) -> None:
+        """(recipe_uid, kind, value); one that was answered before (also declined) is left alone."""
+        with self.db:
+            self.db.executemany("INSERT OR IGNORE INTO proposals VALUES (?, ?, ?, 'offen')", rows)
+
+    @_locked
+    def proposals(self, state: str | None = "offen") -> list[dict]:
+        sql = "SELECT recipe_uid, kind, value, state FROM proposals"
+        rows = self.db.execute(sql + (" WHERE state = ?" if state else ""), (state,) if state else ()).fetchall()
+        return [{"uid": u, "kind": k, "value": v, "state": s} for u, k, v, s in rows]
+
+    @_locked
+    def set_proposal(self, recipe_uid: str, kind: str, state: str | None) -> None:
+        """state None = done with it (accepted): the row goes."""
+        with self.db:
+            if state is None:
+                self.db.execute("DELETE FROM proposals WHERE recipe_uid = ? AND kind = ?", (recipe_uid, kind))
+            else:
+                self.db.execute(
+                    "UPDATE proposals SET state = ? WHERE recipe_uid = ? AND kind = ?", (state, recipe_uid, kind)
+                )
+
+    @_locked
+    def set_cooktime(self, recipe_uid: str, minutes: int) -> None:
+        with self.db:
+            self.db.execute(
+                "INSERT INTO cooktimes VALUES (?, ?) ON CONFLICT(recipe_uid) DO UPDATE SET minutes = excluded.minutes",
+                (recipe_uid, minutes),
+            )
+
+    @_locked
+    def cooktimes(self) -> dict[str, int]:
+        return dict(self.db.execute("SELECT recipe_uid, minutes FROM cooktimes").fetchall())

@@ -8,8 +8,9 @@
   // "meldung=1" leaves the address, so a reload does not show it again.
   function settleToast() {
     const url = new URL(location.href);
-    if (url.searchParams.has("meldung")) {
+    if (url.searchParams.has("meldung") || url.searchParams.has("gelernt")) {
       url.searchParams.delete("meldung");
+      url.searchParams.delete("gelernt");
       history.replaceState(null, "", url.pathname + url.search + url.hash);
     }
     const toast = document.querySelector("[data-toast]");

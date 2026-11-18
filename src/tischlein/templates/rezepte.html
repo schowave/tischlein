@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros.html" import recipe_tabs %}
 {% block title %}Rezepte · Tischlein{% endblock %}
 {% block content %}
 <div x-data="recipes" @keydown.escape.window="phone && selectedUid && select(null)">
@@ -7,6 +8,7 @@
     <h1>Rezepte</h1>
     <p><span class="num">{{ v.kid_count }}</span> von <span class="num">{{ v.main_count }}</span> Hauptspeisen sind Kinder-OK · <span class="num">{{ v.untagged }}</span> ohne Thema · <span class="num">{{ v.count }}</span> Rezepte in Paprika</p>
   </div>
+  {{ recipe_tabs('sammlung') }}
   {% if v.data.canWrite %}
   <div class="title-actions">
     <span class="stamp">Abgeglichen {{ (v.last_sync or 'noch nie').split(' – ')[0] }}</span>
@@ -20,6 +22,47 @@
   {% endif %}
 </section>
 
+{% if hinweis %}<p class="notice" role="status">{{ hinweis }}</p>{% endif %}
+{% if v.backlog and not v.proposals %}
+<div class="prop-line" id="vorschlaege" x-data="proposals">
+  <span x-show="!running">{{ v.backlog }} Hauptspeisen ohne Thema oder Kochzeit.</span>
+  <span x-show="running" x-cloak x-text="label" role="status"></span>
+  <button type="button" class="meta-more" :disabled="running" @click="start('/api/vorschlaege/start')">Vorschläge holen</button>
+  <span class="err" role="alert" x-show="error" x-text="error" x-cloak></span>
+</div>
+{% elif v.proposals %}
+<section class="panel proposals" id="vorschlaege" aria-labelledby="prop-h" x-data="proposals">
+  <div class="panel-head">
+    <h2 id="prop-h">Vorschläge prüfen</h2>
+    {% if v.proposals %}<span class="chip-count num">{{ v.proposals | length }}</span>{% endif %}
+    <div class="end">
+      {% if v.backlog %}<button type="button" class="btn btn-ghost btn-sm" :disabled="running" @click="start('/api/vorschlaege/start')">Weitere holen</button>{% endif %}
+      <button type="button" class="btn btn-primary btn-sm" :disabled="running" @click="start('/api/vorschlaege/alle')">Alle übernehmen</button>
+    </div>
+  </div>
+  <p class="panel-note">Das LLM schlägt für Rezepte ohne Thema ein Thema und für Rezepte ohne Zeit eine Kochzeit vor. Ein Thema geht als Kategorie nach Paprika, die Zeit bleibt als Schätzung in Tischlein.</p>
+  <div class="sync-banner" role="status" aria-live="polite" x-show="running" x-cloak>
+    <div class="sync-line"><strong x-text="label"></strong></div>
+    <div class="sync-bar" aria-hidden="true"><span :style="`width: ${percent}%`"></span></div>
+  </div>
+  <p class="notice" role="alert" x-show="error" x-text="error" x-cloak></p>
+  <ul class="prop-list">
+    {% for p in v.proposals %}
+    <li>
+      <a class="prop-name" href="/rezepte?rezept={{ p.uid | urlencode }}">{{ p.name }}</a>
+      {% for kind, text in [('thema', p.thema), ('zeit', (p.minuten ~ ' Min.') if p.minuten else '')] %}{% if text %}
+      <span class="prop">
+        <span class="pill pill-neutral">{{ text }}</span>
+        <form class="inline" method="post" action="/vorschlaege/{{ p.uid | urlencode }}/{{ kind }}"><input type="hidden" name="annehmen" value="1"><button class="btn btn-sm" aria-label="{{ p.name }}: {{ text }} übernehmen" {% if kind == 'thema' and not v.data.canWrite %}disabled title="Paprika ist nicht verbunden"{% endif %}>Passt</button></form>
+        <form class="inline" method="post" action="/vorschlaege/{{ p.uid | urlencode }}/{{ kind }}"><input type="hidden" name="annehmen" value="0"><button class="btn btn-ghost btn-sm" aria-label="{{ p.name }}: {{ text }} ablehnen">Nein</button></form>
+      </span>
+      {% endif %}{% endfor %}
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+
 <div class="filters" role="search">
   <div class="line">
     <label class="search">
@@ -32,6 +75,7 @@
       <button type="button" :aria-pressed="scope === 'all'" @click="scope = 'all'">Alle</button>
     </div>
     <button type="button" class="chip kid" :aria-pressed="onlyOpen" @click="onlyOpen = !onlyOpen">Noch nicht Kinder-OK</button>
+    <button type="button" class="chip" :aria-pressed="inSeason" @click="inSeason = !inSeason" title="{{ v.season | join(', ') }}">Jetzt Saison</button>
   </div>
   <div class="chips scroll" role="group" aria-label="Thema">
     <button type="button" class="chip" :aria-pressed="theme === null" @click="theme = null">Alle Themen <span class="n num" x-text="base.length"></span></button>
@@ -104,6 +148,11 @@
           <template x-if="selected.bild"><img class="photo" :src="photoUrl(selected)" :alt="'Foto: ' + selected.name" width="640" height="400" @error="selected.bild = false"></template>
           <h2 x-text="selected.name"></h2>
           <p class="sub" x-text="facts(selected)"></p>
+          <p class="sub season-note" x-show="selected.saison.length" x-text="'Jetzt Saison: ' + selected.saison.join(', ')"></p>
+          <div class="wish-row">
+            <button type="button" class="btn btn-sm" :class="{ 'btn-primary': !selected.gewuenscht }" :disabled="wishBusy" @click="wish(selected)"
+                    x-text="selected.gewuenscht ? 'Von der Wunschliste nehmen' : 'Nächste Woche einplanen'"></button>
+          </div>
 
           <div class="ingredients" x-data="{ d: null }" x-effect="d = details[selected.uid]">
             <h3>Zutaten <span class="n num" x-show="d?.zutaten?.length" x-text="d && ingredientCount(d)"></span></h3>

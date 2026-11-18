@@ -71,6 +71,21 @@ class Restore(BaseModel):
     eintraege: list[dict] = []
 
 
+class RatingIn(BaseModel):
+    datum: date
+    urteil: str
+    von: str = ""
+
+
+class ApproveIn(BaseModel):
+    woche: date
+    von: str = ""
+
+
+class Wish(BaseModel):
+    an: bool = True
+
+
 class TagEdit(BaseModel):
     hinzufuegen: list[str] = []
     entfernen: list[str] = []
@@ -146,14 +161,62 @@ def create_app(service: Tischlein | None = None, auto_sync: bool | None = None) 
         return service.person_name(email) if email else ""
 
     @app.get("/", response_class=HTMLResponse)
-    def index(request: Request, woche: str | None = None, meldung: str = ""):
-        v = week_view(service, woche, date.today(), toast=meldung)
+    def index(request: Request, woche: str | None = None, meldung: str = "", gelernt: str = ""):
+        v = week_view(service, woche, date.today(), toast=meldung, learned=gelernt)
         return render(request, "woche.html", {"v": v, "nav": "woche", "free_reasons": FREE_REASONS})
 
     @app.get("/rezepte", response_class=HTMLResponse)
-    def recipes_page(request: Request):
+    def recipes_page(request: Request, hinweis: str | None = None):
         v = recipes_view(service)
-        return render(request, "rezepte.html", {"v": v, "nav": "rezepte"})
+        return render(request, "rezepte.html", {"v": v, "nav": "rezepte", "hinweis": hinweis})
+
+    @app.post("/vorschlaege/{uid}/{kind}")
+    def proposal_answer(uid: str, kind: str, annehmen: int = Form(...)):
+        if kind not in ("thema", "zeit"):
+            raise HTTPException(404, "Unbekannter Vorschlag")
+        try:
+            service.answer_proposal(uid, kind, bool(annehmen))
+        except KeyError as e:
+            raise HTTPException(404, str(e.args[0])) from e
+        except (PaprikaError, RuntimeError) as e:
+            raise HTTPException(502, str(e)) from e
+        return RedirectResponse("/rezepte#vorschlaege", status_code=303)
+
+    @app.post("/api/vorschlaege/start")
+    def api_proposals_start():
+        try:
+            return service.start_proposals()
+        except LLMError as e:
+            raise HTTPException(400, str(e)) from e
+
+    @app.post("/api/vorschlaege/alle")
+    def api_proposals_accept_all():
+        try:
+            return service.start_accept_proposals()
+        except PaprikaError as e:
+            raise HTTPException(400, str(e)) from e
+
+    @app.get("/api/vorschlaege/status")
+    def api_proposals_status():
+        return service.proposals_status()
+
+    @app.post("/api/rezepte/{uid}/wunsch")
+    def api_wish(uid: str, body: Wish | None = None):
+        if body is not None and not body.an:
+            service.remove_wish(uid)
+            return {"gewuenscht": False, "meldung": "Von der Wunschliste genommen."}
+        text = guard(service.add_wish, uid)
+        return {"gewuenscht": uid in service.store.wishes(), "meldung": text}
+
+    @app.post("/wunsch/{uid}/entfernen")
+    def wish_remove(uid: str, woche: str | None = Form(None)):
+        service.remove_wish(uid)
+        return back(woche)
+
+    @app.post("/rezepte/{uid}/kinder-ok-zurueck")
+    def kid_ok_undo(uid: str, woche: str | None = Form(None)):
+        guard(service.unlearn_kid_ok, uid)
+        return back(woche)
 
     def settings_page(request: Request, **extra):
         v = settings_view(service, str(request.base_url).rstrip("/"))
@@ -306,10 +369,13 @@ def create_app(service: Tischlein | None = None, auto_sync: bool | None = None) 
         woche: str | None = Form(None),
     ):
         try:
-            service.rate(rezept_uid, tag, urteil, person_of(request))
+            learned = service.rate(rezept_uid, tag, urteil, person_of(request))
         except ValueError as e:
             raise HTTPException(400, str(e)) from e
-        return back(woche)
+        r = back(woche)
+        if learned:  # say so, with a way back
+            r.headers["location"] += ("&" if "?" in r.headers["location"] else "?") + f"gelernt={quote(rezept_uid)}"
+        return r
 
     # Shopping list ---------------------------------------------------------------
 
@@ -391,8 +457,9 @@ def create_app(service: Tischlein | None = None, auto_sync: bool | None = None) 
     # Ideas -------------------------------------------------------------------------
 
     @app.get("/ideen", response_class=HTMLResponse)
-    def ideas_page(request: Request, hinweis: str | None = None):
-        return render(request, "ideen.html", {"v": ideas_view(service), "nav": "ideen", "hinweis": hinweis})
+    def ideas_page(request: Request, hinweis: str | None = None, suche: str = ""):
+        v = ideas_view(service, suche, date.today())
+        return render(request, "ideen.html", {"v": v, "nav": "rezepte", "hinweis": hinweis})
 
     @app.post("/ideen/erzeugen")
     def ideas_generate(thema: str = Form("")):
@@ -435,24 +502,25 @@ def create_app(service: Tischlein | None = None, auto_sync: bool | None = None) 
     def web_page(request: Request, url: str = "", text: str = ""):
         # the iOS share sheet may hand over the shared text instead of the bare link
         v = web_view(service, url or text)
-        return render(request, "rezept-holen.html", {"v": v, "nav": "ideen"})
+        return render(request, "rezept-holen.html", {"v": v, "nav": "rezepte"})
 
     @app.post("/rezept-holen")
-    def web_accept(url: str = Form(...), kategorien: list[str] = Form([])):
+    def web_accept(url: str = Form(...), kategorien: list[str] = Form([]), einplanen: int = Form(0)):
         try:
             recipe = service.accept_web_recipe(url, kategorien)
         except ValueError as e:
             raise HTTPException(400, str(e)) from e
         except PaprikaError as e:
             raise HTTPException(502, str(e)) from e
-        return RedirectResponse(f"/rezepte?rezept={quote(recipe.uid)}", status_code=303)
+        note = f"&hinweis={quote(service.add_wish(recipe.uid))}" if einplanen else ""
+        return RedirectResponse(f"/rezepte?rezept={quote(recipe.uid)}{note}", status_code=303)
 
     # Review ------------------------------------------------------------------------
 
     @app.get("/rueckblick", response_class=HTMLResponse)
     def review_page(request: Request, wochen: int = 8):
         v = review_view(service, date.today(), max(1, min(wochen, 52)))
-        return render(request, "rueckblick.html", {"v": v, "nav": "rueckblick"})
+        return render(request, "rueckblick.html", {"v": v, "nav": "woche"})
 
     @app.post("/einstellungen/paprika/trennen")
     def settings_paprika_disconnect():
@@ -576,7 +644,20 @@ def create_app(service: Tischlein | None = None, auto_sync: bool | None = None) 
 
     @app.get("/api/plan")
     def api_plan(woche: str = "aktuell"):
-        return _plan_json(service.store.plan(week(woche)))
+        # as eaten: a Nachtrag replaces the planned dish of its day, as in calendar and /api/heute
+        return _plan_json(service.eaten_plan(week(woche)))
+
+    @app.post("/api/bewertung")
+    def api_rate(body: RatingIn):
+        """The answer to „Wie war's?“ from Home Assistant: rates what was eaten that day."""
+        return {"ok": True, "gericht": guard(service.rate_day, body.datum, body.urteil, body.von)}
+
+    @app.post("/api/plaene/freigeben")
+    def api_approve(body: ApproveIn):
+        """„Freigeben“ from the notification: approves the draft of that week."""
+        # no "… hat freigegeben" to everyone: Home Assistant clears the notification on all phones
+        plan = guard(service.set_status, week_start_of(body.woche), "freigegeben", body.von, notify=False)
+        return _plan_json(plan)
 
     @app.post("/api/sync/start")
     def api_sync_start():

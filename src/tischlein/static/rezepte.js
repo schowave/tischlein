@@ -20,6 +20,51 @@ document.addEventListener("alpine:init", () => {
     return json;
   }
 
+  // "Vorschläge prüfen": fetching proposals and "Alle übernehmen" run in the background on the
+  // server; this follows the progress and reloads when it is done.
+  Alpine.data("proposals", () => ({
+    running: false,
+    done: 0,
+    total: 0,
+    error: "",
+
+    init() {
+      fetch("/api/vorschlaege/status", { cache: "no-store" })
+        .then((r) => r.json())
+        .then((s) => s.laeuft && this.follow(s))
+        .catch(() => {});
+    },
+    get label() {
+      return this.total ? `Schritt ${Math.min(this.done + 1, this.total)} von ${this.total} …` : "Läuft …";
+    },
+    get percent() {
+      return this.total ? Math.round(((this.done + 0.15) / this.total) * 100) : 5;
+    },
+    async start(url) {
+      this.error = "";
+      try {
+        this.follow(await post(url));
+      } catch (err) {
+        this.error = err.message;
+      }
+    },
+    async follow(state) {
+      this.running = true;
+      while (state.laeuft) {
+        this.done = state.fertig || 0;
+        this.total = state.gesamt || 0;
+        await new Promise((r) => setTimeout(r, 1000));
+        try {
+          state = await (await fetch("/api/vorschlaege/status", { cache: "no-store" })).json();
+        } catch {
+          continue;
+        }
+      }
+      const hint = state.fehler || (state.ergebnis ? "" : "Es sind keine Vorschläge dazugekommen.");
+      location.href = "/rezepte" + (hint ? `?hinweis=${encodeURIComponent(hint)}` : "") + "#vorschlaege";
+    },
+  }));
+
   Alpine.data("recipes", () => ({
     recipes: DATA.recipes,
     groups: DATA.groups,
@@ -33,6 +78,8 @@ document.addEventListener("alpine:init", () => {
     scope: "main",
     theme: null, // null = alle, "__none" = ohne Thema
     onlyOpen: false,
+    inSeason: false,
+    wishBusy: false,
     selectedUid: null,
     newTag: "",
     details: {}, // uid -> { loading } | { error } | { zutaten, portionen, zeit, ... }
@@ -86,6 +133,7 @@ document.addEventListener("alpine:init", () => {
     get visible() {
       return this.base.filter((r) => {
         if (this.onlyOpen && r.kinder_ok) return false;
+        if (this.inSeason && !r.saison.length) return false;
         if (this.theme === "__none" && r.themen.length) return false;
         if (this.theme && this.theme !== "__none" && !hasTag(r, this.theme)) return false;
         // every word must match the name, a category or an ingredient: "zucchini feta"
@@ -192,6 +240,19 @@ document.addEventListener("alpine:init", () => {
       if (!this.groups.some((g) => g.tags.some((t) => same(t, name)))) last.tags.push(name);
       this.newTag = "";
       if (!hasTag(r, name)) this.toggleTag(r, name, true);
+    },
+
+    // ---------- wish list: into next week's draft ----------
+    async wish(r) {
+      this.wishBusy = true;
+      try {
+        const json = await post(`/api/rezepte/${encodeURIComponent(r.uid)}/wunsch`, { an: !r.gewuenscht });
+        r.gewuenscht = json.gewuenscht;
+        this.showToast(json.meldung);
+      } catch (err) {
+        this.showToast(`Nicht eingeplant: ${err.message}.`);
+      }
+      this.wishBusy = false;
     },
 
     // ---------- trash with undo ----------

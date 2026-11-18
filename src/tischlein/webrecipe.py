@@ -362,3 +362,40 @@ def paprika_recipe(recipe: dict, uid: str, category_uids: list[str], now: str) -
         "on_favorites": False,
         "on_grocery_list": False,
     }
+
+
+# Stöbern: Chefkoch's own search (the one its apps use). Not a documented public interface: it may
+# change or go away, so everything here is defensive and the link way keeps working without it.
+SEARCH_URL = "https://api.chefkoch.de/v2/recipes"
+
+
+def search_url(query: str, limit: int = 24) -> str:
+    return SEARCH_URL + "?" + urlencode({"query": query, "limit": limit, "minimumRating": 4})
+
+
+def search_results(data) -> list[dict]:
+    """Hits of the Chefkoch search as cards: name, link, picture, stars, votes, minutes. Paid (Plus)
+    recipes and anything without a link are left out."""
+    out = []
+    for hit in data.get("results", []) if isinstance(data, dict) else []:
+        r = hit.get("recipe") if isinstance(hit, dict) else None
+        if not isinstance(r, dict) or r.get("isPlus"):
+            continue
+        url, name = str(r.get("siteUrl") or ""), str(r.get("title") or "").strip()
+        if not name or not url.startswith("https://www.chefkoch.de/"):
+            continue
+        rating = r.get("rating") if isinstance(r.get("rating"), dict) else {}
+        image = str(r.get("previewImageUrlTemplate") or "") if r.get("hasImage") else ""
+        minutes = r.get("preparationTime")
+        out.append(
+            {
+                "name": name,
+                "subtitle": str(r.get("subtitle") or "").strip(),
+                "url": url,
+                "image": image.replace("<format>", "crop-360x240") if image.startswith("https://") else "",
+                "stars": round(float(rating.get("rating") or 0), 1),
+                "votes": int(rating.get("numVotes") or 0),
+                "minutes": int(minutes) if isinstance(minutes, int | float) and minutes > 0 else None,
+            }
+        )
+    return out

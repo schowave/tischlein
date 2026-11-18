@@ -499,12 +499,12 @@ details[open] summary { color: var(--text); }
   .top-settings[aria-current="page"] { background: var(--active); color: var(--text); }
   .tabbar {
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 10;
-    display: grid; grid-template-columns: repeat(5, 1fr);
+    display: grid; grid-auto-flow: column; grid-auto-columns: 1fr;
     padding: 6px 6px calc(6px + env(safe-area-inset-bottom)); background: var(--chrome); border-top: 1px solid var(--border);
   }
   .tabbar a {
     display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; height: 52px;
-    border-radius: 12px; text-decoration: none; color: var(--muted); font-size: 11px; line-height: 14px; font-weight: 500;
+    border-radius: 12px; text-decoration: none; color: var(--muted); font-size: 12px; line-height: 14px; font-weight: 500;
   }
   .tabbar a[aria-current="page"] { color: var(--text); }
   .tabbar a[aria-current="page"] svg { color: var(--accent); }
@@ -676,3 +676,51 @@ details[open] summary { color: var(--text); }
 .supply-item { display: flex; align-items: center; gap: 4px; }
 .supply-item > a { flex: 1; min-width: 0; }
 .side-panel { margin-top: var(--gap); }
+
+/* ---------- Rezepte: Sammlung | Neues finden ---------- */
+.recipe-tabs { align-self: center; }
+.sub-title { margin-top: calc(var(--gap) * 1.5); }
+.sub-title h2 { margin: 0; }
+
+/* ---------- Saison ---------- */
+.day-dish .season-note, .season-note { color: var(--accent); }
+.season-chips { align-items: center; margin: -6px 0 14px; }
+.season-chips .menu-h { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.season-chips .chip { text-decoration: none; }
+
+/* ---------- Stöbern bei Chefkoch ---------- */
+.browse { margin-bottom: var(--gap); }
+.browse .choose-free { max-width: 640px; }
+.browse-list { list-style: none; margin: 0 0 14px; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; }
+.browse-list a { display: flex; gap: 12px; align-items: center; min-height: 80px; padding: 8px; border: 1px solid var(--border); border-radius: var(--radius-row); text-decoration: none; color: inherit; }
+.browse-list a:hover { border-color: var(--text); }
+.browse-list img { width: 96px; height: 72px; object-fit: cover; border-radius: 8px; flex: none; }
+.browse-text { display: grid; gap: 2px; min-width: 0; }
+.browse-text strong { font-weight: 600; overflow-wrap: anywhere; }
+.browse-text small { color: var(--muted); font-size: 13px; }
+.browse-text b { color: var(--accent); font-weight: 600; }
+.link-way summary { cursor: pointer; color: var(--muted); font-size: 14px; padding: 6px 0; }
+.link-way .choose-free { margin: 8px 0 0; }
+
+/* ---------- Vorschläge prüfen ---------- */
+.proposals { margin-bottom: var(--gap); }
+.prop-list { list-style: none; margin: 0; padding: 0; max-height: 420px; overflow-y: auto; }
+.prop-list li { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 10px 0; border-top: 1px solid var(--border); }
+.prop-name { flex: 1 1 220px; min-width: 0; font-weight: 500; text-decoration: none; }
+.prop-name:hover { text-decoration: underline; }
+.prop { display: inline-flex; align-items: center; gap: 6px; }
+
+/* ---------- Wunschliste ---------- */
+.wish-row { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0 4px; }
+.wishes { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+.wishes .menu-h { font-size: 12px; color: var(--muted); }
+.wishes ul { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 4px; }
+.wishes li { display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; }
+.wishes a { font-weight: 500; text-decoration: none; }
+
+/* ---------- folded sections and the one-line hint for proposals ---------- */
+.fold > summary { cursor: pointer; font-size: 18px; font-weight: 600; padding: 10px 0; margin-top: var(--gap); display: flex; align-items: center; gap: 8px; }
+.fold[open] > summary { margin-bottom: -8px; }
+.fold .sub-title { margin-top: 0; padding-top: 0; }
+.prop-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin: 0 0 16px; color: var(--muted); font-size: 14px; }
+.prop-line .err { color: var(--pill-warning-ink); flex-basis: 100%; }

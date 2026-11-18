@@ -419,3 +419,21 @@ def test_removing_bought_items_keeps_them_off_when_collecting_again(svc):
     svc.remove_done(MONDAY)
     svc.generate_shopping(MONDAY)
     assert "Zwiebel" not in {i["name"] for i in svc.store.shopping(MONDAY)}
+
+
+def test_first_gut_writes_kinder_ok_to_paprika_and_undo_takes_it_back(svc):
+    assert svc.rate("R1", MONDAY, "gut") is True
+    svc._kid_thread.join(5)
+    assert svc.store.recipe("R1").has_tag("Kinder-OK")
+    names = {c["uid"]: c["name"] for c in svc.fake.cats}
+    assert "Kinder-OK" in [names[c] for c in svc.fake.recipes["R1"]["categories"]]
+    svc.unlearn_kid_ok("R1")
+    svc._kid_thread.join(5)
+    assert not svc.store.recipe("R1").has_tag("Kinder-OK") and "R1" not in svc.store.feedback()
+
+
+def test_kinder_ok_switched_off_in_the_recipe_list_takes_back_what_a_rating_taught(svc):
+    svc.rate("R1", MONDAY, "gut")
+    svc._kid_thread.join(5)
+    svc.edit_recipe_tags("R1", [], ["Kinder-OK"])
+    assert "R1" not in svc.store.feedback() and not svc.store.recipe("R1").has_tag("Kinder-OK")

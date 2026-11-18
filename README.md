@@ -74,9 +74,22 @@ Das Prinzip ist „Sous-Chef“: Tischlein schlägt vor, die Familie gibt frei.
 - **Mit Bring abgeglichen** (über Home Assistant): Einträge und Haken gehen in beide Richtungen,
   was ihr in Bring neu anlegt, kommt unter „Aus Bring“ dazu; die Liste wählt ihr in den Einstellungen. Neue Einträge
   melden sich über Home Assistant auf dem Handy der anderen.
-- **Bewertung nach jedem Essen:** gut, ging so, nie wieder. Lieblingsgerichte kommen öfter.
+- **Bewertung nach jedem Essen:** gut, ging so, nie wieder. Lieblingsgerichte kommen öfter, und
+  „Gut“ als erste Bewertung macht ein Rezept Kinder-OK (auch in Paprika; zurücknehmbar in der Meldung
+  oder über den Kinder-OK-Schalter bei den Rezepten). Über Home Assistant
+  fragt Tischlein nach dem Mittagessen „Wie war's?“, die Antwort ist ein Knopf in der Mitteilung.
+- **Entwurf von selbst:** Freitags steht der Entwurf für die nächste Woche bereit und meldet sich
+  mit „Freigeben“; sonntags erinnert Tischlein einmal. Freigeben tut nur ihr.
+- **Saisonal:** Gerichte mit Gemüse und Obst der Saison kommen öfter, Spargel im November kaum.
+  Die Saison steht am Gericht, als Filter „Jetzt Saison“ bei den Rezepten und als Vorschlag beim Stöbern.
+- **Wunschliste:** „Nächste Woche einplanen“ an jedem Rezept; der nächste Entwurf setzt es auf
+  einen passenden Tag.
 
 **Entdecken und zurückblicken**
+- **Stöbern bei Chefkoch:** Gericht oder Zutat suchen, Treffer mit Foto, Sternen und Zeit sehen,
+  ab 4 Sternen und ohne Plus-Rezepte. Ein Tipp öffnet die Vorschau, von dort geht es nach Paprika.
+- **Vorschläge prüfen:** Das LLM schlägt für Rezepte ohne Thema ein Thema und ohne Kochzeit eine
+  Zeit vor; ihr bestätigt pro Zeile oder alles auf einmal.
 - **Ideen:** neue Gerichte vom LLM, passend zu dem, was ihr mögt, mit Fortschrittsanzeige; per
   Klick als „Neu“ und „KI“ nach Paprika.
 - **Rezepte aus dem Netz:** einen Link von Chefkoch & Co. teilen oder einfügen, Tischlein zeigt
@@ -153,7 +166,8 @@ Import/Export im Paprika-Format exportieren und die Datei auf der Startseite hoc
 ## Auf dem iPhone
 
 - **Als App auf den Home-Bildschirm:** in Safari „Teilen → Zum Home-Bildschirm“. Tischlein bekommt
-  ein eigenes Symbol und unten eine Leiste mit Woche, Einkauf, Rezepten, Ideen und Rückblick.
+  ein eigenes Symbol und unten eine Leiste mit Woche, Einkauf und Rezepten. „Neues finden“ (Stöbern, Rezept-Link, Ideen)
+  liegt unter Rezepte, der Rückblick unter der Woche.
 - **Updates:** Jede Seite kommt frisch vom Server, CSS und JavaScript tragen die Version im Link.
   Nach einem Release ist die neue Fassung beim nächsten Öffnen da; hängt die App noch im
   Speicher, einmal in der App-Übersicht schließen.
@@ -172,7 +186,7 @@ Import/Export im Paprika-Format exportieren und die Datei auf der Startseite hoc
 
   Danach in der Chefkoch-App „Teilen → Zu Tischlein“: Die Vorschau öffnet sich im Browser,
   „Nach Paprika übernehmen“ legt das Rezept an. Ohne Kurzbefehl geht es über das Feld
-  „Rezept-Link einfügen“ auf der Seite Ideen.
+  „Rezept-Link einfügen“ unter Rezepte → Neues finden.
 
 ## Konfiguration
 
@@ -192,6 +206,9 @@ Import/Export im Paprika-Format exportieren und die Datei auf der Startseite hoc
 | `abgleich.alle_minuten` | `15` | Automatische Prüfung auf Änderungen in Paprika, `0` = aus |
 | `einkauf.vorrat` | Salz, Pfeffer, Öl … | Was nie auf die Einkaufsliste kommt |
 | `erinnerung.uhrzeit` | `"18:00"` | Vorabend-Meldung an Home Assistant, `""` = aus |
+| `erinnerung.bewertung` | `"13:00"` | „Wie war's?“ nach dem Mittagessen, mit Knöpfen in der Mitteilung, `""` = aus |
+| `erinnerung.entwurf` | `"fr 17:00"` | Entwurf für die nächste Woche anlegen und melden, `""` = aus |
+| `erinnerung.freigabe` | `"so 18:00"` | Einmal erinnern, wenn die nächste Woche noch nicht freigegeben ist, `""` = aus |
 | `[[tage]]` | Mo–Fr | Ein Eintrag pro Thementag: `tag = "mo"`, `thema = "Hähnchen"` |
 
 Kalendername, Uhrzeit und Dauer stellt ihr unter **Einstellungen** ein.
@@ -235,7 +252,11 @@ uv run tischlein serve [--port 8080]                    # Web-Oberfläche und AP
 | `GET` | `/api/bring/ziel` | Welche Bring-Liste Home Assistant abgleichen soll |
 | `POST` | `/api/bring/stand` | Home Assistant meldet die Bring-Liste (`todo.get_items`); Abgehaktes und Neues kommen an |
 | `POST` | `/api/ideen/start`, `GET /api/ideen/status` | Rezeptideen im Hintergrund erzeugen, Fortschritt |
-| `GET` | `/api/plan?woche=aktuell\|naechste\|JJJJ-MM-TT` | Wochenplan als JSON |
+| `GET` | `/api/plan?woche=aktuell\|naechste\|JJJJ-MM-TT` | Wochenplan als JSON, mit Nachträgen statt des Geplanten |
+| `POST` | `/api/bewertung` | `{"datum": "JJJJ-MM-TT", "urteil": "gut\|mittel\|nie"}`: bewertet, was an dem Tag gegessen wurde |
+| `POST` | `/api/plaene/freigeben` | `{"woche": "JJJJ-MM-TT"}`: gibt den Entwurf dieser Woche frei |
+| `POST` | `/api/rezepte/{uid}/wunsch` | `{"an": true}`: auf die Wunschliste (oder gleich in den Entwurf der nächsten Woche) |
+| `POST` | `/api/vorschlaege/start`, `…/alle`, `GET …/status` | Vorschläge für Thema und Kochzeit holen, alle übernehmen, Fortschritt |
 | `POST` | `/api/plaene/{woche}/erzeugen` | Paprika abgleichen und einen Entwurf erzeugen |
 | `POST` | `/api/sync` | Nur abgleichen |
 | `GET` | `/api/rezepte`, `/api/rezepte/{uid}` | Rezepte, Zutaten und Kategorien |
@@ -335,6 +356,8 @@ Neue Planungsregeln kommen immer zuerst als Test in `tests/test_planner.py`.
   unterstützt.
 - Die Paprika-Server sperren IPs bei zu vielen Anfragen. Tischlein lädt deshalb nur geänderte
   Rezepte und macht Pausen zwischen den Abrufen.
+- Das Stöbern nutzt die **inoffizielle Suche der Chefkoch-Apps**. Sie kann sich ändern oder
+  wegfallen; der Weg über den Rezept-Link bleibt davon unberührt. Tischlein speichert keine Treffer.
 - Freigegebene Pläne werden noch nicht in den Meal Planner von Paprika geschrieben.
 - Web-Rezepte bringen ihr Foto nach Paprika mit, wenn es ein JPEG ist; andere Formate behält
   Tischlein lokal und zeigt sie nur in seiner Oberfläche.

@@ -31,7 +31,7 @@
 <section class="title">
   <div>
     <h1>Einkaufsliste</h1>
-    <p>{{ v.range }}{% if v.count %} · <span class="num" x-text="left">{{ v.open }}</span> von <span class="num" x-text="total">{{ v.count }}</span> noch offen{% elif v.has_plan %} · {{ v.dishes | length }} Gerichte geplant{% endif %}</p>
+    <p>{{ v.range }}{% if v.count %} · <span class="num" x-text="left">{{ v.open }}</span> von <span class="num" x-text="total">{{ v.count }}</span> noch offen{% elif v.has_plan %} · {{ v.dishes | length }} Gerichte geplant{% endif %}{% if v.bring_sync %} · abgeglichen mit Bring{% if v.bring_name %} „{{ v.bring_name }}“{% endif %}{% endif %}</p>
   </div>
   <div class="title-actions">
     <nav class="seg" aria-label="Woche wählen">
@@ -50,12 +50,12 @@
       <h2 id="list-h">Zu kaufen</h2>
       {% if v.count %}<span class="chip-count num" x-text="left">{{ v.open }}</span>{% endif %}
       {% if v.count %}<div class="end">
-        <button type="button" class="btn btn-ghost btn-sm" @click="share('Einkaufsliste {{ v.range }}')">Teilen</button>
         <details class="free-menu">
           <summary class="btn btn-ghost btn-sm" aria-label="Liste: mehr">Mehr</summary>
           <div class="free-options day-options">
             <button type="button" class="chip" @click="allDone(true)" x-show="left > 0">Alle abhaken</button>
             <button type="button" class="chip" @click="allDone(false)" x-show="left === 0">Alle wieder offen</button>
+            <button type="button" class="chip" @click="share('Einkaufsliste {{ v.range }}')">Teilen</button>
             {% if v.bring %}<button type="button" class="chip" @click="toBring()" :disabled="busy">{{ 'Mit Bring abgleichen' if v.bring_sync else 'An Bring schicken' }}</button>{% endif %}
             {% if v.generated %}{{ collect_form(v.which, 'Neu aus dem Plan sammeln', 'chip', 'Zutaten neu aus dem Plan sammeln? Abgehaktes bleibt abgehakt, eigene Einträge bleiben.') }}{% endif %}
           </div>
