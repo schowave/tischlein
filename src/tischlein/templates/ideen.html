@@ -1,9 +1,7 @@
 {% extends "base.html" %}
-{% from "_macros.html" import recipe_tabs %}
 {% block title %}Neues finden · Tischlein{% endblock %}
 {% block content %}
 <div x-data="ideas">
-{{ recipe_tabs('neues') }}
 <section class="title">
   <div>
     <h1>Neues finden</h1>
@@ -22,7 +20,10 @@
   </div>
   <form class="choose-free" method="get" action="/ideen" role="search" @submit="search($refs.q.value)">
     <label class="sr-only" for="browse-q">Gericht oder Zutat</label>
-    <input class="field" id="browse-q" x-ref="q" name="suche" type="search" value="{{ v.query }}" placeholder="Gericht oder Zutat, z. B. Lauch Hähnchen" autocomplete="off" enterkeyhint="search" required>
+    <span class="clearable">
+      <input class="field" id="browse-q" x-ref="q" name="suche" type="search" value="{{ v.query }}" placeholder="Gericht oder Zutat, z. B. Lauch Hähnchen" autocomplete="off" enterkeyhint="search" required x-init="typed = $el.value" @input="typed = $el.value">
+      <button type="button" class="search-clear" aria-label="Suche löschen" x-show="typed" x-cloak @click="clear({{ v.source | tojson | forceescape }})"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="m4.5 4.5 7 7m0-7-7 7"/></svg></button>
+    </span>
     <input type="hidden" name="quelle" value="{{ v.source }}">
     <button class="btn btn-primary" :disabled="!!searching" x-text="searching ? 'Sucht …' : 'Suchen'">Suchen</button>
   </form>
@@ -39,7 +40,7 @@
       {% for n in range(6) %}<li class="skel"><span class="skel-img"></span><span class="browse-text"><span class="skel-line"></span><span class="skel-line short"></span><span class="skel-line mid"></span></span></li>{% endfor %}
     </ul>
   </div>
-  <div x-show="!searching">
+  <div x-show="!searching && !cleared">
   {% if v.search_error %}<p class="notice" role="alert">{{ v.search_error }}</p>
   {% elif v.query and not v.results %}<div class="empty-frame">Zu „{{ v.query }}“ gibt es bei {{ site }} {% if v.source == 'eatsmarter' %}kein Mittagsgericht{% else %}nichts mit mindestens 4 Sternen{% endif %}.</div>
   {% elif v.results %}

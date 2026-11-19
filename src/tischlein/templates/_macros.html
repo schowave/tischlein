@@ -1,13 +1,6 @@
 {# Shared bits: a recipe thumbnail (photo or initial) and the form that builds the shopping list. #}
 {# The two sides of Rezepte: the family's collection, and where new dishes come from. Tabs at the very
    top of both pages, so they stay in one place when switching. #}
-{% macro recipe_tabs(active) %}
-<nav class="recipe-tabs" aria-label="Rezepte">
-  <a href="/rezepte" {% if active == 'sammlung' %}aria-current="page"{% endif %}>Sammlung</a>
-  <a href="/ideen" {% if active == 'neues' %}aria-current="page"{% endif %}>Neues finden</a>
-</nav>
-{% endmacro %}
-
 {% macro thumb(uid, name, has_photo, size=44) -%}
 {%- if has_photo -%}
 <img class="thumb" src="/bilder/{{ uid | urlencode }}.jpg" alt="" loading="lazy" decoding="async" width="{{ size }}" height="{{ size }}" style="width: {{ size }}px; height: {{ size }}px" onerror="this.replaceWith(Object.assign(document.createElement('span'), {className: 'thumb ph', textContent: '{{ name[:1] }}', style: 'width: {{ size }}px; height: {{ size }}px'}))">

@@ -13,6 +13,8 @@ document.addEventListener("alpine:init", () => {
     timer: null,
     searching: "",
     site: "",
+    typed: "",
+    cleared: false,
 
     init() {
       fetch("/api/ideen/status", { cache: "no-store" })
@@ -38,9 +40,19 @@ document.addEventListener("alpine:init", () => {
       if (this.stays(event)) return;
       query = query.trim();
       if (!query) return;
+      this.cleared = false;
       this.site = site;
       this.searching = query;
       if (event) this.$refs.q.value = query;
+    },
+
+    // the X empties the field and hides the hits without reloading, so the keyboard stays open
+    clear(source) {
+      this.typed = "";
+      this.cleared = true;
+      this.$refs.q.value = "";
+      this.$refs.q.focus();
+      history.replaceState(null, "", "/ideen?quelle=" + encodeURIComponent(source));
     },
 
     // a hit is fetched from its site before the preview shows

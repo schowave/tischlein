@@ -677,19 +677,6 @@ details[open] summary { color: var(--text); }
 .supply-item > a { flex: 1; min-width: 0; }
 .side-panel { margin-top: var(--gap); }
 
-/* ---------- Rezepte: Sammlung | Neues finden ---------- */
-.recipe-tabs { display: flex; gap: 24px; padding-top: 12px; border-bottom: 1px solid var(--border); }
-.recipe-tabs a {
-  display: inline-flex; align-items: center; min-height: 44px; margin-bottom: -1px; border-bottom: 2px solid transparent;
-  color: var(--muted); text-decoration: none; font-weight: 500; white-space: nowrap; transition: color var(--t), border-color var(--t);
-}
-.recipe-tabs a:hover { color: var(--text); }
-.recipe-tabs [aria-current="page"] { color: var(--text); border-bottom-color: var(--text); font-weight: 600; }
-.recipe-tabs + .title { padding-top: 20px; }
-@media (max-width: 640px) {
-  .recipe-tabs { gap: 0; padding-top: 4px; }
-  .recipe-tabs a { flex: 1; justify-content: center; }
-}
 .sub-title { margin-top: calc(var(--gap) * 1.5); }
 .sub-title h2 { margin: 0; }
 
@@ -786,4 +773,20 @@ details[open] summary { color: var(--text); }
 .sheet-title { display: none; }
 @media (max-width: 640px) {
   .sheet-title { display: block; font-size: 15px; font-weight: 600; overflow-wrap: anywhere; }
+}
+
+/* ---------- search fields: own X, no zoom on iPhone ---------- */
+input[type="search"]::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; }
+.clearable { position: relative; flex: 1; display: flex; min-width: 0; }
+.clearable .field, .search .field { padding-right: 40px; }
+.search-clear {
+  position: absolute; right: 4px; top: 50%; transform: translateY(-50%); width: 36px; height: 36px;
+  display: grid; place-items: center; border: 0; border-radius: 999px; background: none; color: var(--muted); cursor: pointer;
+}
+.search-clear:hover { color: var(--text); }
+.search .search-clear svg { position: static; width: 16px; height: 16px; color: inherit; }
+.search-clear svg { width: 16px; height: 16px; }
+/* Safari on iPhone zooms into any field under 16px and does not zoom back out */
+@media (pointer: coarse), (max-width: 900px) {
+  input:not([type="checkbox"]):not([type="radio"]), select, textarea { font-size: 16px; }
 }

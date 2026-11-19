@@ -1,9 +1,7 @@
 {% extends "base.html" %}
-{% from "_macros.html" import recipe_tabs %}
 {% block title %}Rezepte · Tischlein{% endblock %}
 {% block content %}
 <div x-data="recipes" @keydown.escape.window="phone && selectedUid && select(null)">
-{{ recipe_tabs('sammlung') }}
 <section class="title">
   <div>
     <h1>Rezepte</h1>
@@ -68,7 +66,8 @@
     <label class="search">
       <span class="sr-only">Rezept oder Zutat suchen</span>
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14"/></svg>
-      <input class="field" type="search" placeholder="Rezept oder Zutaten, z. B. Zucchini Feta" autocomplete="off" x-model="q">
+      <input class="field" type="search" placeholder="Rezept oder Zutaten, z. B. Zucchini Feta" autocomplete="off" x-model="q" x-ref="q">
+      <button type="button" class="search-clear" aria-label="Suche löschen" x-show="q" x-cloak @click="q = ''; $refs.q.focus()"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="m4.5 4.5 7 7m0-7-7 7"/></svg></button>
     </label>
     <div class="seg" role="group" aria-label="Umfang">
       <button type="button" :aria-pressed="scope === 'main'" @click="scope = 'main'">Hauptspeisen</button>

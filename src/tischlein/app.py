@@ -474,7 +474,7 @@ def create_app(service: Tischlein | None = None, auto_sync: bool | None = None) 
     @app.get("/ideen", response_class=HTMLResponse)
     def ideas_page(request: Request, hinweis: str | None = None, suche: str = "", quelle: str = ""):
         v = ideas_view(service, suche, date.today(), quelle)
-        return render(request, "ideen.html", {"v": v, "nav": "rezepte", "hinweis": hinweis})
+        return render(request, "ideen.html", {"v": v, "nav": "ideen", "hinweis": hinweis})
 
     @app.post("/ideen/erzeugen")
     def ideas_generate(thema: str = Form("")):
@@ -517,7 +517,7 @@ def create_app(service: Tischlein | None = None, auto_sync: bool | None = None) 
     def web_page(request: Request, url: str = "", text: str = ""):
         # the iOS share sheet may hand over the shared text instead of the bare link
         v = web_view(service, url or text)
-        return render(request, "rezept-holen.html", {"v": v, "nav": "rezepte"})
+        return render(request, "rezept-holen.html", {"v": v, "nav": "ideen"})
 
     @app.post("/rezept-holen")
     def web_accept(url: str = Form(...), kategorien: list[str] = Form([]), einplanen: int = Form(0)):
