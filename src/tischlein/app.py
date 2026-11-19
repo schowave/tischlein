@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import io
 import os
+import re
 import secrets
 import zipfile
 from contextlib import asynccontextmanager
@@ -479,6 +480,8 @@ def create_app(service: Tischlein | None = None, auto_sync: bool | None = None) 
 
     @app.get("/ideen", response_class=HTMLResponse)
     def ideas_page(request: Request, hinweis: str | None = None, suche: str = "", quelle: str = ""):
+        if re.search(r"https?://", suche):  # a link pasted into the search: straight to its preview
+            return RedirectResponse(f"/rezept-holen?text={quote(suche.strip())}", status_code=303)
         v = ideas_view(service, suche, date.today(), quelle)
         return render(request, "ideen.html", {"v": v, "nav": "ideen", "hinweis": hinweis})
 

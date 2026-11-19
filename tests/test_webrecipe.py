@@ -163,7 +163,11 @@ def test_preview_page_and_accept_route(svc):
     assert r.status_code == 303 and r.headers["location"].startswith("/rezepte?rezept=")
     assert "Schon in Paprika" in c.get("/rezept-holen", params={"url": URL}).text
     assert "lässt sich nicht lesen" in c.get("/rezept-holen", params={"url": "https://nix.example/a"}).text
-    assert "Rezept-Link einfügen" in c.get("/ideen").text
+    assert "Gericht, Zutat oder Rezept-Link" in c.get("/ideen").text
+    r = c.get("/ideen", params={"suche": f"Schau mal {URL}"}, follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"].startswith(
+        "/rezept-holen?text="
+    )  # a pasted link opens its preview
 
 
 def test_cookidoo_steps_come_from_the_same_address_asked_for_json(svc):

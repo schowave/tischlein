@@ -108,3 +108,18 @@ def test_review_edge_cases():
     assert parmesan[0]["amount"] == "200 g + etwas"
     kept = collect([{"name": "A", "ingredients": "(TK) 300 g Erbsen\n(à 400 g)"}], [])
     assert [i["line"] for i in kept] == ["(TK) 300 g Erbsen"]
+
+
+def test_an_answer_cut_off_at_the_output_limit_says_so():
+    import json
+
+    import pytest
+
+    from tischlein.llm import LLMClient, LLMError
+
+    def cut(url, headers, body):
+        content = '{"items": [{"name": "Zwiebeln", "amount": "2", "gro'
+        return 200, json.dumps({"choices": [{"message": {"content": content}, "finish_reason": "length"}]}).encode()
+
+    with pytest.raises(LLMError, match="abgeschnitten"):
+        LLMClient("u", "k", "m", cut).chat_json("s", "u")

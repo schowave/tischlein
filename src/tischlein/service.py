@@ -568,7 +568,8 @@ class Tischlein:
         client = self.llm()
         if client is not None:
             try:
-                result = shopping.parse_llm(client.chat_json(shopping.SYSTEM, shopping.llm_prompt(items)))
+                answer = client.chat_json(shopping.SYSTEM, shopping.llm_prompt(items), max_tokens=16000)
+                result = shopping.parse_llm(answer, shopping.recipe_numbers(items))
                 how = "llm"
             except LLMError as e:
                 how = f"einfach (LLM-Fehler: {e})"

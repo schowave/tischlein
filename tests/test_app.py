@@ -305,7 +305,7 @@ def test_ideas_for_one_theme(client):
     svc.store.set_meta("llm_model", "m")
     r = client.post("/api/ideen/start", json={"thema": "Kuchen"})
     assert r.status_code == 400 and "Unbekanntes Thema" in r.json()["detail"]
-    assert "Ideen dazu" in client.get("/ideen").text
+    assert "Ideen dazu" not in client.get("/ideen").text and "Ideen vom LLM" not in client.get("/ideen").text
 
 
 def test_api_keeps_an_approved_week_for_home_assistant(client):

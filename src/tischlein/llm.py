@@ -55,12 +55,14 @@ class LLMClient:
     model: str
     transport: Transport = urllib_transport
 
-    def chat_json(self, system: str, user: str, temperature: float = 0.4):
-        """Send one chat turn and return the parsed JSON answer."""
+    def chat_json(self, system: str, user: str, temperature: float = 0.4, max_tokens: int = 8000):
+        """Send one chat turn and return the parsed JSON answer. `max_tokens` is set on purpose: a
+        proxy's default (4096 at LiteLLM) cut long answers, such as a week's shopping list, mid-JSON."""
         url = self.base_url.rstrip("/") + "/chat/completions"
         body = {
             "model": self.model,
             "temperature": temperature,
+            "max_tokens": max_tokens,
             "response_format": {"type": "json_object"},
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
         }
@@ -72,7 +74,10 @@ class LLMClient:
             detail = raw[:200].decode(errors="replace")
             raise LLMError(f"LLM-Anfrage fehlgeschlagen (HTTP {status}): {detail}")
         try:
-            content = json.loads(raw)["choices"][0]["message"]["content"]
+            choice = json.loads(raw)["choices"][0]
+            content = choice["message"]["content"]
         except (ValueError, KeyError, IndexError, TypeError) as e:
             raise LLMError("Unerwartete Antwort vom LLM.") from e
+        if choice.get("finish_reason") == "length":
+            raise LLMError("Die Antwort des Modells war zu lang und wurde abgeschnitten.")
         return _parse_json(content or "")

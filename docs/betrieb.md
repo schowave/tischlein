@@ -59,7 +59,8 @@
   `message: "{{ trigger.json.nachricht }}"` (Companion-App). Wer den Eintrag selbst gemacht hat,
   lässt sich über `trigger.json.von` ausfiltern.
 - **LLM:** OpenAI-kompatibel (z. B. LiteLLM), in den Einstellungen; Tischlein ruft
-  `<Basis-URL>/chat/completions` mit `response_format: json_object`.
+  `<Basis-URL>/chat/completions` mit `response_format: json_object` und ausdrücklichem `max_tokens`
+  (Standard 8000, Einkaufsliste 16000): Ohne kappt LiteLLM bei 4096, und die Antwort endet mitten im JSON.
 - **iPhone-Home-Bildschirm:** In Safari „Teilen → Zum Home-Bildschirm“ legt Tischlein mit eigenem Symbol
   ab. Das Manifest nutzt `display: browser`: eine eigenständige Web-App hätte einen eigenen Cookie-Speicher
   und käme nicht durch die Anmeldung von Cloudflare Access.

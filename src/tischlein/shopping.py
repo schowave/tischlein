@@ -561,15 +561,35 @@ SYSTEM = (
 )
 
 
+def recipe_numbers(items: list[dict]) -> list[str]:
+    """The week's dishes in order; the prompt and the answer name them by number (1, 2, …), so the
+    answer does not repeat long dish names on every line and stays well inside the output limit."""
+    return list(dict.fromkeys(i["recipe"] for i in items))
+
+
 def llm_prompt(items: list[dict]) -> str:
-    lines = "\n".join(f"- {scale_line(i['line'], i.get('factor', 1))}  (für: {i['recipe']})" for i in items)
+    names = recipe_numbers(items)
+    number = {n: k for k, n in enumerate(names, 1)}
+    dishes = "\n".join(f"{k} = {n}" for k, n in enumerate(names, 1))
+    lines = "\n".join(f"- {scale_line(i['line'], i.get('factor', 1))}  (Gericht {number[i['recipe']]})" for i in items)
     return (
-        "Zutaten der Woche:\n" + lines + "\n\n"
-        'Antwortformat: {"items": [{"name": "...", "amount": "...", "group": "...", "recipes": ["..."]}]}'
+        "Gerichte:\n" + dishes + "\n\nZutaten der Woche:\n" + lines + "\n\n"
+        "Gib bei recipes die Nummern der Gerichte an. Kein Text außer dem JSON.\n"
+        'Antwortformat: {"items": [{"name": "...", "amount": "...", "group": "...", "recipes": [1, 3]}]}'
     )
 
 
-def parse_llm(answer) -> list[dict]:
+def parse_llm(answer, names: list[str] | None = None) -> list[dict]:
+    """`names`: the dishes by number as in the prompt; numbers in "recipes" become their names."""
+    names = names or []
+
+    def dish(r) -> str:
+        try:
+            k = int(r)
+        except TypeError, ValueError:
+            return str(r)
+        return names[k - 1] if 1 <= k <= len(names) else str(r)
+
     raw = answer.get("items", []) if isinstance(answer, dict) else answer
     out = []
     for i in raw or []:
@@ -583,7 +603,7 @@ def parse_llm(answer) -> list[dict]:
                 "name": name,
                 "amount": str(i.get("amount", "") or "").strip(),
                 "group": group,
-                "recipes": ", ".join(recipes) if isinstance(recipes, list) else str(recipes),
+                "recipes": ", ".join(dish(r) for r in recipes) if isinstance(recipes, list) else dish(recipes),
             }
         )
     out.sort(key=lambda i: (GROUPS.index(i["group"]), i["name"].casefold()))

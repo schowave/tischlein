@@ -121,12 +121,13 @@ def test_shopping_list_with_and_without_llm(svc):
     svc.store.set_meta("llm_base_url", "u")
     svc.store.set_meta("llm_api_key", "k")
     svc.store.set_meta("llm_model", "m")
-    fake = FakeLLM(
-        [{"items": [{"name": "Zwiebeln", "amount": "2", "group": "Obst & Gemüse", "recipes": ["Bowl", "Püree"]}]}]
-    )
+    fake = FakeLLM([{"items": [{"name": "Zwiebeln", "amount": "2", "group": "Obst & Gemüse", "recipes": [1, 2]}]}])
     svc._llm_transport = fake
     assert svc.generate_shopping(MONDAY) == "llm"
-    assert "800 g Hähnchen  (für: Bowl)" in fake.calls[0]["messages"][1]["content"]  # scaled lines go to the LLM
+    prompt = fake.calls[0]["messages"][1]["content"]
+    assert "1 = Bowl" in prompt and "800 g Hähnchen  (Gericht 1)" in prompt  # scaled lines go to the LLM
+    assert fake.calls[0]["max_tokens"] == 16000  # a long week must not be cut off mid-JSON
+    assert svc.store.shopping(MONDAY)[0]["recipes"] == "Bowl, Püree"  # dish numbers come back as names
     assert [(i["name"], i["amount"]) for i in svc.store.shopping(MONDAY)] == [("Zwiebeln", "2")]
 
     svc._llm_transport = FakeLLM([500])
