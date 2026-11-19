@@ -547,18 +547,20 @@ def test_navigation_has_three_areas_and_the_review_hangs_under_the_week(svc):
     assert "Reste vom Vortag" in page
 
 
-def test_days_can_be_dragged_and_the_menu_starts_with_verschieben(svc):
+def test_days_move_only_through_the_menu_and_the_decisions_come_first(svc):
     svc.generate(NEXT, today=DAY[2])
     client = TestClient(create_app(svc, auto_sync=False))
     page = client.get("/?woche=2026-11-23").text
     monday = page.split('id="tag-2026-11-23"')[1].split("</article>")[0]
-    assert 'class="day-grip"' in monday and 'data-targets="2026-11-24,2026-11-25,2026-11-26,2026-11-27"' in monday
-    # another dish and no lunch sit as icons beside "Mehr"; the menu itself starts with Verschieben
+    assert "day-grip" not in page and "ziehen.js" not in page  # no dragging: it happened by accident
+    # another dish, no lunch and the menu come before the portions; the menu starts with Verschieben
     assert (
         monday.index('title="Anderes Gericht"')
         < monday.index('title="Kein Mittagessen"')
         < monday.index("Mehr</summary>")
+        < monday.index('class="portions')
     )
     menu = monday.split("Mehr</summary>")[1]
     assert menu.index("Verschieben auf") < menu.index("Rezept wählen") and "Anderes Gericht" not in menu
-    assert "/static/ziehen.js" in page
+    foot = page.split('class="week-foot"')[1]
+    assert foot.index("Woche freigeben") < foot.index("Einkaufsliste") < foot.index("Woche neu planen")

@@ -39,7 +39,6 @@ src/tischlein/
                stay.js: Formulare mit data-stay schicken ohne Neuladen ab (keine springende Seite);
                menus.js: Dropdowns (details.free-menu) schließen sich gegenseitig, bei Klick daneben und Escape;
                auf dem Handy kommen sie als Blatt von unten (CSS);
-               ziehen.js: einen Tag am Griff auf einen anderen ziehen tauscht die beiden (Verschieben);
                die Leiste hat vier Bereiche (Woche, Einkauf, Rezepte, Neues finden = ideen.html: Stöbern, Link, Ideen)
                der Rückblick hängt unter der Woche;
                sw.js = Service Worker (unter /sw.js), nur damit die Einkaufsliste offline öffnet;

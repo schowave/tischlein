@@ -107,9 +107,7 @@
   {% if v.plan %}
   <div class="days">
     {% for d in v.days %}
-    <article class="day{% if d.free %} is-free{% endif %}{% if d.is_today %} is-today{% endif %}{% if d.past %} is-past{% endif %}{% if d.move_to %} can-drag{% endif %}" id="tag-{{ d.date.isoformat() }}" data-day="{{ d.date.isoformat() }}">
-      {# drag by the grip onto another day to swap the two; the menu's "Verschieben auf" does the same #}
-      {% if d.move_to %}<button type="button" class="day-grip" tabindex="-1" aria-hidden="true" title="Ziehen, um mit einem anderen Tag zu tauschen" data-targets="{{ d.move_to | map(attribute='date') | map('string') | join(',') }}"><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><circle cx="5.5" cy="3.5" r="1.3"/><circle cx="10.5" cy="3.5" r="1.3"/><circle cx="5.5" cy="8" r="1.3"/><circle cx="10.5" cy="8" r="1.3"/><circle cx="5.5" cy="12.5" r="1.3"/><circle cx="10.5" cy="12.5" r="1.3"/></svg></button>{% endif %}
+    <article class="day{% if d.free %} is-free{% endif %}{% if d.is_today %} is-today{% endif %}{% if d.past %} is-past{% endif %}" id="tag-{{ d.date.isoformat() }}" data-day="{{ d.date.isoformat() }}">
       <div class="day-when">
         <strong>{{ d.weekday }}</strong>
         <span>{% if d.is_today %}<span class="today">Heute</span> · {% endif %}{{ d.short }}{% if d.leftovers %} · Reste{% elif d.show_theme %} · {{ d.theme }}{% if d.theme_changed %} <span class="theme-note">diese Woche</span>{% endif %}{% endif %}{% if d.quick %} · wenig Zeit{% endif %}</span>
@@ -147,7 +145,10 @@
         {% if d.past %}{{ day_menu(d) }}{% endif %}
       </div>
       {% if not d.past %}
+      {# decisions first (another dish, no lunch, the menu); the portions sit at the right edge #}
       <div class="day-act">
+        {{ quick_actions(d) }}
+        {{ day_menu(d) }}
         {% if d.free and not d.past %}
         <form data-stay class="inline" method="post" action="/tage/{{ d.date.isoformat() }}/kochen"><input type="hidden" name="woche" value="{{ v.which }}"><button class="btn btn-ghost btn-sm">Doch kochen</button></form>
         {% elif d.portions and not d.past %}
@@ -158,8 +159,6 @@
           <form data-stay method="post" action="/tage/{{ d.date.isoformat() }}/portionen"><input type="hidden" name="portionen" value="{{ p.servings + 1 }}"><input type="hidden" name="woche" value="{{ v.which }}"><button class="step" aria-label="Eine Portion mehr" {% if p.servings >= 30 %}disabled{% endif %}>+</button></form>
         </div>
         {% endif %}
-        {{ quick_actions(d) }}
-        {{ day_menu(d) }}
       </div>
       {% endif %}
       {% if d.can_rate and not d.rating and d.feedback != 'nein' %}
@@ -176,12 +175,18 @@
   {% if v.extras %}
   <p class="extras">Außerdem gekocht: {% for e in v.extras %}{{ e.day }} {{ e.name }}{% if not loop.last %} · {% endif %}{% endfor %}</p>
   {% endif %}
+  {# the order of going through a week: approve it, then shop for it; looking back and re-rolling sit apart #}
   <div class="week-foot">
-    <a class="btn btn-ghost btn-sm" href="/einkauf?woche={{ v.which }}">Einkaufsliste</a>
-    <a class="btn btn-ghost btn-sm" href="/rueckblick">Rückblick</a>
-    {% if v.plan.status == 'entwurf' %}
-    <form data-stay class="inline" method="post" action="/plaene/{{ v.which }}/erzeugen" onsubmit="return confirm('Alle Tage außer den von Hand gewählten neu planen?')"><button class="btn btn-ghost btn-sm">Woche neu planen</button></form>
-    {% endif %}
+    <div class="week-next">
+      {% if v.plan.status == 'entwurf' %}<form data-stay class="inline" method="post" action="/plaene/{{ v.which }}/status"><input type="hidden" name="status" value="freigegeben"><button class="btn btn-primary btn-sm" aria-label="Woche freigeben (unten)">Woche freigeben</button></form>{% endif %}
+      <a class="btn {{ 'btn-ghost' if v.plan.status == 'entwurf' else 'btn-primary' }} btn-sm" href="/einkauf?woche={{ v.which }}">Einkaufsliste</a>
+    </div>
+    <div class="week-more">
+      <a class="btn btn-ghost btn-sm" href="/rueckblick">Rückblick</a>
+      {% if v.plan.status == 'entwurf' %}
+      <form data-stay class="inline" method="post" action="/plaene/{{ v.which }}/erzeugen" onsubmit="return confirm('Alle Tage außer den von Hand gewählten neu planen?')"><button class="btn btn-ghost btn-sm">Woche neu planen</button></form>
+      {% endif %}
+    </div>
   </div>
   {% elif v.first_run %}
   <div class="week-empty">
