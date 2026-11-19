@@ -1,4 +1,5 @@
 import io
+import os
 import random
 from datetime import date
 
@@ -314,3 +315,17 @@ def test_api_keeps_an_approved_week_for_home_assistant(client):
     assert again["status"] == "freigegeben" and again["mahlzeiten"] == first["mahlzeiten"] and again["hinweis"]
     bad = client.post("/api/einkauf/naechste/wiederherstellen", json={"eintraege": [{"id": "x", "name": "Milch"}]})
     assert bad.status_code == 400
+
+
+def test_static_files_get_a_new_address_when_their_content_changes(tmp_path, monkeypatch):
+    from tischlein import app as webapp
+
+    (tmp_path / "static").mkdir()
+    file = tmp_path / "static" / "x.js"
+    file.write_text("eins")
+    monkeypatch.setattr(webapp, "HERE", tmp_path)
+    first = webapp.asset("x.js")
+    assert first.startswith("/static/x.js?v=") and webapp.asset("x.js") == first
+    file.write_text("zwei")
+    os.utime(file, ns=(1, 1))  # also when the clock is too coarse to tell the two writes apart
+    assert webapp.asset("x.js") != first

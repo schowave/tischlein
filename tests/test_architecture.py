@@ -9,10 +9,32 @@ from pathlib import Path
 import pytest
 
 SRC = Path(__file__).parent.parent / "src" / "tischlein"
-PURE = ["planner.py", "paprika.py", "holidays.py", "prep.py", "shopping.py", "ideas.py", "models.py", "ics.py",
-        "webrecipe.py", "season.py", "proposals.py"]
-FORBIDDEN = {"sqlite3", "urllib", "http", "socket", "fastapi", "starlette", "uvicorn", "sqlalchemy", "alembic",
-             "requests", "httpx"}
+PURE = [
+    "planner.py",
+    "paprika.py",
+    "holidays.py",
+    "prep.py",
+    "shopping.py",
+    "ideas.py",
+    "models.py",
+    "ics.py",
+    "webrecipe.py",
+    "season.py",
+    "proposals.py",
+]
+FORBIDDEN = {
+    "sqlite3",
+    "urllib",
+    "http",
+    "socket",
+    "fastapi",
+    "starlette",
+    "uvicorn",
+    "sqlalchemy",
+    "alembic",
+    "requests",
+    "httpx",
+}
 ALLOWED = {"urllib.parse"}  # parses URLs, no I/O
 FORBIDDEN_LOCAL = {"store", "app", "service", "views", "paprika_sync", "llm", "cli"}
 

@@ -12,8 +12,8 @@ Regeln für das Review. Was sich mechanisch prüfen lässt, prüfen `mise run ch
 ## Domäne
 
 - Neue Planungsregeln kommen zuerst als Test in `tests/test_planner.py`, dann in `planner.py`,
-  dann in die Planungsregeln der `CLAUDE.md`.
-- Begriffe aus der Domänensprache in `CLAUDE.md` heißen überall gleich: im Code, in der
+  dann in die Planungsregeln in `docs/domaene.md`.
+- Begriffe aus der Domänensprache in `docs/domaene.md` heißen überall gleich: im Code, in der
   Oberfläche, in Tests. Ein neuer Begriff kommt in die Tabelle.
 - Paprika ist die Quelle der Wahrheit für Rezepte und Kategorien. Lokale Daten überlagern nur
   (Rückmeldungen, Bewertungen, freie Tage) und überleben einen erneuten Abgleich.

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import io
 import os
 import secrets
@@ -43,6 +44,19 @@ HERE = Path(__file__).parent
 # Set by the release build (Docker build arg); local runs show the package version.
 VERSION = os.environ.get("TISCHLEIN_VERSION") or package_version("tischlein")
 TEMPLATES = Jinja2Templates(directory=HERE / "templates")
+_ASSET_MARKS: dict[str, tuple[int, str]] = {}  # file name -> (changed at, mark of its content)
+
+
+def asset(name: str) -> str:
+    """Address of a static file with a mark of its content. An edited file gets a new address, so
+    no browser shows an old copy, also between two releases and while developing."""
+    path = HERE / "static" / name
+    changed = path.stat().st_mtime_ns
+    known = _ASSET_MARKS.get(name)
+    if known is None or known[0] != changed:
+        known = (changed, hashlib.sha256(path.read_bytes()).hexdigest()[:10])
+        _ASSET_MARKS[name] = known
+    return f"/static/{name}?v={known[1]}"
 
 
 class ShoppingItem(BaseModel):
@@ -128,6 +142,7 @@ def create_app(service: Tischlein | None = None, auto_sync: bool | None = None) 
     app = FastAPI(title="Tischlein", lifespan=lifespan)
     app.state.service = service
     TEMPLATES.env.globals["version"] = VERSION
+    TEMPLATES.env.globals["asset"] = asset
     app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
 
     def week(which: str) -> date:

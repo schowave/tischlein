@@ -1,0 +1,33 @@
+name: Quellen
+
+# Die Stöber-Quellen (Chefkoch, Eat Smarter, Cookidoo) sind inoffiziell und können sich ändern.
+# Einmal pro Woche fragt dieser Lauf jede echt; schlägt er fehl: docs/stoebern-quellen.md.
+on:
+  schedule:
+    - cron: "17 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  quellen:
+    name: Stöber-Quellen live prüfen
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: mise-Version aus mise.toml lesen
+        id: pins
+        run: |
+          mise=$(sed -n 's/^min_version = "\(.*\)".*/\1/p' mise.toml)
+          test -n "$mise"
+          echo "mise=$mise" >> "$GITHUB_OUTPUT"
+      - uses: jdx/mise-action@v5
+        with:
+          version: ${{ steps.pins.outputs.mise }}
+          install: true
+          cache: true
+        env:
+          MISE_LOCKED: "1"
+      - run: mise run setup
+      - run: mise run quellen:check

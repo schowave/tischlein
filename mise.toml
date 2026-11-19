@@ -26,9 +26,10 @@ description = "Frischer Klon -> lauffähig: Toolchain, Abhängigkeiten, Pre-comm
 run = ["mise install", "uv sync --frozen", "git config core.hooksPath .githooks"]
 
 [tasks.lint]
-description = "Statische Prüfung: ruff für Python, shellcheck für die Skripte, Syntax der eigenen JS-Dateien"
+description = "Statische Prüfung: ruff (Regeln und Formatierung) für Python, shellcheck für die Skripte, Syntax der eigenen JS-Dateien"
 run = [
   "ruff check src tests",
+  "ruff format --check src tests",
   "shellcheck scripts/*.sh deploy/lxc/*.sh deploy/proxmox/*.sh .githooks/pre-commit",
   "for f in src/tischlein/static/*.js; do node --check \"$f\" || exit 1; done",
 ]
@@ -48,6 +49,18 @@ depends = ["lint", "test"]
 [tasks.serve]
 description = "Web-Oberfläche lokal starten (lädt bei Änderungen an Code, Templates, CSS, JS neu), liest .env"
 run = "if [ -f .env ]; then set -a; . ./.env; set +a; fi; exec uv run --frozen tischlein serve --port ${PORT:-8080} --reload"
+
+[tasks."app:start"]
+description = "Server im Hintergrund starten und warten, bis er antwortet (zum Ansehen der App; Log in data/dev-server.log)"
+run = "./scripts/dev-server.sh start"
+
+[tasks."app:stop"]
+description = "Den mit app:start gestarteten Server beenden"
+run = "./scripts/dev-server.sh stop"
+
+[tasks."quellen:check"]
+description = "Stöber-Quellen live prüfen (Chefkoch, Eat Smarter, Cookidoo); braucht Netz, läuft wöchentlich im CI"
+run = "uv run --frozen python scripts/quellen_check.py"
 
 [tasks."docker:build"]
 description = "Container-Image bauen (Werkzeuge im Image kommen ebenfalls aus mise.toml/mise.lock)"

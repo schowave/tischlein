@@ -346,8 +346,9 @@ Versionen aktualisieren: Version in `mise.toml` anheben, dann `mise lock --platf
 linux-x64,linux-arm64,macos-arm64` für die Werkzeuge und `mise exec -- uv lock --upgrade` für die
 Python-Abhängigkeiten.
 
-Domänensprache, Planungsregeln und Aufbau: [`CLAUDE.md`](CLAUDE.md). Paprika-Schnittstelle:
-[`docs/paprika-api.md`](docs/paprika-api.md), Betrieb: [`docs/betrieb.md`](docs/betrieb.md), offene
+Domänensprache und Planungsregeln: [`docs/domaene.md`](docs/domaene.md), Aufbau: [`CLAUDE.md`](CLAUDE.md).
+Paprika-Schnittstelle: [`docs/paprika-api.md`](docs/paprika-api.md), Stöber-Quellen:
+[`docs/stoebern-quellen.md`](docs/stoebern-quellen.md), Betrieb: [`docs/betrieb.md`](docs/betrieb.md), offene
 Punkte: [`docs/offen.md`](docs/offen.md), Review-Regeln: [`CODING_STANDARDS.md`](CODING_STANDARDS.md).
 Neue Planungsregeln kommen immer zuerst als Test in `tests/test_planner.py`.
 

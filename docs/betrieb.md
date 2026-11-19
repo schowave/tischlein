@@ -6,6 +6,12 @@
   `ghcr.io/schowave/tischlein:{X.Y.Z,X.Y,latest}`. Die Version steckt im Image
   (`TISCHLEIN_VERSION`) und steht in `/healthz` und der Seitenleiste. Vorher die Version in
   `pyproject.toml` anheben.
+- Ablauf eines Releases: Version in `pyproject.toml` anheben, `uv lock`, direkt auf `main` committen
+  (kein Feature-Branch; Betreff wie „Thema: was sich ändert, Version X.Y.Z“), pushen, dann
+  `gh release create vX.Y.Z --title vX.Y.Z` mit Notizen unter „## Neu“ und „## Geändert“, je Punkt
+  ein fettes Stichwort und ein Satz für die Familie. Fertig ist es, wenn der Workflow „Release“ grün ist.
+- Statische Dateien tragen eine Marke ihres Inhalts (`asset()` in `app.py`); eine reine CSS- oder
+  JS-Änderung braucht für den Browser-Cache keinen Versionssprung.
 - LXC 104 auf dem Proxmox (`deploy/proxmox/create-lxc.sh`, eingerichtet mit `deploy/lxc/install.sh`):
   `/opt/tischlein/compose.yaml`, `tischlein-update.timer` alle 5 Minuten → `tischlein-update.sh`
   zieht `latest`, startet nur bei neuem Image neu, prüft `/healthz` auf die neue Version und rollt
