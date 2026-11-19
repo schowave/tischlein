@@ -29,7 +29,7 @@
     <button class="btn">Eintragen</button>
   </form>
   {% else %}
-  <p class="panel-note">Zuerst Gerichte zum Thema. Was Tischlein selbst nicht nehmen würde, steht unten mit dem Grund; wählen könnt ihr es trotzdem.</p>
+  <p class="panel-note wide-only">Zuerst Gerichte zum Thema. Was Tischlein selbst nicht nehmen würde, steht unten mit dem Grund; wählen könnt ihr es trotzdem.</p>
   {% endif %}
 
   <form class="search" method="get" role="search" style="margin-bottom: 14px">
@@ -41,6 +41,7 @@
   {% if v.choices %}
   <ul class="choose-list">
     {% for c in v.choices %}
+    {% if not nachtrag and (loop.first or loop.previtem.themed != c.themed) %}<li class="list-group-h">{{ 'Passt zum Thema' if c.themed else 'Andere Gerichte' }}</li>{% endif %}
     <li>
       <form method="post" action="{{ '/nachtrag' if nachtrag else '/tage/' ~ v.day.isoformat() ~ '/rezept' }}">
         {% if nachtrag %}<input type="hidden" name="tag" value="{{ v.day.isoformat() }}"><input type="hidden" name="zurueck" value="{{ v.back }}">{% else %}<input type="hidden" name="woche" value="{{ v.which }}">{% endif %}
@@ -49,7 +50,7 @@
           {{ thumb(c.uid, c.name, c.uid in v.photos, 40) }}
           <span>
             <strong>{{ c.name }}</strong>
-            <small>{% if c.themed and not nachtrag %}passt zum Thema{% endif %}{% if c.new %}{% if c.themed and not nachtrag %} · {% endif %}neu{% endif %}{% if c.hints %}{% if (c.themed and not nachtrag) or c.new %} · {% endif %}{{ c.hints | join(' · ') }}{% endif %}</small>
+            {% if c.new or c.hints %}<small>{% if c.new %}neu{% endif %}{% if c.hints %}{% if c.new %} · {% endif %}{{ c.hints | join(' · ') }}{% endif %}</small>{% endif %}
           </span>
         </button>
       </form>

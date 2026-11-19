@@ -101,7 +101,7 @@
     </div>
     {% elif v.has_plan %}
     <div class="empty-frame shop-empty">
-      <span>Noch keine Zutaten für diese Woche. Tischlein sammelt sie aus den {{ v.dishes | length }} geplanten Gerichten{% if v.llm %}, fasst Gleiches zusammen und sortiert nach Gang im Laden{% endif %}.</span>
+      <span>Noch keine Zutaten.<span class="wide-only"> Tischlein sammelt sie aus den {{ v.dishes | length }} geplanten Gerichten{% if v.llm %}, fasst Gleiches zusammen und sortiert nach Gang im Laden{% endif %}.</span></span>
       {{ collect_form(v.which, 'Zutaten sammeln') }}
     </div>
     {% else %}
@@ -123,7 +123,7 @@
     {% else %}
     <p class="muted">Noch nichts geplant.</p>
     {% endif %}
-    <p class="panel-note dish-note">Salz, Öl und andere Vorräte stehen nicht auf der Liste.{% if not v.llm %} Mit einem LLM in den Einstellungen fasst Tischlein gleiche Zutaten zusammen und sortiert nach Gang.{% endif %}</p>
+    <p class="panel-note dish-note wide-only">Salz, Öl und andere Vorräte stehen nicht auf der Liste.{% if not v.llm %} Mit einem LLM in den Einstellungen fasst Tischlein gleiche Zutaten zusammen und sortiert nach Gang.{% endif %}</p>
   </section>
 
   <div class="toast" role="status" aria-live="polite" x-show="toast.text" x-cloak>

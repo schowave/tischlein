@@ -5,7 +5,7 @@
 <section class="title">
   <div>
     <h1>Neues finden</h1>
-    <p>Bei Chefkoch, Eat Smarter und Cookidoo stöbern, einen Rezept-Link holen oder euch Gerichte vorschlagen lassen, die zu dem passen, was ihr mögt.</p>
+    <p class="wide-only">Bei Chefkoch, Eat Smarter und Cookidoo stöbern, einen Rezept-Link holen oder euch Gerichte vorschlagen lassen, die zu dem passen, was ihr mögt.</p>
   </div>
 </section>
 
@@ -80,7 +80,7 @@
 <section class="title sub-title">
   <div>
     <h2 class="sr-only">Ideen vom LLM</h2>
-    <p>Abwechslung dort, wo die Rotation dünn ist.</p>
+    <p class="wide-only">Abwechslung dort, wo die Rotation dünn ist.</p>
   </div>
   {% if v.llm %}
   <form class="inline" method="post" action="/ideen/erzeugen" @submit.prevent="start()">
@@ -110,7 +110,7 @@
           <h3>{{ i.name }}</h3>
           <span class="idea-meta">{% if i.thema %}<span class="pill pill-neutral">{{ i.thema }}</span>{% endif %}{% if i.zeit %}<span>{{ i.zeit }}</span>{% endif %}</span>
         </div>
-        {% if i.warum %}<p class="idea-why">{{ i.warum }}</p>{% endif %}
+        {% if i.warum %}<p class="idea-why wide-only">{{ i.warum }}</p>{% endif %}
         {% if i.kinder_tipp %}<p class="idea-kids"><strong>Für die Kinder:</strong> {{ i.kinder_tipp }}</p>{% endif %}
         <details class="idea-details">
           <summary>Zutaten und Zubereitung</summary>
@@ -127,7 +127,7 @@
           {% else %}
           <span class="muted small">Zum Übernehmen <a href="/einstellungen#paprika">Paprika verbinden</a></span>
           {% endif %}
-          <form class="inline" method="post" action="/ideen/{{ i.id }}/verwerfen"><button class="btn btn-ghost btn-sm">Nicht interessant</button></form>
+          <form class="inline" method="post" action="/ideen/{{ i.id }}/verwerfen"><button class="btn btn-ghost btn-sm icon-text" aria-label="{{ i.name }}: nicht interessant" title="Nicht interessant"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="m4.5 4.5 7 7m0-7-7 7"/></svg><span class="wide-only">Nicht interessant</span></button></form>
         </div>
       </article>
       {% endfor %}
@@ -140,7 +140,7 @@
   <aside class="s4">
     <section class="panel" aria-labelledby="supply-h">
       <div class="panel-head"><h2 id="supply-h">Vorrat pro Thema</h2></div>
-      <p class="panel-note">Damit sich nichts zu oft wiederholt, braucht jedes Thema {{ v.supply[0].bedarf if v.supply else 3 }} Kinder-OK-Gerichte.</p>
+      <p class="panel-note wide-only">Damit sich nichts zu oft wiederholt, braucht jedes Thema {{ v.supply[0].bedarf if v.supply else 3 }} Kinder-OK-Gerichte.</p>
       <div class="supply">
         {% for s in v.supply %}
         <div class="supply-item">
@@ -161,7 +161,7 @@
         </div>
         {% endfor %}
       </div>
-      <p class="panel-note">Übernommene Ideen landen mit „Neu“ in Paprika und kommen in den Neu-Slot. Nach dem Essen entscheidet ihr: „Gut“ nimmt sie in die Rotation.</p>
+      <p class="panel-note wide-only">Übernommene Ideen landen mit „Neu“ in Paprika und kommen in den Neu-Slot. Nach dem Essen entscheidet ihr: „Gut“ nimmt sie in die Rotation.</p>
     </section>
     <section class="panel side-panel" aria-labelledby="trial-h">
       <div class="panel-head">

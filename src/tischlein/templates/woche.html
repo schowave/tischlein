@@ -79,8 +79,8 @@
       <ul>{% for p in h.prep %}<li>{{ p }}</li>{% endfor %}</ul>
     </div>
     {% endif %}
-    <p class="hero-finding">{{ v.finding }}</p>
-    {% if h.meal %}<div class="hero-actions"><a class="btn btn-primary" href="/kochen/{{ h.meal.day.isoformat() }}">Kochen</a><a class="btn btn-ghost" href="/rezepte?rezept={{ h.meal.recipe_uid | urlencode }}">Rezept in der Sammlung</a></div>{% endif %}
+    <p class="hero-finding wide-only">{{ v.finding }}</p>
+    {% if h.meal %}<div class="hero-actions"><a class="btn btn-primary" href="/kochen/{{ h.meal.day.isoformat() }}">Kochen</a><a class="btn btn-ghost wide-only" href="/rezepte?rezept={{ h.meal.recipe_uid | urlencode }}">Rezept in der Sammlung</a></div>{% endif %}
   </div>
   {% if h.photo %}<a class="hero-photo" href="/rezepte?rezept={{ h.meal.recipe_uid | urlencode }}" tabindex="-1" aria-hidden="true"><img src="/bilder/{{ h.meal.recipe_uid | urlencode }}.jpg" alt="" decoding="async" onerror="this.closest('.hero').classList.remove('has-photo'); this.parentElement.remove()"></a>{% endif %}
 </section>
@@ -125,7 +125,7 @@
               {% if d.meal.is_new %}<span>Neu ausprobieren: eine sichere Beilage dazu.</span>
               {% elif d.meal.reason and 'Kinder-OK' not in d.meal.reason %}<span>{{ d.meal.reason }}</span>{% endif %}
               {% if d.season %}<span class="season-note">Saison: {{ d.season }}</span>{% endif %}
-              {% if d.portions and d.portions.base != d.portions.servings %}<span class="scale-note">Rezept für {{ d.portions.base }}, Mengen für {{ d.portions.servings }}</span>{% endif %}
+              {% if d.portions and d.portions.base != d.portions.servings %}<span class="scale-note">Rezept für {{ d.portions.base }}</span>{% endif %}
               {% elif d.meal.logged %}<span>{{ d.meal.reason }}</span>{% endif %}
             </div>
           </div>
@@ -195,7 +195,7 @@
   </div>
   {% else %}
   <div class="week-empty">
-    <span>Für {{ v.range }} ist noch nichts geplant. Tischlein wählt pro Tag ein Gericht zum Thema.</span>
+    <span>Noch kein Plan.<span class="wide-only"> Tischlein wählt pro Tag ein Gericht zum Thema.</span></span>
     <form data-stay class="inline" method="post" action="/plaene/{{ v.which }}/erzeugen"><button class="btn btn-primary">Woche planen</button></form>
   </div>
   <div class="week-foot"><a class="btn btn-ghost btn-sm" href="/rueckblick">Rückblick</a></div>

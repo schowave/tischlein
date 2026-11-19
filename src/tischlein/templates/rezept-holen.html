@@ -44,7 +44,7 @@
     <form method="post" action="/rezept-holen" data-accept>
       <input type="hidden" name="url" value="{{ r.source_url }}">
       <fieldset class="plain" data-fields>
-        <legend class="panel-note">Kategorien in Paprika. Mit „{{ v.categories[0].name }}“ kommt das Rezept in den Neu-Slot.</legend>
+        <legend class="panel-note">Kategorien in Paprika<span class="wide-only">. Mit „{{ v.categories[0].name }}“ kommt das Rezept in den Neu-Slot</span></legend>
         <div class="chips web-cats">
           {% for c in v.categories %}
           <label class="chip check-chip"><input type="checkbox" name="kategorien" value="{{ c.name }}" {% if c.on %}checked{% endif %}><span>{{ c.name }}</span></label>

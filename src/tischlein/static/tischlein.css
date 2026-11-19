@@ -126,7 +126,7 @@ button, input, select { font: inherit; color: inherit; }
 .prep strong { display: block; font-weight: 600; }
 .prep ul { margin: 4px 0 0; padding-left: 18px; }
 .hero-finding { margin: 18px 0 16px; font-size: 14px; color: var(--text); }
-.hero-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.hero-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
 .hero-photo { display: block; border-radius: var(--radius-card); overflow: hidden; aspect-ratio: 16 / 10; background: var(--surface); }
 .hero-photo img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 600ms cubic-bezier(0.22, 1, 0.36, 1); }
 .hero-photo:hover img { transform: scale(1.03); }
@@ -519,6 +519,8 @@ details[open] summary { color: var(--text); }
   .tabbar a[aria-current="page"] { color: var(--text); }
   .tabbar a[aria-current="page"] svg { color: var(--accent); }
   .tabbar svg { width: 22px; height: 22px; }
+  /* while typing, the keyboard is up: the bar would float above it when scrolling (iPhone) */
+  body:has(input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):focus, textarea:focus, select:focus) .tabbar { display: none; }
   .toast { bottom: calc(80px + env(safe-area-inset-bottom)); }
 }
 @media (max-width: 640px) {
@@ -813,3 +815,13 @@ fieldset.plain legend { padding: 0; margin-bottom: 8px; }
 .accept-steps .is-now::before { border-color: var(--accent); animation: skel-pulse 1s ease-in-out infinite; }
 @media (prefers-reduced-motion: reduce) { .accept-steps .is-now::before { animation: none; } }
 .day-act .portions { order: 9; margin: 0 0 0 auto; }
+
+/* ---------- the phone: explanations that help once stay on the wide screen ---------- */
+.icon-text { display: inline-flex; align-items: center; gap: 6px; }
+.icon-text svg { width: 16px; height: 16px; flex: none; }
+.list-group-h { padding: 12px 4px 4px; color: var(--muted); font-size: 13px; font-weight: 500; list-style: none; }
+.list-group-h:first-child { padding-top: 0; }
+@media (max-width: 640px) {
+  .wide-only { display: none !important; }
+  .icon-text { width: 36px; height: 36px; padding: 0; justify-content: center; }
+}

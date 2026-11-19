@@ -14,9 +14,9 @@
           <span class="num">{{ v.servings }}<small> Port.</small></span>
           <form data-stay method="post" action="/tage/{{ v.meal.day.isoformat() }}/portionen"><input type="hidden" name="portionen" value="{{ v.servings + 1 }}"><input type="hidden" name="ziel" value="kochen"><button class="step" aria-label="Eine Portion mehr" {% if v.servings >= 30 %}disabled{% endif %}>+</button></form>
         </div>
-        <span class="muted">{% if v.scaled %}Mengen umgerechnet, Rezept ist für {{ v.base }}{% else %}Mengen wie im Rezept{% endif %}</span>
+        <span class="muted">{% if v.scaled %}Rezept für {{ v.base }}, umgerechnet{% else %}Mengen wie im Rezept{% endif %}</span>
       </div>
-      <p class="wake muted" x-data="wake" x-show="supported" x-cloak x-text="on ? 'Bildschirm bleibt an, solange diese Seite offen ist.' : 'Bildschirm darf ausgehen.'"></p>
+      <p class="wake muted" x-data="wake" x-show="supported" x-cloak x-text="on ? 'Bildschirm bleibt an.' : 'Bildschirm darf ausgehen.'"></p>
     </div>
     {% if v.photo %}<div class="hero-photo"><img src="/bilder/{{ v.meal.recipe_uid | urlencode }}.jpg" alt="" decoding="async" onerror="this.closest('.cook-head').classList.remove('has-photo'); this.parentElement.remove()"></div>{% endif %}
   </section>

@@ -5,7 +5,7 @@
 <section class="title">
   <div>
     <h1>Rückblick</h1>
-    <p>Die letzten {{ v.weeks }} Wochen: freigegebene Pläne bis heute und alles Nachgetragene. <a href="/nachtrag">Gekochtes nachtragen</a></p>
+    <p><span class="wide-only">Die letzten {{ v.weeks }} Wochen: freigegebene Pläne bis heute und alles Nachgetragene. </span><a href="/nachtrag">Gekochtes nachtragen</a></p>
   </div>
   <nav class="seg" aria-label="Zeitraum">
     {% for n in [4, 8, 12] %}<a href="/rueckblick?wochen={{ n }}" {% if v.weeks == n %}aria-current="true"{% endif %}>{{ n }} Wochen</a>{% endfor %}
@@ -62,7 +62,7 @@
       </div>
       {% endfor %}
     </div>
-    {% else %}<div class="empty-frame">Noch keine freigegebenen Wochen. Der Rückblick füllt sich, sobald ihr Wochen freigebt und kocht.</div>{% endif %}
+    {% else %}<div class="empty-frame">Noch keine freigegebenen Wochen.</div>{% endif %}
   </section>
   </div>
 

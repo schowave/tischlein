@@ -15,7 +15,7 @@
   <section class="setting" id="paprika" aria-labelledby="paprika-h">
     <div class="setting-label">
       <h2 id="paprika-h">Paprika-Konto</h2>
-      <p>Tischlein liest eure Rezepte aus der Paprika-Cloud und schreibt Kategorien wie Kinder-OK zurück. Die Zugangsdaten liegen nur in der Datenbank auf eurem Server.</p>
+      <p class="wide-only">Tischlein liest eure Rezepte aus der Paprika-Cloud und schreibt Kategorien wie Kinder-OK zurück. Die Zugangsdaten liegen nur in der Datenbank auf eurem Server.</p>
     </div>
     <div class="panel setting-panel">
       <div class="state-row">
@@ -29,7 +29,7 @@
       </div>
       {% if v.account.verbunden %}
       <p class="muted small">{{ v.recipe_count }} Rezepte · zuletzt abgeglichen {{ (v.last_sync or 'noch nie').split(' – ')[0] }}</p>
-      <p class="muted small">{% if v.sync_minutes > 0 %}Automatisch: Tischlein prüft alle {{ v.sync_minutes }} Minuten, ob sich in Paprika Rezepte oder Kategorien geändert haben, und gleicht nur dann ab{% if v.auto_check %} · zuletzt geprüft {{ v.auto_check.split(' – ')[0] }}{% endif %}.{% else %}Automatischer Abgleich ist aus (<code>alle_minuten = 0</code> in tischlein.toml).{% endif %}</p>
+      <p class="muted small">{% if v.sync_minutes > 0 %}Prüft alle {{ v.sync_minutes }} Minuten auf Änderungen{% if v.auto_check %} · zuletzt geprüft {{ v.auto_check.split(' – ')[0] }}{% endif %}.{% else %}Automatischer Abgleich ist aus (<code>alle_minuten = 0</code> in tischlein.toml).{% endif %}</p>
       {% if v.auto_check and ' – ' in v.auto_check %}<p class="error-line">Letzte automatische Prüfung fehlgeschlagen: {{ v.auto_check.split(' – ', 1)[1] }}</p>{% endif %}
       {% if v.sync_error %}<p class="error-line">Letzter Abgleich fehlgeschlagen: {{ v.sync_error.split(' – ', 1)[-1] }}</p>{% endif %}
       {% endif %}
@@ -76,7 +76,7 @@
   <section class="setting" id="kalender" aria-labelledby="cal-h">
     <div class="setting-label">
       <h2 id="cal-h">Kalender auf dem iPhone</h2>
-      <p>Ein Kalender-Abo zeigt freigegebene Wochen als Termine und aktualisiert sich von selbst. Beim Abonnieren fragt das iPhone, in welchem Konto der Kalender liegen soll, zum Beispiel iCloud, damit er auf allen Geräten erscheint.</p>
+      <p class="wide-only">Ein Kalender-Abo zeigt freigegebene Wochen als Termine und aktualisiert sich von selbst. Beim Abonnieren fragt das iPhone, in welchem Konto der Kalender liegen soll, zum Beispiel iCloud, damit er auf allen Geräten erscheint.</p>
     </div>
     <div class="panel setting-panel">
       <div class="cal-subscribe">
@@ -122,7 +122,7 @@
   <section class="setting" id="llm" aria-labelledby="llm-h">
     <div class="setting-label">
       <h2 id="llm-h">LLM</h2>
-      <p>Mit einem Sprachmodell fasst Tischlein die Einkaufsliste zusammen und schlägt neue Gerichte vor. Jeder Dienst mit OpenAI-kompatibler Schnittstelle passt, zum Beispiel ein LiteLLM-Proxy. Gesendet werden nur Rezeptnamen, Zutaten und eure Vorlieben.</p>
+      <p class="wide-only">Mit einem Sprachmodell fasst Tischlein die Einkaufsliste zusammen und schlägt neue Gerichte vor. Jeder Dienst mit OpenAI-kompatibler Schnittstelle passt, zum Beispiel ein LiteLLM-Proxy. Gesendet werden nur Rezeptnamen, Zutaten und eure Vorlieben.</p>
     </div>
     <div class="panel setting-panel">
       <div class="state-row">
@@ -155,7 +155,7 @@
   <section class="setting" id="bring" aria-labelledby="bring-h">
     <div class="setting-label">
       <h2 id="bring-h">Bring</h2>
-      <p>Tischlein hält die Einkaufsliste über Home Assistant mit dieser Bring-Liste abgeglichen, in beide Richtungen. Home Assistant meldet seine Listen jede Stunde.</p>
+      <p class="wide-only">Tischlein hält die Einkaufsliste über Home Assistant mit dieser Bring-Liste abgeglichen, in beide Richtungen. Home Assistant meldet seine Listen jede Stunde.</p>
     </div>
     <div class="panel setting-panel">
       {% if v.bring_lists %}
@@ -178,7 +178,7 @@
   <section class="setting" id="abneigungen" aria-labelledby="dislike-h">
     <div class="setting-label">
       <h2 id="dislike-h">Was die Kinder nicht mögen</h2>
-      <p>Zutaten mit Komma getrennt. Gerichte, die eine davon enthalten, plant Tischlein nur, wenn zum Thema nichts anderes übrig ist; neue Ideen vermeiden sie ganz.</p>
+      <p>Zutaten mit Komma getrennt.<span class="wide-only"> Gerichte, die eine davon enthalten, plant Tischlein nur, wenn zum Thema nichts anderes übrig ist; neue Ideen vermeiden sie ganz.</span></p>
     </div>
     <div class="panel setting-panel">
       <form method="post" action="/einstellungen/abneigungen" class="form">
@@ -193,7 +193,7 @@
   <section class="setting" id="personen" aria-labelledby="people-h">
     <div class="setting-label">
       <h2 id="people-h">Personen</h2>
-      <p>Wer sich über Cloudflare anmeldet, taucht hier auf. Mit einem Namen zeigt Tischlein „Angemeldet als …“ und merkt sich, wer bewertet oder abgehakt hat.</p>
+      <p class="wide-only">Wer sich über Cloudflare anmeldet, taucht hier auf. Mit einem Namen zeigt Tischlein „Angemeldet als …“ und merkt sich, wer bewertet oder abgehakt hat.</p>
     </div>
     <div class="panel setting-panel">
       {% if v.people %}
@@ -205,7 +205,7 @@
         <div class="form-actions"><button class="btn btn-primary">Namen speichern</button></div>
       </form>
       {% else %}
-      <div class="empty-frame">Noch niemand. Sobald ihr Tischlein über <code>tischlein.schowalter.co</code> öffnet, erscheinen eure Adressen hier. Im Heimnetz ohne Cloudflare ist niemand angemeldet.</div>
+      <div class="empty-frame">Noch niemand angemeldet.<span class="wide-only"> Sobald ihr Tischlein über <code>tischlein.schowalter.co</code> öffnet, erscheinen eure Adressen hier. Im Heimnetz ohne Cloudflare ist niemand angemeldet.</span></div>
       {% endif %}
     </div>
   </section>

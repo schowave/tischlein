@@ -5,14 +5,14 @@
 <section class="title">
   <div>
     <h1>Rezepte</h1>
-    <p><span class="num">{{ v.kid_count }}</span> von <span class="num">{{ v.main_count }}</span> Hauptspeisen sind Kinder-OK · <span class="num">{{ v.untagged }}</span> ohne Thema · <span class="num">{{ v.count }}</span> Rezepte in Paprika</p>
+    <p><span class="num">{{ v.kid_count }}</span> von <span class="num">{{ v.main_count }}</span> Hauptspeisen sind Kinder-OK<span class="wide-only"> · <span class="num">{{ v.untagged }}</span> ohne Thema · <span class="num">{{ v.count }}</span> Rezepte in Paprika</span></p>
   </div>
   {% if v.data.canWrite %}
   <div class="title-actions">
-    <span class="stamp">Abgeglichen {{ (v.last_sync or 'noch nie').split(' – ')[0] }}</span>
+    <span class="stamp wide-only">Abgeglichen {{ (v.last_sync or 'noch nie').split(' – ')[0] }}</span>
     <form class="inline" method="post" action="/sync" data-sync>
       <input type="hidden" name="zurueck" value="/rezepte">
-      <button class="btn">Mit Paprika abgleichen</button>
+      <button class="btn icon-text" aria-label="Mit Paprika abgleichen" title="Mit Paprika abgleichen"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13.2 6.2A5.3 5.3 0 0 0 3.3 4.6M2.8 9.8a5.3 5.3 0 0 0 9.9 1.6"/><path d="M3.1 1.9v2.9H6M12.9 14.1v-2.9H10"/></svg><span class="wide-only">Mit Paprika abgleichen</span></button>
     </form>
   </div>
   {% else %}
@@ -23,7 +23,7 @@
 {% if hinweis %}<p class="notice" role="status">{{ hinweis }}</p>{% endif %}
 {% if v.backlog and not v.proposals %}
 <div class="prop-line" id="vorschlaege" x-data="proposals">
-  <span x-show="!running">{{ v.backlog }} Hauptspeisen ohne Thema oder Kochzeit.</span>
+  <span x-show="!running">{{ v.backlog }} ohne Thema oder Kochzeit.</span>
   <span x-show="running" x-cloak x-text="label" role="status"></span>
   <button type="button" class="meta-more" :disabled="running" @click="start('/api/vorschlaege/start')">Vorschläge holen</button>
   <span class="err" role="alert" x-show="error" x-text="error" x-cloak></span>
