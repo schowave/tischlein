@@ -6,10 +6,14 @@ Chefkoch, Eat Smarter and Cookidoo are read through undocumented interfaces (doc
 The tests only know hand-made answers, so a site that changes goes unnoticed there. This asks each
 source once for a common word and reads one Cookidoo recipe with its steps. Not part of
 `mise run check`: it needs the network and fails when a site is down.
+
+QUELLEN_OHNE=chefkoch leaves sources out (comma separated). The weekly workflow needs that: Chefkoch
+refuses GitHub's servers with 403, whatever the search looks like.
 """
 
 from __future__ import annotations
 
+import os
 import sys
 import tempfile
 from pathlib import Path
@@ -27,7 +31,11 @@ def main() -> int:
     failed = False
     with tempfile.TemporaryDirectory() as tmp:
         svc = Tischlein(Store(Path(tmp) / "check.db"), PlanConfig())
+        skipped = {s.strip() for s in os.environ.get("QUELLEN_OHNE", "").split(",")}
         for source, site in webrecipe.SOURCES.items():
+            if source in skipped:
+                print(f"{'aus':6} Suche {site}: übersprungen (QUELLEN_OHNE)")
+                continue
             try:
                 hits = svc.search_web(QUERY, source)
                 complete = [h for h in hits if h["name"] and h["url"].startswith("https://") and h["image"]]

@@ -31,3 +31,6 @@ jobs:
           MISE_LOCKED: "1"
       - run: mise run setup
       - run: mise run quellen:check
+        env:
+          # Chefkoch sperrt die Server von GitHub (403); diese Quelle zeigt nur der lokale Lauf.
+          QUELLEN_OHNE: chefkoch

@@ -2,7 +2,8 @@
 
 Keine der drei Quellen hat eine dokumentierte öffentliche Schnittstelle. Alles hier ist gegen die echten
 Seiten geprüft (Stand 2026-11). Ob es noch stimmt, sagt `mise run quellen:check`; derselbe Check läuft
-wöchentlich als Workflow „Quellen“.
+wöchentlich als Workflow „Quellen“, dort ohne Chefkoch: Chefkoch sperrt die Server von GitHub mit 403. Ob
+Chefkoch noch stimmt, zeigt nur der lokale Lauf.
 
 Jede Quelle liefert dieselbe Trefferkarte: `name`, `subtitle`, `url`, `image`, `stars`, `votes`, `minutes`,
 dazu je nach Quelle `kcal` oder `whole_time`. Ein Treffer öffnet die Vorschau (`web_recipe`), die das
