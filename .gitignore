@@ -7,3 +7,4 @@ data/
 *.paprikarecipes
 .taste-skill/
 data-demo/
+.impeccable/hook.cache.json
