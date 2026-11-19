@@ -52,7 +52,8 @@
   `notify_tischlein` im homelab-Repo legt an (`todo.add_item`) bzw. hakt ab (`todo.update_item`).
   Zurück: `tischlein_bring_stand` liest bei jeder Änderung einer Bring-Liste und alle 5 Minuten die
   gewählte Liste (`todo.get_items`) und meldet sie an `POST /api/bring/stand`; Tischlein hakt dort
-  Gekauftes ab („abgehakt von Bring“) und übernimmt neue Artikel unter „Aus Bring“. Welche Listen es
+  Gekauftes ab („abgehakt von Bring“) und übernimmt neue Artikel unter „Aus Bring“. Was beim Neu-Sammeln von
+  der Liste fällt, nimmt es 15 Minuten lang nicht zurück: So lange kann Bring es noch als offen melden. Welche Listen es
   gibt, meldet HA beim Start und stündlich an `POST /api/bring/listen`. Abgleich über den Namen
   (Zwiebel = Zwiebeln); nur die Liste der laufenden Woche.
   Fürs iPhone: Automation mit Webhook-Trigger, Aktion `notify.mobile_app_<gerät>` mit

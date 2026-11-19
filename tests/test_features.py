@@ -388,6 +388,25 @@ def test_regenerating_the_list_keeps_ticks_and_bring_state(svc, monkeypatch):
     assert all(not p["offen"] and not p["erledigt"] for p in sent[n:] if p["art"] == "bring_sync")
 
 
+def test_what_left_the_list_on_collecting_again_does_not_come_back_from_bring(svc, monkeypatch):
+    sent = []
+    monkeypatch.setattr(svc, "_post_async", lambda p, ok=None: (sent.append(p), ok and ok()))
+    svc.webhook_url = "http://ha/hook"
+    svc.set_bring_sync(True)
+    svc.generate(MONDAY)
+    svc.generate_shopping(MONDAY)
+    assert "Hähnchen" in {i["name"] for i in svc.store.shopping(MONDAY)}
+    svc.fake.recipes["R1"].update(ingredients="400 g Pute\n1 Zwiebel\nSalz", hash="pute")
+    svc.sync_paprika()
+    svc.generate_shopping(MONDAY)  # "Aktualisieren": Hähnchen leaves, Bring is told to tick it off
+    assert "Hähnchen" in sent[-1]["erledigt"]
+    # Home Assistant reports Bring before the tick-off arrived: Hähnchen must not return as "Aus Bring"
+    report = [{"summary": "Hähnchen", "status": "needs_action"}, {"summary": "Brot", "status": "needs_action"}]
+    assert svc.apply_bring_state("", report, today=MONDAY)["neu"] == 1  # only what was added in Bring
+    names = {i["name"]: i for i in svc.store.shopping(MONDAY)}
+    assert "Hähnchen" not in names and names["Brot"]["group"] == "Aus Bring"
+
+
 def test_a_deleted_ingredient_stays_off_when_collecting_again(svc, monkeypatch):
     sent = []
     monkeypatch.setattr(svc, "_post_async", lambda p, ok=None: (sent.append(p), ok and ok()))

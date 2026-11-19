@@ -49,6 +49,8 @@ def _download(url: str) -> bytes:
 
 WEB_AGENT = "Mozilla/5.0 (compatible; Tischlein)"
 WEB_IMAGES = ("image/jpeg", "image/png", "image/webp")
+# how long names that left the list on collecting again are not taken back from Bring
+BRING_GONE_GRACE = timedelta(minutes=15)
 # what "Nach Paprika übernehmen" shows while it runs, in order
 WEB_ACCEPT_STEPS = ("Rezept lesen", "Foto laden", "In Paprika anlegen", "Aus Paprika zurücklesen")
 
@@ -590,6 +592,10 @@ class Tischlein:
         gone = [
             i["name"] for i in before if i["bring"] and not i["manual"] and shopping.item_key(i["name"]) not in kept
         ]
+        if gone:  # Bring may report them as open until the tick-off arrives: not "Aus Bring" again
+            until = (datetime.now() + BRING_GONE_GRACE).isoformat(timespec="seconds")
+            keys = sorted({shopping.item_key(n) for n in gone})
+            self.store.set_meta(f"bring_gone:{week_start.isoformat()}", json.dumps({"bis": until, "namen": keys}))
         self.push_bring(week_start, gone)  # dishes swapped out: their ingredients leave Bring too
         return how
 
@@ -1210,12 +1216,27 @@ class Tischlein:
         ticked = len(bought)
         # deleted here while Bring still had it open (the removal is still on its way): not back in
         known = {shopping.item_key(i["name"]) for i in items} | set(self.store.removed_shopping(week_start))
+        known |= self._bring_gone(week_start)
         new = 0
         for key, e in by_key.items():
             if e["open"] and key not in known:
                 self.store.add_shopping_item(week_start, e["name"], e["menge"], self.BRING_GROUP, bring=True)
                 new += 1
         return {"abgehakt": ticked, "neu": new}
+
+    def _bring_gone(self, week_start: date) -> set[str]:
+        """Names that left the list when it was collected again, for a short while: Bring still has
+        them open until the tick-off from Tischlein arrives there."""
+        raw = self.store.meta(f"bring_gone:{week_start.isoformat()}")
+        if not raw:
+            return set()
+        try:
+            gone = json.loads(raw)
+            if datetime.fromisoformat(gone["bis"]) < datetime.now():
+                return set()
+            return set(gone["namen"])
+        except ValueError, KeyError, TypeError:
+            return set()
 
     def set_item_done(self, item_id: int, done: bool, person: str = "") -> bool:
         week_start = self.store.shopping_week(item_id)
