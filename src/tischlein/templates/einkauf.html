@@ -5,25 +5,24 @@
 {# One row; the same entry is rendered in its aisle and under "Im Wagen", the state decides where it shows. #}
 {% macro row(i, in_cart) %}
 {% set dishes = i.recipes.split(', ') if i.recipes and not i.manual else [] %}
-<li class="shop-item" data-id="{{ i.id }}" x-show="shown({{ i.id }}, {{ 'true' if in_cart else 'false' }})" x-data="{ more: false }"{% if in_cart %} x-cloak{% endif %}>
+{# the day a dish is cooked says enough while shopping; the full names sit in the tooltip #}
+{% set days = [] %}{% for n in dishes %}{% set d = v.dishes | selectattr('name', 'equalto', n) | first %}{% set _ = days.append(d.day[:2] if d else n) %}{% endfor %}
+<li class="shop-item" data-id="{{ i.id }}" x-show="shown({{ i.id }}, {{ 'true' if in_cart else 'false' }})"{% if in_cart %} x-cloak{% endif %}>
   <label>
     <input type="checkbox" :checked="items[{{ i.id }}].done" @change="toggle({{ i.id }}, $event.target.checked)">
     <span class="shop-text">
-      <span class="shop-name">{{ i.name }}</span>
       {% if i.amount %}<span class="shop-amount num">{{ i.amount }}</span>{% endif %}
+      <span class="shop-name">{{ i.name }}</span>
     </span>
   </label>
-  <button type="button" class="btn btn-ghost btn-icon" @click="remove({{ i.id }})" aria-label="{{ i.name }} löschen" title="Löschen">
-    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 4h11M6.5 4V2.5h3V4M4 4l.7 9.5h6.6L12 4M6.75 6.5v4.5M9.25 6.5v4.5"/></svg>
-  </button>
   {% if in_cart %}
   <span class="shop-meta" x-show="items[{{ i.id }}].by" x-text="'abgehakt von ' + items[{{ i.id }}].by"></span>
-  {% elif dishes %}
-  <span class="shop-meta">
-    {% if dishes | length == 1 %}für {{ dishes[0] }}
-    {% else %}<span x-show="!more">für {{ dishes[0] }} <button type="button" class="meta-more" @click="more = true" aria-label="Alle {{ dishes | length }} Gerichte zeigen">+ {{ dishes | length - 1 }} weitere</button></span><span x-show="more" x-cloak>für {{ dishes | join(', ') }}</span>{% endif %}
-  </span>
+  {% elif days %}
+  <span class="shop-days" title="für {{ dishes | join(', ') }}">{{ days | unique | join(' · ') }}</span>
   {% endif %}
+  <button type="button" class="btn btn-ghost btn-icon shop-del" @click="remove({{ i.id }})" aria-label="{{ i.name }} löschen" title="Löschen">
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 4h11M6.5 4V2.5h3V4M4 4l.7 9.5h6.6L12 4M6.75 6.5v4.5M9.25 6.5v4.5"/></svg>
+  </button>
 </li>
 {% endmacro %}
 
@@ -50,6 +49,11 @@
       <h2 id="list-h">Zu kaufen</h2>
       {% if v.count %}<span class="chip-count num" x-text="left">{{ v.open }}</span>{% endif %}
       {% if v.count %}<div class="end">
+        {% if v.generated %}
+        <form class="inline" method="post" action="/einkauf/{{ v.which }}/erzeugen" x-data="{ busy: false }" @submit="if (!confirm('Zutaten neu aus dem Plan sammeln? Abgehaktes bleibt abgehakt, eigene Einträge bleiben.')) { $event.preventDefault(); return; } busy = true">
+          <button class="btn btn-ghost btn-sm icon-text keep-label" :disabled="busy" title="Zutaten neu aus dem Wochenplan sammeln"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13.2 6.2A5.3 5.3 0 0 0 3.3 4.6M2.8 9.8a5.3 5.3 0 0 0 9.9 1.6"/><path d="M3.1 1.9v2.9H6M12.9 14.1v-2.9H10"/></svg><span x-text="busy ? 'Sammelt …' : 'Aktualisieren'">Aktualisieren</span></button>
+        </form>
+        {% endif %}
         <details class="free-menu">
           <summary class="btn btn-ghost btn-sm" aria-label="Liste: mehr">Mehr</summary>
           <div class="free-options day-options">
@@ -57,17 +61,15 @@
             <button type="button" class="chip" @click="allDone(false)" x-show="left === 0">Alle wieder offen</button>
             <button type="button" class="chip" @click="share('Einkaufsliste {{ v.range }}')">Teilen</button>
             {% if v.bring %}<button type="button" class="chip" @click="toBring()" :disabled="busy">{{ 'Mit Bring abgleichen' if v.bring_sync else 'An Bring schicken' }}</button>{% endif %}
-            {% if v.generated %}{{ collect_form(v.which, 'Neu aus dem Plan sammeln', 'chip', 'Zutaten neu aus dem Plan sammeln? Abgehaktes bleibt abgehakt, eigene Einträge bleiben.') }}{% endif %}
           </div>
         </details>
       </div>{% endif %}
     </div>
     <form class="add-row" @submit.prevent="add()">
-      <label class="sr-only" for="item-name">Was</label>
-      <input class="field" id="item-name" x-model="name" placeholder="Was fehlt?" required autocomplete="off" enterkeyhint="done">
-      <label class="sr-only" for="item-amount">Menge</label>
-      <input class="field add-amount" id="item-amount" x-model="amount" placeholder="Menge" autocomplete="off">
-      <button class="btn btn-primary" :disabled="busy">Dazu</button>
+      {# one field, the way it is said: "500 g Hack"; the amount in front is split off by the server #}
+      <label class="sr-only" for="item-name">Was fehlt? Menge zuerst, z. B. 500 g Hack</label>
+      <input class="field" id="item-name" x-model="name" placeholder="Was fehlt? z. B. 500 g Hack" required autocomplete="off" enterkeyhint="done">
+      <button class="btn btn-primary btn-add" :disabled="busy" aria-label="Auf die Liste" title="Auf die Liste"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg></button>
     </form>
     <p class="status err" x-text="error" x-show="error" x-cloak></p>
     <p class="notice offline-note" role="status" x-show="offline || pending" x-cloak x-text="pending ? `Offline: ${pending} ${pending === 1 ? 'Änderung wird' : 'Änderungen werden'} nachgeholt, sobald wieder Netz da ist.` : 'Offline: Die Liste ist der letzte Stand.'"></p>

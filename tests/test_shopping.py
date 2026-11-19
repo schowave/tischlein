@@ -8,6 +8,7 @@ from tischlein.shopping import (
     parse_line,
     parse_llm,
     scale_line,
+    split_entry,
 )
 
 PANTRY = ["Salz", "Pfeffer", "Öl", "Olivenöl", "Zucker"]
@@ -123,3 +124,14 @@ def test_an_answer_cut_off_at_the_output_limit_says_so():
 
     with pytest.raises(LLMError, match="abgeschnitten"):
         LLMClient("u", "k", "m", cut).chat_json("s", "u")
+
+
+def test_an_entry_typed_as_said_splits_its_amount_off():
+    assert split_entry("500 g Hack") == ("Hack", "500 g")
+    assert split_entry("2 Zitronen") == ("Zitronen", "2")
+    assert split_entry("1,5 l Milch") == ("Milch", "1,5 l")
+    assert split_entry("200g Schmand") == ("Schmand", "200g")
+    assert split_entry("½ Bund Petersilie") == ("Petersilie", "½ Bund")
+    assert split_entry("2-3 Dosen Tomaten") == ("Tomaten", "2-3 Dosen")
+    assert split_entry("Kaffee") == ("Kaffee", "")
+    assert split_entry("7up") == ("7up", "")  # a number that belongs to the name stays

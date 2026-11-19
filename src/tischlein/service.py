@@ -1288,7 +1288,10 @@ class Tischlein:
         return done
 
     def add_shopping_item(self, week_start: date, name: str, amount: str = "", person: str = "") -> int:
-        """Put something on the list by hand and tell Home Assistant (push to the phones)."""
+        """Put something on the list by hand and tell Home Assistant (push to the phones). Without an
+        amount of its own, one typed in front of the name ("500 g Hack") is split off."""
+        if not amount:
+            name, amount = shopping.split_entry(name)
         item_id = self.store.add_shopping_item(week_start, name, amount)
         self.push_bring(week_start)
         if self.webhook_url:

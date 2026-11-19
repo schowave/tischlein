@@ -406,6 +406,23 @@ def clean_name(core: str) -> tuple[str, str]:
     return re.sub(r"\s+", " ", name).strip(" .-"), plural
 
 
+_ENTRY = re.compile(
+    r"^\s*((?:\d+(?:[.,]\d+)?|[½¼¾⅓⅔])(?:\s*-\s*\d+)?\s*"
+    r"(?:(?:g|kg|ml|l|el|tl|stk|stück|pck|packung(?:en)?|bund|dose(?:n)?|becher|glas|gläser|flasche(?:n)?|netz|beutel)\b\.?)?)"
+    r"\s+(\S.*)$",
+    re.I,
+)
+
+
+def split_entry(text: str) -> tuple[str, str]:
+    """An entry typed as it is said, "500 g Hack" or "2 Zitronen" -> (name, amount). Without a number
+    in front it is all name; the amount keeps what was typed ("1,5 l", not "1.5 l")."""
+    m = _ENTRY.match(text)
+    if not m:
+        return text.strip(), ""
+    return m.group(2).strip(), " ".join(m.group(1).split())
+
+
 def parse_line(line: str) -> dict:
     """'1 Zwiebel(n), klein geschnitten' -> {qty: 1.0, unit: '', name: 'Zwiebel', plural: 'n', note: ...}."""
     rest, qty = line.strip(), None

@@ -578,12 +578,12 @@ details[open] summary { color: var(--text); }
   background: var(--rule); border: 1px solid var(--border); border-radius: var(--radius-row);
 }
 .shop-item {
-  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 0 12px; min-height: 48px;
+  display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 0 12px; min-height: 48px;
   padding: 4px 12px; background: var(--raised);
 }
 .shop-item label { display: flex; align-items: center; gap: 12px; cursor: pointer; min-width: 0; }
 .shop-item input[type="checkbox"] { width: 22px; height: 22px; accent-color: var(--accent); flex: none; }
-.shop-text { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 10px; min-width: 0; }
+.shop-text { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 6px; min-width: 0; }
 .shop-name { font-weight: 500; overflow-wrap: break-word; min-width: 0; }
 .shop-amount { color: var(--muted); }
 .shop-meta { grid-column: 1 / -1; padding: 0 0 4px 34px; margin-top: -6px; color: var(--muted); font-size: 12px; line-height: 16px; }
@@ -596,7 +596,9 @@ details[open] summary { color: var(--text); }
 .all-done { margin: 4px 0 0; color: var(--muted); }
 .shop-meta:empty { display: none; }
 .shop-item.is-done .shop-name { text-decoration: line-through; color: var(--muted); }
-.shop-item .btn { grid-row: 1; grid-column: 2; }
+.shop-item .btn { grid-row: 1; grid-column: 3; }
+.shop-days { grid-row: 1; grid-column: 2; color: var(--muted); font-size: 12px; white-space: nowrap; }
+.shop-del { color: var(--faint); }
 .btn-icon { width: 44px; height: 44px; padding: 0; display: inline-grid; place-items: center; margin: -6px -8px -6px 0; }
 .btn-icon svg { width: 18px; height: 18px; }
 .add-row { display: flex; gap: 8px; margin-bottom: 18px; }
@@ -825,3 +827,6 @@ fieldset.plain legend { padding: 0; margin-bottom: 8px; }
   .wide-only { display: none !important; }
   .icon-text { width: 36px; height: 36px; padding: 0; justify-content: center; }
 }
+.add-row .btn-add { width: 44px; padding: 0; flex: none; display: grid; place-items: center; }
+.add-row .btn-add svg { width: 18px; height: 18px; }
+@media (max-width: 640px) { .icon-text.keep-label { width: auto; padding: 0 12px; } }
