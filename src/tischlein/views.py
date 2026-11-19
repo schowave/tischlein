@@ -452,6 +452,18 @@ def web_view(svc: Tischlein, url: str) -> dict:
     v["recipe"] = recipe
     v["existing"] = v["existing"] or svc.find_source(recipe["source_url"])
     v["categories"] = [{"name": c, "on": c in preset} for c in svc.web_categories()]
+    days = svc.web_plan_days()
+    planned = any(d["dish"] for d in days)
+    for d in days:
+        if d["free"]:
+            d["note"] = f"Am {d['weekday']} gibt es kein Mittagessen: {d['free']}"
+        elif d["dish"]:
+            d["note"] = f"Ersetzt am {d['weekday']}: {d['dish']}"
+        elif not planned:
+            d["note"] = "Für nächste Woche gibt es noch keinen Plan; Tischlein legt den Entwurf an."
+        else:
+            d["note"] = f"Am {d['weekday']} ist noch nichts geplant."
+    v["days"] = days
     return v
 
 

@@ -201,6 +201,7 @@
 <div class="toast" role="status" aria-live="polite" x-show="toast.visible" x-cloak>
   <span x-text="toast.text"></span>
   <template x-if="toast.action"><button type="button" class="linkish" @click="toast.action.run()" x-text="toast.action.label"></button></template>
+  <button type="button" class="toast-close" aria-label="Meldung schließen" @click="toast.visible = false"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="m4.5 4.5 7 7m0-7-7 7"/></svg></button>
 </div>
 </div>
 <script type="application/json" id="data">{{ v.data | tojson }}</script>

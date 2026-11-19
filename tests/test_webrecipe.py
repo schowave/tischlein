@@ -2,6 +2,7 @@
 
 import json
 import random
+from datetime import timedelta
 
 import pytest
 from test_features import _with_llm
@@ -214,13 +215,61 @@ def test_instructions_as_one_text_become_steps():
     assert webrecipe._steps("<p>Schritt <b>eins</b></p><p>Schritt zwei</p>") == ["Schritt eins", "Schritt zwei"]
 
 
-def test_accepting_with_einplanen_puts_the_recipe_on_the_wish_list(svc):
+def test_accepting_onto_a_picked_day_plans_it_there_and_undo_takes_back_the_draft(svc):
     from fastapi.testclient import TestClient
 
     from tischlein.app import create_app
 
     c = TestClient(create_app(svc))
-    assert "Nächste Woche einplanen" in c.get("/rezept-holen", params={"url": URL}).text
-    r = c.post("/rezept-holen", data={"url": URL, "kategorien": ["Neu"], "einplanen": "1"}, follow_redirects=False)
-    assert "hinweis=" in r.headers["location"]
-    assert [x.name for x in svc.wishes()] == ["Tofu-Curry mit Brokkoli"]
+    nxt = svc.resolve_week("naechste")
+    wednesday = nxt + timedelta(days=2)
+    page = c.get("/rezept-holen", params={"url": URL}).text
+    assert "Nächste Woche einplanen?" in page and f'value="{wednesday.isoformat()}"' in page
+    assert "Tischlein legt den Entwurf an" in page  # no plan for next week yet
+    r = c.post(
+        "/rezept-holen", data={"url": URL, "kategorien": ["Neu"], "tag": wednesday.isoformat()}, follow_redirects=False
+    )
+    assert r.headers["location"] == f"/?woche=naechste&meldung={nxt.isoformat()}#tag-{wednesday.isoformat()}"
+    meal = next(m for m in svc.store.plan(nxt).meals if m.day == wednesday)
+    assert meal.name == "Tofu-Curry mit Brokkoli" and meal.chosen
+    assert svc.wishes() == []
+    svc.undo(nxt)
+    assert svc.store.plan(nxt) is None  # the draft came with it, so it goes with it
+
+
+def test_accepting_in_the_background_reports_each_step_and_where_to_go(svc):
+    import time
+
+    from fastapi.testclient import TestClient
+
+    from tischlein.app import create_app
+
+    c = TestClient(create_app(svc))
+    nxt = svc.resolve_week("naechste")
+    svc.store.set_skipday(nxt, "Urlaub")
+    assert (
+        "kein Mittagessen"
+        in c.post("/api/rezept-holen/start", json={"url": URL, "tag": nxt.isoformat()}).json()["detail"]
+    )
+    friday = nxt + timedelta(days=4)
+    state = c.post(
+        "/api/rezept-holen/start", json={"url": URL, "kategorien": ["Neu"], "tag": friday.isoformat()}
+    ).json()
+    assert state["schritte"][-1] == "Am Freitag einplanen" and len(state["schritte"]) == 5
+    for _ in range(100):
+        state = c.get("/api/rezept-holen/status").json()
+        if not state["laeuft"]:
+            break
+        time.sleep(0.02)
+    assert state["fehler"] is None and state["ziel"].endswith(f"#tag-{friday.isoformat()}")
+    assert "Schon in Paprika" in c.post("/api/rezept-holen/start", json={"url": URL}).json()["detail"]
+
+
+def test_accepting_without_a_day_goes_to_the_recipe(svc):
+    from fastapi.testclient import TestClient
+
+    from tischlein.app import create_app
+
+    c = TestClient(create_app(svc))
+    r = c.post("/rezept-holen", data={"url": URL, "kategorien": ["Neu"], "tag": ""}, follow_redirects=False)
+    assert r.headers["location"].startswith("/rezepte?rezept=") and svc.store.plan(svc.resolve_week("naechste")) is None

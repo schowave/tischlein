@@ -24,12 +24,25 @@
     toast.className = "toast is-error";
     toast.setAttribute("role", "alert");
     toast.dataset.toast = "";
-    toast.textContent = text || "Das hat nicht geklappt. Bitte noch einmal versuchen.";
+    const line = document.createElement("span");
+    line.textContent = text || "Das hat nicht geklappt. Bitte noch einmal versuchen.";
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "toast-close";
+    close.dataset.toastClose = "";
+    close.setAttribute("aria-label", "Meldung schließen");
+    close.innerHTML = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="m4.5 4.5 7 7m0-7-7 7"/></svg>';
+    toast.append(line, close);
     document.body.appendChild(toast);
     setTimeout(() => toast.classList.add("is-gone"), 8000);
   }
 
   settleToast();
+
+  // the X on a note closes it right away
+  document.addEventListener("click", (e) => {
+    if (e.target.closest("[data-toast-close]")) e.target.closest("[data-toast]")?.classList.add("is-gone");
+  });
 
   // where the focus was, so it can come back after the swap: the day and the button's text
   function focusKey(el) {

@@ -40,16 +40,33 @@
     {% elif not v.can_write %}
     <p class="web-existing">Zum Übernehmen muss Paprika verbunden sein. <a href="/einstellungen">Verbinden</a></p>
     {% else %}
-    <form method="post" action="/rezept-holen" x-data="{ busy: false }" @submit="busy = true">
+    {# holen.js sends it in the background and shows each step; without JavaScript it is one plain POST #}
+    <form method="post" action="/rezept-holen" data-accept>
       <input type="hidden" name="url" value="{{ r.source_url }}">
-      <p class="panel-note">Kategorien in Paprika. Mit „{{ v.categories[0].name }}“ kommt das Rezept in den Neu-Slot.</p>
-      <div class="chips web-cats" role="group" aria-label="Kategorien">
-        {% for c in v.categories %}
-        <label class="chip check-chip"><input type="checkbox" name="kategorien" value="{{ c.name }}" {% if c.on %}checked{% endif %}><span>{{ c.name }}</span></label>
-        {% endfor %}
+      <fieldset class="plain" data-fields>
+        <legend class="panel-note">Kategorien in Paprika. Mit „{{ v.categories[0].name }}“ kommt das Rezept in den Neu-Slot.</legend>
+        <div class="chips web-cats">
+          {% for c in v.categories %}
+          <label class="chip check-chip"><input type="checkbox" name="kategorien" value="{{ c.name }}" {% if c.on %}checked{% endif %}><span>{{ c.name }}</span></label>
+          {% endfor %}
+        </div>
+      </fieldset>
+      <fieldset class="plain" data-fields>
+        <legend class="panel-note">Nächste Woche einplanen?</legend>
+        <div class="chips web-cats">
+          <label class="chip check-chip"><input type="radio" name="tag" value="" checked data-note=""><span>Nicht einplanen</span></label>
+          {% for d in v.days %}
+          <label class="chip check-chip"{% if d.free %} title="{{ d.note }}"{% endif %}><input type="radio" name="tag" value="{{ d.date.isoformat() }}" data-note="{{ d.note }}" {% if d.free %}disabled{% endif %}><span>{{ d.weekday[:2] }} {{ d.date.strftime('%d.%m.') }}</span></label>
+          {% endfor %}
+        </div>
+        <p class="panel-note day-note" data-day-note aria-live="polite"></p>
+      </fieldset>
+      <button class="btn btn-primary" type="submit">Nach Paprika übernehmen</button>
+      <div class="accept-progress" data-progress hidden>
+        <div class="bar"><span></span></div>
+        <ol class="accept-steps" aria-live="polite"></ol>
       </div>
-      <label class="chip check-chip"><input type="checkbox" name="einplanen" value="1"><span>Nächste Woche einplanen</span></label>
-      <button class="btn btn-primary" :disabled="busy" x-text="busy ? 'Wird übernommen …' : 'Nach Paprika übernehmen'">Nach Paprika übernehmen</button>
+      <p class="error-line" data-error role="alert" hidden></p>
     </form>
     {% endif %}
   </section>
@@ -70,3 +87,4 @@
   {% endif %}
 </div>
 {% endblock %}
+{% block scripts %}<script src="{{ asset('holen.js') }}" defer></script>{% endblock %}

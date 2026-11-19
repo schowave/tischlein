@@ -35,6 +35,7 @@ src/tischlein/
   templates/   eine Seite pro Bereich (Jinja, serverseitig gerendert); _macros.html: Rezeptbild, Einkaufs-Formular;
                waehlen.html: Rezept wählen und Nachtrag; rezept-holen.html: Vorschau eines Web-Rezepts
   static/      tischlein.css; rezepte.js, ideen.js, einkauf.js = Alpine-Komponenten (Markup im Template);
+               holen.js: „Nach Paprika übernehmen“ im Hintergrund mit Schritten (/api/rezept-holen/*);
                stay.js: Formulare mit data-stay schicken ohne Neuladen ab (keine springende Seite);
                menus.js: Dropdowns (details.free-menu) schließen sich gegenseitig, bei Klick daneben und Escape;
                auf dem Handy kommen sie als Blatt von unten (CSS);

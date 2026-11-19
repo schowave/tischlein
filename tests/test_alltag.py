@@ -553,5 +553,12 @@ def test_days_can_be_dragged_and_the_menu_starts_with_verschieben(svc):
     page = client.get("/?woche=2026-11-23").text
     monday = page.split('id="tag-2026-11-23"')[1].split("</article>")[0]
     assert 'class="day-grip"' in monday and 'data-targets="2026-11-24,2026-11-25,2026-11-26,2026-11-27"' in monday
-    assert monday.index("Verschieben auf") < monday.index("Anderes Gericht")
+    # another dish and no lunch sit as icons beside "Mehr"; the menu itself starts with Verschieben
+    assert (
+        monday.index('title="Anderes Gericht"')
+        < monday.index('title="Kein Mittagessen"')
+        < monday.index("Mehr</summary>")
+    )
+    menu = monday.split("Mehr</summary>")[1]
+    assert menu.index("Verschieben auf") < menu.index("Rezept wählen") and "Anderes Gericht" not in menu
     assert "/static/ziehen.js" in page

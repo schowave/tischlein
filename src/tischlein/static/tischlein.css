@@ -402,16 +402,26 @@ details[open] summary { color: var(--text); }
 .detail-back { display: none; }
 
 .toast {
-  position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 30;
-  display: flex; gap: 14px; align-items: center; max-width: min(560px, calc(100vw - 32px));
-  padding: 12px 18px; border-radius: 16px; background: var(--primary); color: var(--primary-ink);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18); /* floats over the list */
+  position: fixed; left: 16px; right: 16px; bottom: 20px; margin: 0 auto; width: fit-content; z-index: 30;
+  display: flex; gap: 10px; align-items: center; max-width: 440px;
+  padding: 4px 4px 4px 14px; border-radius: 12px; background: var(--primary); color: var(--primary-ink);
+  font-size: 13px; line-height: 18px; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16); /* floats over the list */
+  animation: toast-in 180ms ease-out;
 }
+@keyframes toast-in { from { opacity: 0; transform: translateY(6px); } }
+@media (prefers-reduced-motion: reduce) { .toast { animation: none; } }
+.toast > span { padding: 6px 0; }
+.toast-close {
+  flex: none; width: 32px; height: 32px; margin-left: -4px; display: grid; place-items: center;
+  border: 0; border-radius: 8px; background: none; color: var(--primary-ink); opacity: 0.7; cursor: pointer;
+}
+.toast-close:hover { opacity: 1; }
+.toast-close svg { width: 14px; height: 14px; }
 .toast .linkish { color: var(--primary-ink); font-weight: 600; white-space: nowrap; }
 .toast[hidden] { display: none; }
 .toast form { margin: 0; }
 .toast-action { border: 0; background: none; padding: 6px 0; font: inherit; font-weight: 600; color: var(--primary-ink); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; white-space: nowrap; }
-.toast.is-gone { opacity: 0; pointer-events: none; transition: opacity 400ms; }
+.toast.is-gone { opacity: 0; pointer-events: none; transition: opacity 200ms; }
 .toast.is-error { background: var(--negative); }
 
 /* ---------- sync progress ---------- */
@@ -790,3 +800,30 @@ input[type="search"]::-webkit-search-cancel-button { -webkit-appearance: none; a
 @media (pointer: coarse), (max-width: 900px) {
   input:not([type="checkbox"]):not([type="radio"]), select, textarea { font-size: 16px; }
 }
+
+/* ---------- week: quick actions as icons beside "Mehr" ---------- */
+.icon-btn {
+  width: 36px; height: 36px; display: inline-grid; place-items: center; padding: 0; list-style: none;
+  border: 0; border-radius: 10px; background: none; color: var(--muted); cursor: pointer; transition: color var(--t), background var(--t);
+}
+.icon-btn::-webkit-details-marker { display: none; }
+.icon-btn:hover, details[open] > .icon-btn { color: var(--text); background: var(--surface); }
+.icon-btn svg { width: 18px; height: 18px; }
+.day-act > form { margin: 0; display: inline; }
+
+/* ---------- Rezept holen: day to plan on, progress while it is taken over ---------- */
+fieldset.plain { border: 0; margin: 0; padding: 0; min-width: 0; display: grid; gap: 8px; }
+fieldset.plain legend { padding: 0; margin-bottom: 8px; }
+.check-chip:has(input:disabled) { opacity: 0.45; cursor: not-allowed; }
+.day-note:empty { display: none; }
+.accept-progress { width: 100%; max-width: 420px; display: grid; gap: 10px; }
+.accept-progress[hidden], .error-line[hidden] { display: none; }
+.accept-progress .bar span { transition: width 300ms ease-out; }
+.accept-steps { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; font-size: 13px; color: var(--faint); }
+.accept-steps li { display: flex; gap: 8px; align-items: center; }
+.accept-steps li::before { content: ""; width: 8px; height: 8px; border-radius: 50%; border: 1.5px solid currentColor; flex: none; }
+.accept-steps .is-done { color: var(--muted); }
+.accept-steps .is-done::before { background: var(--accent); border-color: var(--accent); }
+.accept-steps .is-now { color: var(--text); font-weight: 500; }
+.accept-steps .is-now::before { border-color: var(--accent); animation: skel-pulse 1s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .accept-steps .is-now::before { animation: none; } }

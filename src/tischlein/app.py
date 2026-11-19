@@ -81,6 +81,12 @@ class IdeasStart(BaseModel):
     thema: str = ""
 
 
+class WebAccept(BaseModel):
+    url: str
+    kategorien: list[str] = []
+    tag: date | None = None
+
+
 class Restore(BaseModel):
     eintraege: list[dict] = []
 
@@ -519,16 +525,45 @@ def create_app(service: Tischlein | None = None, auto_sync: bool | None = None) 
         v = web_view(service, url or text)
         return render(request, "rezept-holen.html", {"v": v, "nav": "ideen"})
 
+    def accepted(uid: str, day: str = "", note: str = "") -> str:
+        """Where Übernehmen ends: the day it was planned on, with its Rückgängig; else the recipe."""
+        if day:
+            return to_day("naechste", date.fromisoformat(day), note=True).headers["location"]
+        return f"/rezepte?rezept={quote(uid)}" + (f"&hinweis={quote(note)}" if note else "")
+
+    # without JavaScript: all in one request, no progress
     @app.post("/rezept-holen")
-    def web_accept(url: str = Form(...), kategorien: list[str] = Form([]), einplanen: int = Form(0)):
+    def web_accept(url: str = Form(...), kategorien: list[str] = Form([]), tag: str = Form("")):
         try:
+            day = date.fromisoformat(tag) if tag else None
             recipe = service.accept_web_recipe(url, kategorien)
         except ValueError as e:
             raise HTTPException(400, str(e)) from e
         except PaprikaError as e:
             raise HTTPException(502, str(e)) from e
-        note = f"&hinweis={quote(service.add_wish(recipe.uid))}" if einplanen else ""
-        return RedirectResponse(f"/rezepte?rezept={quote(recipe.uid)}{note}", status_code=303)
+        if day is None:
+            return RedirectResponse(accepted(recipe.uid), status_code=303)
+        try:
+            service.plan_on(recipe.uid, day)
+        except (KeyError, ValueError) as e:
+            return RedirectResponse(accepted(recipe.uid, note=f"Nicht eingeplant: {e.args[0]}"), status_code=303)
+        return RedirectResponse(accepted(recipe.uid, tag), status_code=303)
+
+    @app.post("/api/rezept-holen/start")
+    def api_web_accept_start(body: WebAccept):
+        try:
+            return service.start_web_accept(body.url, body.kategorien, body.tag)
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from e
+        except PaprikaError as e:
+            raise HTTPException(502, str(e)) from e
+
+    @app.get("/api/rezept-holen/status")
+    def api_web_accept_status():
+        state = service.web_accept_status()
+        if not state.get("laeuft") and state.get("rezept"):
+            state["ziel"] = accepted(state["rezept"], state.get("tag", ""), state.get("hinweis", ""))
+        return state
 
     # Review ------------------------------------------------------------------------
 

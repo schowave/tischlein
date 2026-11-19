@@ -49,6 +49,8 @@ def _download(url: str) -> bytes:
 
 WEB_AGENT = "Mozilla/5.0 (compatible; Tischlein)"
 WEB_IMAGES = ("image/jpeg", "image/png", "image/webp")
+# what "Nach Paprika übernehmen" shows while it runs, in order
+WEB_ACCEPT_STEPS = ("Rezept lesen", "Foto laden", "In Paprika anlegen", "Aus Paprika zurücklesen")
 
 
 class _PublicOnly(urllib.request.HTTPRedirectHandler):
@@ -150,6 +152,7 @@ class Tischlein:
         self._sync_thread: threading.Thread | None = None
         self._ideas_state = {"laeuft": False, "fertig": 0, "gesamt": 0, "ergebnis": None, "fehler": None}
         self._ideas_thread: threading.Thread | None = None
+        self._web_accept_state: dict = {"laeuft": False}
         self._proposal_state = {"laeuft": False, "fertig": 0, "gesamt": 0, "ergebnis": None, "fehler": None}
         self._proposal_thread: threading.Thread | None = None
         self._kid_thread: threading.Thread | None = None
@@ -814,24 +817,31 @@ class Tischlein:
         self._web_cache[key] = recipe
         return recipe
 
-    def accept_web_recipe(self, url: str, categories: list[str]) -> Recipe:
+    def accept_web_recipe(
+        self, url: str, categories: list[str], progress: Callable[[int], None] | None = None
+    ) -> Recipe:
         """Übernehmen: create the Web-Rezept in Paprika with its source, the chosen categories and its
-        photo (JPEG). A photo Paprika does not take (other format, upload refused) is kept locally."""
+        photo (JPEG). A photo Paprika does not take (other format, upload refused) is kept locally.
+        `progress` hears the index of each step in WEB_ACCEPT_STEPS as it starts."""
+        step = progress or (lambda i: None)
         if self.paprika is None:
             raise PaprikaError("Paprika-Sync ist nicht eingerichtet.")
         existing = self.find_source(url)
         if existing:
             raise ValueError(f"Schon in Paprika: {existing.name}")
+        step(0)
         recipe = self.web_recipe(url)
         offered = {c.casefold(): c for c in self.web_categories()}
         names = list(dict.fromkeys(offered[c.casefold()] for c in categories if c.casefold() in offered))
         uid = str(uuid.uuid4()).upper()
         photo, kind = b"", ""
+        step(1)
         if recipe.get("image"):
             try:
                 photo, kind = self.web_get(recipe["image"], 5_000_000, WEB_IMAGES)
             except ValueError:
                 photo = b""  # no photo is fine
+        step(2)
         with self._paprika_lock:
             data = webrecipe.paprika_recipe(
                 recipe, uid, self._ensure_categories(names), f"{datetime.now():%Y-%m-%d %H:%M:%S}"
@@ -845,6 +855,7 @@ class Tischlein:
                     log.warning("Paprika hat das Foto zu %s nicht angenommen", recipe["name"])
             if not uploaded:
                 self.paprika.update_recipe(data)
+            step(3)
             self.paprika.notify()
             raw = self.paprika.recipe(uid)
             cat_names = self.paprika.categories()
@@ -854,6 +865,87 @@ class Tischlein:
             self._save_web_photo(uid, photo)
         self._web_cache.pop(webrecipe.normalize_url(url), None)
         return created
+
+    def web_plan_days(self, today: date | None = None) -> list[dict]:
+        """The planning days of next week a new Web-Rezept can go on, with what is there now."""
+        today = today or date.today()
+        week_start = week_start_of(today) + timedelta(weeks=1)
+        skip = self.skip_map(week_start)
+        plan = self.store.plan(week_start)
+        days = []
+        for rule in self.config.days:
+            d = week_start + timedelta(days=rule.weekday)
+            days.append(
+                {"date": d, "weekday": WEEKDAY_NAMES[d.weekday()], "free": skip.get(d, ""), "dish": self._dish(plan, d)}
+            )
+        return days
+
+    def plan_on(self, recipe_uid: str, day: date, today: date | None = None) -> str:
+        """Einplanen on a day the family picked: the dish goes there as chosen by hand. A week without a
+        plan gets its draft first; one Rückgängig takes back both."""
+        today = today or date.today()
+        r = self.store.recipe(recipe_uid)
+        if r is None:
+            raise KeyError(f"Rezept {recipe_uid} nicht gefunden")
+        if self.store.feedback().get(recipe_uid) == "nein":
+            raise ValueError(f"{r.name} ist als „nie wieder“ markiert und wird nicht geplant.")
+        week_start = week_start_of(day)
+        with self._undoable(week_start) as note:
+            if self.store.plan(week_start) is None:
+                self._generate(week_start, False, today)
+            self._choose(day, recipe_uid, today)
+            note["label"] = f"{r.name} am {self._wd(day)} eingeplant"
+        return note["label"]
+
+    def start_web_accept(self, url: str, categories: list[str], day: date | None = None) -> dict:
+        """Übernehmen in a background thread, so the page can show each step; then, if a day was
+        picked, Einplanen there. Checks what can fail at once before it starts."""
+        if self.paprika is None:
+            raise PaprikaError("Paprika-Sync ist nicht eingerichtet.")
+        existing = self.find_source(url)
+        if existing:
+            raise ValueError(f"Schon in Paprika: {existing.name}")
+        if day is not None and day in self.skip_map(week_start_of(day)):
+            raise ValueError(f"Am {self._wd(day)} gibt es kein Mittagessen. Bitte einen anderen Tag wählen.")
+        steps = [*WEB_ACCEPT_STEPS, *([f"Am {self._wd(day)} einplanen"] if day else [])]
+        with self._state_lock:
+            if self._web_accept_state.get("laeuft"):
+                return dict(self._web_accept_state)
+            self._web_accept_state = {"laeuft": True, "schritte": steps, "schritt": 0, "fehler": None}
+            state = dict(self._web_accept_state)
+        threading.Thread(
+            target=self._run_web_accept, args=(url, categories, day), name="web-accept", daemon=True
+        ).start()
+        return state
+
+    def web_accept_status(self) -> dict:
+        with self._state_lock:
+            return dict(self._web_accept_state)
+
+    def _run_web_accept(self, url: str, categories: list[str], day: date | None) -> None:
+        def progress(i: int) -> None:
+            with self._state_lock:
+                self._web_accept_state["schritt"] = i
+
+        result: dict = {}
+        try:
+            recipe = self.accept_web_recipe(url, categories, progress)
+            result["rezept"] = recipe.uid
+            if day is not None:
+                progress(len(WEB_ACCEPT_STEPS))
+                try:
+                    result["hinweis"] = self.plan_on(recipe.uid, day)
+                    result["tag"] = day.isoformat()
+                except (KeyError, ValueError) as e:
+                    result["hinweis"] = f"In Paprika angelegt, aber nicht eingeplant: {e.args[0]}"
+        except (ValueError, PaprikaError) as e:
+            result["fehler"] = str(e)
+        except Exception as e:  # noqa: BLE001 - surface anything in the UI instead of a silent dead thread
+            result["fehler"] = f"Unerwarteter Fehler: {e}"
+            raise
+        finally:
+            with self._state_lock:
+                self._web_accept_state.update(laeuft=False, **result)
 
     def _web_photo_path(self, uid: str) -> Path | None:
         return self.backup_dir / "bilder" / f"{uid}-web.jpg" if self.backup_dir else None

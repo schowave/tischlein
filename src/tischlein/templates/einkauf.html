@@ -129,6 +129,7 @@
   <div class="toast" role="status" aria-live="polite" x-show="toast.text" x-cloak>
     <span x-text="toast.text"></span>
     <button type="button" class="toast-action" x-show="toast.undo" @click="undo()">Rückgängig</button>
+    <button type="button" class="toast-close" aria-label="Meldung schließen" @click="toast = { text: '', undo: null }"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="m4.5 4.5 7 7m0-7-7 7"/></svg></button>
   </div>
 </div>
 </div>
