@@ -49,8 +49,6 @@ def _download(url: str) -> bytes:
 
 WEB_AGENT = "Mozilla/5.0 (compatible; Tischlein)"
 WEB_IMAGES = ("image/jpeg", "image/png", "image/webp")
-# how long names that left the list on collecting again are not taken back from Bring
-BRING_GONE_GRACE = timedelta(minutes=15)
 # what "Nach Paprika übernehmen" shows while it runs, in order
 WEB_ACCEPT_STEPS = ("Rezept lesen", "Foto laden", "In Paprika anlegen", "Aus Paprika zurücklesen")
 
@@ -581,22 +579,11 @@ class Tischlein:
         result = [r for r in result if not _removed_by_hand(removed, r)]
         before = self.store.shopping(week_start)
         old = {shopping.item_key(i["name"]): i for i in before if not i["manual"]}
-        for r in result:  # an ingredient still on the list keeps its tick and its Bring state
+        for r in result:  # an ingredient still on the list keeps its tick
             prev = old.get(shopping.item_key(r["name"]))
             if prev:
-                r.update(
-                    done=prev["done"], done_by=prev["done_by"], bring=prev["bring"], bring_menge=prev["bring_menge"]
-                )
+                r.update(done=prev["done"], done_by=prev["done_by"])
         self.store.replace_generated_shopping(week_start, result)
-        kept = {shopping.item_key(r["name"]) for r in result}
-        gone = [
-            i["name"] for i in before if i["bring"] and not i["manual"] and shopping.item_key(i["name"]) not in kept
-        ]
-        if gone:  # Bring may report them as open until the tick-off arrives: not "Aus Bring" again
-            until = (datetime.now() + BRING_GONE_GRACE).isoformat(timespec="seconds")
-            keys = sorted({shopping.item_key(n) for n in gone})
-            self.store.set_meta(f"bring_gone:{week_start.isoformat()}", json.dumps({"bis": until, "namen": keys}))
-        self.push_bring(week_start, gone)  # dishes swapped out: their ingredients leave Bring too
         return how
 
     def has_shopping(self, week_start: date) -> bool:
@@ -621,7 +608,7 @@ class Tischlein:
 
     def refresh_shopping(self, week_start: date) -> None:
         """Collect the list in the background, `shopping_delay` seconds after the last change, so a few
-        clicks in a row call the LLM once. Ticks, Bring state and own entries stay (generate_shopping)."""
+        clicks in a row call the LLM once. Ticks and own entries stay (generate_shopping)."""
 
         def run() -> None:
             try:
@@ -1127,122 +1114,80 @@ class Tischlein:
             raise KeyError("Diese Bring-Liste kennt Home Assistant nicht.")
         self.store.set_meta("bring_list", entity_id)
 
-    # Bring sync ----------------------------------------------------------------
+    # Bring handover ------------------------------------------------------------
     #
-    # Tischlein -> Bring: after every change of a week's list the whole wanted state goes to Home
-    # Assistant (art: bring_sync): open items to add or update, bought ones to tick off. Idempotent,
-    # so sending it twice does no harm. Bring -> Tischlein: Home Assistant reports the Bring list
-    # (apply_bring_state): what was ticked off or removed there is ticked off here, what was added
-    # there comes in as "Aus Bring".
+    # Tischlein plans, Bring is where the family shops. Only Tischlein -> Bring, only on a click:
+    # Tischlein remembers per week what it handed over (bring_sent) and sends just the difference to
+    # the week's open items (art: bring_sync): new names, other amounts, and what left the list or
+    # was ticked off here ("weg", removed in Bring). Nothing comes back from Bring.
 
-    BRING_GROUP = "Aus Bring"
+    def _bring_wanted(self, week_start: date) -> dict[str, tuple[str, str]]:
+        """The week's open items by item_key: (name, amount). Bring keeps one item per name, so the
+        same thing twice (own entry and collected) becomes one, with both amounts."""
+        wanted: dict[str, tuple[str, str]] = {}
+        for i in self.store.shopping(week_start):
+            if i["done"]:
+                continue
+            key = shopping.item_key(i["name"])
+            if key not in wanted:
+                wanted[key] = (i["name"], i["amount"])
+            elif i["amount"] and i["amount"] not in wanted[key][1]:
+                name, amount = wanted[key]
+                wanted[key] = (name, f"{amount} + {i['amount']}" if amount else i["amount"])
+        return wanted
 
-    def bring_sync_on(self) -> bool:
-        """Off until switched on in the settings."""
-        return bool(self.webhook_url) and self.store.meta("bring_sync") == "1"
-
-    def set_bring_sync(self, on: bool) -> None:
-        self.store.set_meta("bring_sync", "1" if on else "0")
-
-    def _bring_changes(self, week_start: date, gone: list[str] = (), everything: bool = False):
-        """What Bring still has to learn: open items new to it or with another amount, items ticked off
-        here that are still open there, and names that left the list. `everything` resends all."""
-        items = self.store.shopping(week_start)
-        add = [i for i in items if not i["done"] and (everything or i["bring"] != 1 or i["bring_menge"] != i["amount"])]
-        done = [i for i in items if i["done"] and (i["bring"] == 1 or (everything and i["bring"]))]
-        payload = {
-            "titel": "Einkaufsliste",
-            "art": "bring_sync",
-            "liste": self.bring_list(),
-            "offen": [{"name": i["name"], "menge": i["amount"]} for i in add],
-            "erledigt": list(dict.fromkeys([i["name"] for i in done] + list(gone))),
+    def _bring_plan(self, week_start: date) -> tuple[dict, dict[str, str]]:
+        """What the next handover changes and the state after it: ({neu, menge, weg}, {name: amount})."""
+        sent = {shopping.item_key(n): (n, m) for n, m in self.store.bring_sent(week_start).items()}
+        wanted = self._bring_wanted(week_start)
+        changes = {
+            "neu": [wanted[k] for k in wanted if k not in sent],
+            # Bring finds its item by name: an other amount goes under the name it got
+            "menge": [(sent[k][0], wanted[k][1]) for k in wanted if k in sent and sent[k][1] != wanted[k][1]],
+            "weg": [sent[k][0] for k in sent if k not in wanted],
         }
-        state = [(i["id"], 1, i["amount"]) for i in add] + [(i["id"], 2, i["bring_menge"]) for i in done]
-        return payload, state, sum(1 for i in items if not i["done"])
+        after = {(sent[k][0] if k in sent else n): m for k, (n, m) in wanted.items()}
+        return changes, after
 
-    def push_bring(self, week_start: date, gone: list[str] = ()) -> None:
-        """Send what changed on the week's list to Bring, in the background (when the sync is on)."""
-        if not self.bring_sync_on():
-            return
-        payload, state, _ = self._bring_changes(week_start, gone)
-        self.store.set_meta("bring_week", week_start.isoformat())
-        if payload["offen"] or payload["erledigt"]:
-            # remembered only once Home Assistant has it: an item Bring never got must not count as bought
-            self._post_async(payload, lambda: self.store.set_bring_state(state))
+    def bring_status(self, week_start: date) -> dict:
+        """For the shopping page: handed over yet, when, and what changed since (names)."""
+        changes, _ = self._bring_plan(week_start)
+        stamp = self.store.meta(f"bring_stand:{week_start.isoformat()}") or ""
+        return {
+            "an": bool(self.webhook_url),
+            "uebergeben": bool(stamp) or bool(self.store.bring_sent(week_start)),
+            "stand": f"{datetime.fromisoformat(stamp):%d.%m., %H:%M}" if stamp else "",
+            "neu": [n for n, _ in changes["neu"]],
+            "menge": [n for n, _ in changes["menge"]],
+            "weg": changes["weg"],
+        }
 
-    def send_to_bring(self, week_start: date, person: str = "") -> int:
-        """ "Bring abgleichen" by hand: the whole list again, awaited so a failure is reported. Bring
-        keeps one item per name, so this does not duplicate anything. Returns the open items."""
+    def send_to_bring(self, week_start: date, person: str = "") -> dict:
+        """ "An Bring übergeben" / "Bring aktualisieren": send the difference, awaited so a failure is
+        reported; the new state is remembered only once Home Assistant has it. Returns the counts."""
         if not self.webhook_url:
             raise LookupError("Home Assistant ist nicht verbunden (HA_WEBHOOK_URL fehlt).")
-        payload, state, open_count = self._bring_changes(week_start, everything=True)
-        if not self._post_webhook({**payload, "von": person}):
-            raise LookupError("Home Assistant ist nicht erreichbar, Bring wurde nicht aktualisiert.")
-        self.store.set_bring_state(state)
-        self.store.set_meta("bring_week", week_start.isoformat())
-        return open_count
-
-    def apply_bring_state(self, liste: str, entries: list[dict], today: date | None = None) -> dict:
-        """Take over the Bring list as Home Assistant reports it ({summary, description, status}).
-
-        Only for the chosen list (Home Assistant resolves the default itself, see /api/bring/ziel) and
-        the week last synced to Bring (else this week). An empty report ticks nothing off: that is a
-        failed read far more often than a list that was bought empty.
-        Returns what changed: {"abgehakt": n, "neu": n}."""
-        chosen = self.bring_list()
-        if chosen and liste != chosen:
-            return {"abgehakt": 0, "neu": 0}
-        synced = self.store.meta("bring_week")
-        week_start = date.fromisoformat(synced) if synced else week_start_of(today or date.today())
-        items = self.store.shopping(week_start)
-        by_key: dict[str, dict] = {}
-        for e in entries:
-            name = str(e.get("summary") or "").strip()
-            if name:
-                by_key[shopping.item_key(name)] = {
-                    "name": name,
-                    "menge": str(e.get("description") or "").strip(),
-                    "open": e.get("status") != "completed",
-                }
-        bought = []
-        if entries:
-            for i in items:
-                if i["done"] or i["bring"] != 1:
-                    continue
-                there = by_key.get(shopping.item_key(i["name"]))
-                if there is None or not there["open"]:  # bought (or removed) in Bring
-                    bought.append(i["id"])
-        self.store.bought_in_bring(bought)
-        ticked = len(bought)
-        # deleted here while Bring still had it open (the removal is still on its way): not back in
-        known = {shopping.item_key(i["name"]) for i in items} | set(self.store.removed_shopping(week_start))
-        known |= self._bring_gone(week_start)
-        new = 0
-        for key, e in by_key.items():
-            if e["open"] and key not in known:
-                self.store.add_shopping_item(week_start, e["name"], e["menge"], self.BRING_GROUP, bring=True)
-                new += 1
-        return {"abgehakt": ticked, "neu": new}
-
-    def _bring_gone(self, week_start: date) -> set[str]:
-        """Names that left the list when it was collected again, for a short while: Bring still has
-        them open until the tick-off from Tischlein arrives there."""
-        raw = self.store.meta(f"bring_gone:{week_start.isoformat()}")
-        if not raw:
-            return set()
-        try:
-            gone = json.loads(raw)
-            if datetime.fromisoformat(gone["bis"]) < datetime.now():
-                return set()
-            return set(gone["namen"])
-        except ValueError, KeyError, TypeError:
-            return set()
+        changes, after = self._bring_plan(week_start)
+        counts = {k: len(v) for k, v in changes.items()}
+        if any(counts.values()):
+            payload = {
+                "titel": "Einkaufsliste",
+                "art": "bring_sync",
+                "liste": self.bring_list(),
+                "offen": [{"name": n, "menge": m} for n, m in changes["neu"] + changes["menge"]],
+                "weg": changes["weg"],
+                "von": person,
+            }
+            if not self._post_webhook(payload):
+                raise LookupError("Home Assistant ist nicht erreichbar, Bring wurde nicht aktualisiert.")
+        self.store.set_bring_sent(week_start, after)
+        self.store.set_meta(f"bring_stand:{week_start.isoformat()}", datetime.now().isoformat(timespec="seconds"))
+        return counts
 
     def set_item_done(self, item_id: int, done: bool, person: str = "") -> bool:
         week_start = self.store.shopping_week(item_id)
         if week_start is None or not self.store.set_shopping_done(item_id, done, person):
             return False
-        self.push_bring(week_start)
         return True
 
     def _remember_removed(self, week_start: date, items: list[dict]) -> None:
@@ -1261,13 +1206,11 @@ class Tischlein:
             return []
         self._remember_removed(week_start, [item])
         self.store.delete_shopping_item(item_id)
-        if item["bring"] == 1:
-            self.push_bring(week_start, [item["name"]])
         return [item]
 
     def restore_items(self, week_start: date, items: list[dict]) -> int:
         """Rückgängig for deleting: the entries come back with their tick, and collecting again
-        no longer leaves them out. Open ones go back to Bring when the sync is on."""
+        no longer leaves them out."""
         rows = []
         for i in items:  # sent back by the browser: take only what a deleted entry can be
             try:
@@ -1290,22 +1233,17 @@ class Tischlein:
         back = self.store.restore_shopping(week_start, rows)
         if back:
             self.store.forget_removed_shopping(week_start, [shopping.item_key(r["name"]) for r in back])
-            self.push_bring(week_start)
         return len(back)
 
     def set_all_done(self, week_start: date, done: bool, person: str = "") -> int:
-        n = self.store.set_all_shopping_done(week_start, done, person)
-        self.push_bring(week_start)
-        return n
+        return self.store.set_all_shopping_done(week_start, done, person)
 
     def remove_done(self, week_start: date) -> list[dict]:
         """Delete every ticked entry; returns them as they were, for Rückgängig."""
         done = [i for i in self.store.shopping(week_start) if i["done"]]
-        gone = [i["name"] for i in done if i["bring"] == 1]
         self._remember_removed(week_start, done)  # bought: collecting again must not bring it back open
         # exactly the ones read: one ticked on another phone meanwhile stays (and can be removed next time)
         self.store.delete_shopping_items([i["id"] for i in done])
-        self.push_bring(week_start, gone)
         return done
 
     def add_shopping_item(self, week_start: date, name: str, amount: str = "", person: str = "") -> int:
@@ -1314,7 +1252,6 @@ class Tischlein:
         if not amount:
             name, amount = shopping.split_entry(name)
         item_id = self.store.add_shopping_item(week_start, name, amount)
-        self.push_bring(week_start)
         if self.webhook_url:
             what = f"{name} ({amount})" if amount else name
             who = person or "Jemand"

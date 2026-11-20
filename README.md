@@ -71,9 +71,10 @@ Das Prinzip ist „Sous-Chef“: Tischlein schlägt vor, die Familie gibt frei.
 - **Gemeinsam abhaken, auch ohne Netz:** Was die andere Person abhakt, erscheint nach wenigen
   Sekunden; im Laden ohne Empfang wird nachgeholt. Abgehaktes rutscht nach unten unter „Im Wagen“,
   oben steht nur, was noch fehlt. Löschen lässt sich rückgängig machen; „Teilen“ als Text.
-- **Mit Bring abgeglichen** (über Home Assistant): Einträge und Haken gehen in beide Richtungen,
-  was ihr in Bring neu anlegt, kommt unter „Aus Bring“ dazu; die Liste wählt ihr in den Einstellungen. Neue Einträge
-  melden sich über Home Assistant auf dem Handy der anderen.
+- **An Bring übergeben** (über Home Assistant): Tischlein stellt die Liste zusammen, eingekauft wird in Bring.
+  Ein Knopf übergibt die offenen Einträge; nach dem Umplanen zeigt die Liste, was sich seitdem geändert hat,
+  und „Bring aktualisieren“ schickt nur das (Weggefallenes verschwindet aus Bring). Die Bring-Liste wählt ihr
+  in den Einstellungen. Neue Einträge melden sich über Home Assistant auf dem Handy der anderen.
 - **Bewertung nach jedem Essen:** gut, ging so, nie wieder. Lieblingsgerichte kommen öfter, und
   „Gut“ als erste Bewertung macht ein Rezept Kinder-OK (auch in Paprika; zurücknehmbar in der Meldung
   oder über den Kinder-OK-Schalter bei den Rezepten). Über Home Assistant

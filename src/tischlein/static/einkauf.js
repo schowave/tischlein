@@ -22,12 +22,17 @@ document.addEventListener("alpine:init", () => {
     }
   }
 
-  Alpine.data("shopping", (which, state) => ({
+  // "Zwiebel, Milch, Brot +2 weitere"
+  const names = (list) => (list.length > 4 ? `${list.slice(0, 3).join(", ")} +${list.length - 3} weitere` : list.join(", "));
+
+  Alpine.data("shopping", (which, state, bring) => ({
     // {id: {done, by, gone}}; gone = deleted here, kept until the page reloads so Rückgängig can bring it back
     items: Object.fromEntries(Object.entries(state).map(([id, s]) => [id, { ...s, gone: false }])),
     cartOpen: false, name: "", amount: "", error: "", busy: false,
     toast: { text: "", undo: null }, toastTimer: null,
     offline: !navigator.onLine, pending: readQueue().length, timer: null, changedAt: 0,
+    // {an, uebergeben, stand, neu, menge, weg}: handed over to Bring yet, and what changed since
+    bring, bringBusy: false,
 
     get live() {
       return Object.values(this.items).filter((i) => !i.gone);
@@ -74,6 +79,7 @@ document.addEventListener("alpine:init", () => {
           writeQueue(rest);
           this.pending = rest.length;
           this.items[id].by = (await res.json()).von;
+          this.refreshBring();
           return;
         }
         if (res.status === 404) return;  // removed on another phone meanwhile
@@ -124,6 +130,7 @@ document.addEventListener("alpine:init", () => {
           item.done = !!r.done;
           item.by = r.done_by || "";
         }
+        await this.refreshBring();
       } catch {
         this.offline = !navigator.onLine || this.pending > 0 || this.offline;
       }
@@ -163,6 +170,7 @@ document.addEventListener("alpine:init", () => {
       const removed = (await res.json()).eintraege || [];
       if (!removed.length) return this.say("Nichts zu entfernen.");
       for (const r of removed) if (this.items[r.id]) this.items[r.id].gone = true;
+      this.refreshBring();
       this.say(`${removed.length} ${removed.length === 1 ? "Eintrag" : "Einträge"} entfernt`, removed);
     },
 
@@ -172,6 +180,7 @@ document.addEventListener("alpine:init", () => {
       if (!res || !res.ok) return (this.error = OFFLINE);
       const removed = (await res.json()).eintraege || [];
       this.items[id].gone = true;
+      this.refreshBring();
       this.say(removed.length ? `${removed[0].name} gelöscht` : "Gelöscht", removed.length ? removed : null);
     },
 
@@ -183,19 +192,41 @@ document.addEventListener("alpine:init", () => {
       if (!res || !res.ok) return this.say("Konnte nicht wiederherstellen.");
       if (!(await res.json()).wiederhergestellt) return location.reload();  // gone meanwhile elsewhere: show what is
       for (const r of rows) if (this.items[r.id]) Object.assign(this.items[r.id], { gone: false, done: !!r.done, by: r.done_by || "" });
+      this.refreshBring();
       this.say("Wiederhergestellt");
     },
 
-    // open items to the Bring list (Home Assistant puts them there); ticked ones stay here
+    // Bring: something to send? Before the first handover the open items, after it the difference
+    bringOpen() {
+      const b = this.bring;
+      return b.uebergeben ? b.neu.length + b.menge.length + b.weg.length > 0 : this.left > 0;
+    },
+    bringText() {
+      const b = this.bring;
+      if (!b.uebergeben) return "Noch nicht in Bring.";
+      if (!this.bringOpen()) return `In Bring${b.stand ? " · Stand " + b.stand : ""}`;
+      const parts = [];
+      if (b.neu.length) parts.push(`neu: ${names(b.neu)}`);
+      if (b.menge.length) parts.push(`andere Menge: ${names(b.menge)}`);
+      if (b.weg.length) parts.push(`weg: ${names(b.weg)}`);
+      return `Seit der Übergabe an Bring:\n${parts.join("\n")}`;
+    },
+    async refreshBring() {
+      if (!this.bring.an) return;
+      const res = await fetch(`/api/einkauf/${which}/bring`, { cache: "no-store", redirect: "error" }).catch(() => null);
+      if (res && res.ok) this.bring = await res.json();
+    },
+    // hand the open items (or what changed since) over to Bring; Home Assistant puts them there
     async toBring() {
-      this.busy = true;
+      this.bringBusy = true;
+      this.error = "";
       const res = await fetch(`/api/einkauf/${which}/bring`, { method: "POST" }).catch(() => null);
-      this.busy = false;
+      this.bringBusy = false;
       if (!res) this.error = OFFLINE;
       else if (!res.ok) this.error = (await res.json().catch(() => ({}))).detail || "Konnte nicht senden.";
       else {
-        const n = (await res.json()).gesendet;
-        this.say(n ? `Mit Bring abgeglichen: ${n} ${n === 1 ? "Eintrag" : "Einträge"} offen.` : "Mit Bring abgeglichen, nichts offen.");
+        this.bring = await res.json();
+        this.say("Bring ist auf dem Stand der Liste.");
       }
     },
 

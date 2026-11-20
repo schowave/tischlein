@@ -602,6 +602,9 @@ details[open] summary { color: var(--text); }
 .btn-icon { width: 44px; height: 44px; padding: 0; display: inline-grid; place-items: center; margin: -6px -8px -6px 0; }
 .btn-icon svg { width: 18px; height: 18px; }
 .add-row { display: flex; gap: 8px; margin-bottom: 18px; }
+.bring-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; justify-content: space-between; margin: -6px 0 18px; font-size: 13px; color: var(--muted); }
+.bring-bar .bring-text { flex: 1 1 260px; min-width: 0; white-space: pre-line; }
+.bring-bar .btn { flex: none; }
 .add-row .field { height: 44px; }
 .add-row .add-amount { flex: 0 0 120px; }
 .add-row .btn { height: 44px; padding: 0 20px; }

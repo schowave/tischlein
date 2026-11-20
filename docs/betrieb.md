@@ -47,15 +47,13 @@
   beide Knöpfe; `tischlein_antwort` schickt den Tap an `POST /api/bewertung` (`datum`, `urteil`:
   gut, mittel, nie) bzw. `POST /api/plaene/freigeben` (`woche`).
   Gibt jemand eine Woche frei, kommt „<Name> hat die Woche ab 16.11. freigegeben: Mo …“ mit `art: freigabe`.
-  **Bring-Abgleich** (Einstellungen → Bring, „Automatisch abgleichen“): Tischlein schickt nach jeder
-  Änderung nur das Geänderte als `art: bring_sync` (`offen` [{name, menge}], `erledigt` [name], `liste`);
-  `notify_tischlein` im homelab-Repo legt an (`todo.add_item`) bzw. hakt ab (`todo.update_item`).
-  Zurück: `tischlein_bring_stand` liest bei jeder Änderung einer Bring-Liste und alle 5 Minuten die
-  gewählte Liste (`todo.get_items`) und meldet sie an `POST /api/bring/stand`; Tischlein hakt dort
-  Gekauftes ab („abgehakt von Bring“) und übernimmt neue Artikel unter „Aus Bring“. Was beim Neu-Sammeln von
-  der Liste fällt, nimmt es 15 Minuten lang nicht zurück: So lange kann Bring es noch als offen melden. Welche Listen es
-  gibt, meldet HA beim Start und stündlich an `POST /api/bring/listen`. Abgleich über den Namen
-  (Zwiebel = Zwiebeln); nur die Liste der laufenden Woche.
+  **Bring-Übergabe** (Liste unter Einstellungen → Bring): „An Bring übergeben“ bzw. „Bring aktualisieren“
+  in der Einkaufsliste schickt den Unterschied zur letzten Übergabe der Woche als `art: bring_sync`
+  (`offen` [{name, menge}]: neu oder andere Menge, `weg` [name]: abgehakt, gelöscht oder beim Neu-Sammeln
+  weggefallen, `liste`, `von`). `notify_tischlein` im homelab-Repo legt an oder ändert (`todo.add_item`,
+  `todo.update_item`) und entfernt (`todo.remove_item`). Nur diese Richtung: Aus Bring kommt nichts zurück,
+  von selbst geht nichts hinaus. Welche Listen es gibt, meldet HA beim Start und stündlich an
+  `POST /api/bring/listen`. Abgleich über den Namen (Zwiebel = Zwiebeln).
   Fürs iPhone: Automation mit Webhook-Trigger, Aktion `notify.mobile_app_<gerät>` mit
   `message: "{{ trigger.json.nachricht }}"` (Companion-App). Wer den Eintrag selbst gemacht hat,
   lässt sich über `trigger.json.von` ausfiltern.

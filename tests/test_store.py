@@ -115,3 +115,34 @@ def test_fresh_database_is_at_alembic_head(tmp_path):
     head = ScriptDirectory.from_config(cfg).get_current_head()
     version = sqlite3.connect(tmp_path / "neu.db").execute("SELECT version_num FROM alembic_version").fetchone()[0]
     assert version == head
+
+
+def test_open_bring_items_count_as_handed_over_after_the_upgrade(tmp_path):
+    import sqlite3
+
+    from alembic import command
+    from alembic.config import Config
+    from sqlalchemy import create_engine
+
+    db = tmp_path / "alt.db"
+    cfg = Config()
+    cfg.set_main_option("script_location", "src/tischlein/migrations")
+    with create_engine(f"sqlite:///{db}").begin() as conn:
+        cfg.attributes["connection"] = conn
+        command.upgrade(cfg, "0008")
+    con = sqlite3.connect(db)
+    with con:
+        con.executemany(
+            "INSERT INTO shopping (week_start, name, amount, bring, bring_menge) VALUES (?, ?, ?, ?, ?)",
+            [
+                ("2026-11-16", "Milch", "1 l", 1, "1 l"),
+                ("2026-11-16", "Brot", "", 2, ""),
+                ("2026-11-16", "Tee", "", 0, ""),
+            ],
+        )
+        con.execute("INSERT INTO meta VALUES ('bring_gone:2026-11-16', '{}')")
+    con.close()
+    s = Store(db)
+    assert s.bring_sent(MONDAY) == {"Milch": "1 l"}  # open in Bring; ticked off there or never sent: not
+    assert s.meta("bring_gone:2026-11-16") is None
+    assert [i["name"] for i in s.shopping(MONDAY)] == ["Milch", "Brot", "Tee"]

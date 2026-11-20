@@ -216,63 +216,98 @@ def test_shopping_item_added_by_hand_notifies_home_assistant(svc, monkeypatch):
     assert note["nachricht"] == "Julia hat Kaffee (500 g) auf die Liste gesetzt."
     assert len(svc.store.shopping(MONDAY)) == 2
 
-    assert svc.send_to_bring(MONDAY, "Julia") == 2
-    assert sent[-1]["art"] == "bring_sync" and sent[-1]["offen"][0] == {"name": "Kaffee", "menge": "500 g"}
-    assert sent[-1]["liste"] == ""  # no list chosen: Home Assistant's default
+    assert all(p["art"] == "einkauf" for p in sent)  # Bring hears of it only on a click: no background push
+
+
+def _bring(svc, monkeypatch):
+    """Home Assistant that takes everything; returns the bring_sync payloads it got."""
+    sent = []
+    monkeypatch.setattr(svc, "_post_webhook", lambda p: sent.append(p) is None)
+    monkeypatch.setattr(svc, "_post_async", lambda p, ok=None: None)  # the "auf die Liste gesetzt" notice
+    svc.webhook_url = "http://ha/hook"
+    return sent
+
+
+def test_bring_gets_only_the_difference_to_the_last_handover(svc, monkeypatch):
+    sent = _bring(svc, monkeypatch)
+    kaffee = svc.add_shopping_item(MONDAY, "Kaffee", "500 g")
+    svc.add_shopping_item(MONDAY, "Milch", "")
+    assert sent == [] and not svc.bring_status(MONDAY)["uebergeben"]
+
+    assert svc.send_to_bring(MONDAY, "Julia") == {"neu": 2, "menge": 0, "weg": 0}
+    assert sent[-1]["art"] == "bring_sync" and sent[-1]["von"] == "Julia" and sent[-1]["weg"] == []
+    assert sent[-1]["offen"] == [{"name": "Kaffee", "menge": "500 g"}, {"name": "Milch", "menge": ""}]
+    status = svc.bring_status(MONDAY)
+    assert status["uebergeben"] and status["stand"] and not status["neu"] + status["menge"] + status["weg"]
+
+    svc.set_item_done(kaffee, True, "Julia")  # ticked here: not wanted in Bring any more
+    svc.add_shopping_item(MONDAY, "Milch", "1 l")  # the same thing again: Bring keeps one item, both amounts
+    svc.add_shopping_item(MONDAY, "Brot", "")
+    assert sent[-1]["offen"] != [{"name": "Brot", "menge": ""}]  # nothing went out by itself
+    status = svc.bring_status(MONDAY)
+    assert (status["neu"], status["menge"], status["weg"]) == (["Brot"], ["Milch"], ["Kaffee"])
+
+    assert svc.send_to_bring(MONDAY) == {"neu": 1, "menge": 1, "weg": 1}
+    assert sent[-1]["offen"] == [{"name": "Brot", "menge": ""}, {"name": "Milch", "menge": "1 l"}]
+    assert sent[-1]["weg"] == ["Kaffee"]
+    n = len(sent)
+    assert svc.send_to_bring(MONDAY) == {"neu": 0, "menge": 0, "weg": 0} and len(sent) == n  # nothing to send
+
     assert svc.save_bring_lists([{"entity_id": "todo.ikea", "name": "Ikea"}, {"entity_id": "light.x"}]) == 1
     svc.set_bring_list("todo.ikea")
+    svc.add_shopping_item(MONDAY, "Tee", "")
     svc.send_to_bring(MONDAY)
     assert sent[-1]["liste"] == "todo.ikea"
     with pytest.raises(KeyError):
         svc.set_bring_list("todo.unbekannt")
     svc.save_bring_lists([])  # list gone in Home Assistant: back to the default
     assert svc.bring_list() == ""
+
+
+def test_bring_handover_is_remembered_only_when_home_assistant_has_it(svc, monkeypatch):
+    _bring(svc, monkeypatch)
+    svc.add_shopping_item(MONDAY, "Milch", "")
     monkeypatch.setattr(svc, "_post_webhook", lambda p: False)  # Home Assistant down: say so
     with pytest.raises(LookupError):
         svc.send_to_bring(MONDAY)
+    assert svc.bring_status(MONDAY)["uebergeben"] is False and svc.store.bring_sent(MONDAY) == {}
     svc.webhook_url = ""
     with pytest.raises(LookupError):
         svc.send_to_bring(MONDAY)
+    assert svc.bring_status(MONDAY)["an"] is False
 
 
-def test_bring_sync_both_ways(svc, monkeypatch):
-    sent = []
-    monkeypatch.setattr(svc, "_post_async", lambda p, ok=None: (sent.append(p), ok and ok()))
-    svc.webhook_url = "http://ha/hook"
-    assert not svc.bring_sync_on()  # off until switched on in the settings
-    svc.set_bring_sync(True)
-    kaffee = svc.add_shopping_item(MONDAY, "Kaffee", "500 g")
-    svc.add_shopping_item(MONDAY, "Milch", "")
-    sync = [p for p in sent if p["art"] == "bring_sync"]
-    assert all(i["bring"] == 1 for i in svc.store.shopping(MONDAY))  # both are in Bring now
-    assert len(sync) == 2 and sync[0]["offen"] == [{"name": "Kaffee", "menge": "500 g"}]
-    assert sync[1]["offen"] == [{"name": "Milch", "menge": ""}]  # only what changed: no re-adds
+def test_replanned_week_removes_what_left_the_list_from_bring(svc, monkeypatch):
+    sent = _bring(svc, monkeypatch)
+    svc.generate(MONDAY)
+    svc.generate_shopping(MONDAY)
+    svc.send_to_bring(MONDAY)
+    assert {"name": "Hähnchen", "menge": "400 g"} in sent[-1]["offen"]
+    svc.fake.recipes["R1"].update(ingredients="400 g Pute\n1 Zwiebel\nSalz", hash="pute")
+    svc.sync_paprika()
+    n = len(sent)
+    svc.generate_shopping(MONDAY)  # "Aktualisieren" after replanning: nothing goes to Bring by itself
+    assert len(sent) == n
+    status = svc.bring_status(MONDAY)
+    assert status["neu"] == ["Pute"] and status["weg"] == ["Hähnchen"]
+    svc.send_to_bring(MONDAY)
+    assert sent[-1]["offen"] == [{"name": "Pute", "menge": "400 g"}] and sent[-1]["weg"] == ["Hähnchen"]
 
-    svc.set_item_done(kaffee, True, "Julia")  # ticked here: ticked off in Bring
-    assert sent[-1]["erledigt"] == ["Kaffee"] and sent[-1]["offen"] == []
-
-    state = [
-        {"summary": "Milch", "description": "", "status": "completed"},  # bought in Bring
-        {"summary": "Brot", "description": "1 Laib", "status": "needs_action"},  # added in Bring
-        {"summary": "Kaffee", "description": "500 g", "status": "completed"},
-    ]
-    assert svc.apply_bring_state("todo.zuhause", state, today=MONDAY) == {"abgehakt": 1, "neu": 1}
     rows = {i["name"]: i for i in svc.store.shopping(MONDAY)}
-    assert rows["Milch"]["done"] and rows["Milch"]["done_by"] == "Bring"
-    assert rows["Brot"]["group"] == "Aus Bring" and rows["Brot"]["amount"] == "1 Laib" and not rows["Brot"]["done"]
-    assert svc.apply_bring_state("todo.zuhause", state, today=MONDAY) == {"abgehakt": 0, "neu": 0}  # idempotent
-    assert svc.apply_bring_state("todo.zuhause", [], today=MONDAY) == {"abgehakt": 0, "neu": 0}  # failed read
+    svc.delete_item(rows["Zwiebel"]["id"])  # deleted here: leaves Bring on the next click
+    assert svc.bring_status(MONDAY)["weg"] == ["Zwiebel"]
+    assert svc.bring_status(MONDAY + timedelta(days=7))["uebergeben"] is False  # each week on its own
 
-    svc.save_bring_lists([{"entity_id": "todo.ikea", "name": "Ikea"}])
-    svc.set_bring_list("todo.ikea")
-    assert svc.apply_bring_state("todo.zuhause", state, today=MONDAY) == {"abgehakt": 0, "neu": 0}  # other list
-    n = len(sent)
-    svc.remove_done(MONDAY)  # both are already ticked off in Bring: nothing to send
-    assert sent[n:] == [] and [i["name"] for i in svc.store.shopping(MONDAY)] == ["Brot"]
-    svc.set_bring_sync(False)
-    n = len(sent)
-    svc.add_shopping_item(MONDAY, "Tee", "")
-    assert all(p["art"] != "bring_sync" for p in sent[n:])  # sync off: only the push notice
+
+def test_bring_keeps_the_name_it_got_when_only_the_spelling_changes(svc, monkeypatch):
+    sent = _bring(svc, monkeypatch)
+    svc.add_shopping_item(MONDAY, "Zwiebel", "1")
+    svc.send_to_bring(MONDAY)
+    item = svc.store.shopping(MONDAY)[0]
+    svc.delete_item(item["id"])
+    svc.add_shopping_item(MONDAY, "Zwiebeln", "3")
+    assert svc.send_to_bring(MONDAY) == {"neu": 0, "menge": 1, "weg": 0}
+    assert sent[-1]["offen"] == [{"name": "Zwiebel", "menge": "3"}]  # Bring finds its item by the name it has
 
 
 def test_day_info_and_reminder(svc, monkeypatch):
@@ -362,63 +397,21 @@ def test_people_names(svc):
     assert "fremd@example.com" not in svc.people()
 
 
-def test_bring_push_is_remembered_only_when_home_assistant_has_it(svc, monkeypatch):
-    svc.webhook_url = "http://ha/hook"
-    svc.set_bring_sync(True)
-    monkeypatch.setattr(svc, "_post_async", lambda p, ok=None: None)  # Home Assistant never answers
-    svc.add_shopping_item(MONDAY, "Milch", "")
-    assert svc.store.shopping(MONDAY)[0]["bring"] == 0
-    assert svc.apply_bring_state("", [{"summary": "Brot", "status": "needs_action"}], today=MONDAY)["abgehakt"] == 0
-    assert not {i["name"]: i for i in svc.store.shopping(MONDAY)}["Milch"]["done"]  # not "bought" by mistake
-
-
-def test_regenerating_the_list_keeps_ticks_and_bring_state(svc, monkeypatch):
-    sent = []
-    monkeypatch.setattr(svc, "_post_async", lambda p, ok=None: (sent.append(p), ok and ok()))
-    svc.webhook_url = "http://ha/hook"
-    svc.set_bring_sync(True)
+def test_regenerating_the_list_keeps_ticks(svc):
     svc.generate(MONDAY)
     svc.generate_shopping(MONDAY)
     rows = {i["name"]: i for i in svc.store.shopping(MONDAY)}
     svc.set_item_done(rows["Zwiebel"]["id"], True, "Julia")
-    n = len(sent)
-    svc.generate_shopping(MONDAY)  # again, same plan: nothing new for Bring, the tick stays
+    svc.generate_shopping(MONDAY)  # again, same plan: the tick stays
     rows = {i["name"]: i for i in svc.store.shopping(MONDAY)}
-    assert rows["Zwiebel"]["done"] and rows["Zwiebel"]["bring"] == 2
-    assert all(not p["offen"] and not p["erledigt"] for p in sent[n:] if p["art"] == "bring_sync")
+    assert rows["Zwiebel"]["done"] and rows["Zwiebel"]["done_by"] == "Julia"
 
 
-def test_what_left_the_list_on_collecting_again_does_not_come_back_from_bring(svc, monkeypatch):
-    sent = []
-    monkeypatch.setattr(svc, "_post_async", lambda p, ok=None: (sent.append(p), ok and ok()))
-    svc.webhook_url = "http://ha/hook"
-    svc.set_bring_sync(True)
-    svc.generate(MONDAY)
-    svc.generate_shopping(MONDAY)
-    assert "Hähnchen" in {i["name"] for i in svc.store.shopping(MONDAY)}
-    svc.fake.recipes["R1"].update(ingredients="400 g Pute\n1 Zwiebel\nSalz", hash="pute")
-    svc.sync_paprika()
-    svc.generate_shopping(MONDAY)  # "Aktualisieren": Hähnchen leaves, Bring is told to tick it off
-    assert "Hähnchen" in sent[-1]["erledigt"]
-    # Home Assistant reports Bring before the tick-off arrived: Hähnchen must not return as "Aus Bring"
-    report = [{"summary": "Hähnchen", "status": "needs_action"}, {"summary": "Brot", "status": "needs_action"}]
-    assert svc.apply_bring_state("", report, today=MONDAY)["neu"] == 1  # only what was added in Bring
-    names = {i["name"]: i for i in svc.store.shopping(MONDAY)}
-    assert "Hähnchen" not in names and names["Brot"]["group"] == "Aus Bring"
-
-
-def test_a_deleted_ingredient_stays_off_when_collecting_again(svc, monkeypatch):
-    sent = []
-    monkeypatch.setattr(svc, "_post_async", lambda p, ok=None: (sent.append(p), ok and ok()))
-    svc.webhook_url = "http://ha/hook"
-    svc.set_bring_sync(True)
+def test_a_deleted_ingredient_stays_off_when_collecting_again(svc):
     svc.generate(MONDAY)
     svc.generate_shopping(MONDAY)
     rows = {i["name"]: i for i in svc.store.shopping(MONDAY)}
     svc.delete_item(rows["Zwiebel"]["id"])
-    assert "Zwiebel" in sent[-1]["erledigt"]  # it leaves Bring too
-    # Bring reports its list before it got the removal: Zwiebel does not come back as "Aus Bring"
-    svc.apply_bring_state("", [{"summary": "Zwiebel", "status": "needs_action"}], today=MONDAY)
     svc.generate_shopping(MONDAY)
     assert "Zwiebel" not in {i["name"] for i in svc.store.shopping(MONDAY)}
     assert not svc.store.removed_shopping(MONDAY + timedelta(days=7))  # next week collects it again

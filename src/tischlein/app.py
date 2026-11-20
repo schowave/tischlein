@@ -73,11 +73,6 @@ class BringLists(BaseModel):
     listen: list[dict]
 
 
-class BringState(BaseModel):
-    liste: str = ""
-    eintraege: list[dict] = []
-
-
 class IdeasStart(BaseModel):
     thema: str = ""
 
@@ -277,10 +272,9 @@ def create_app(service: Tischlein | None = None, auto_sync: bool | None = None) 
         return RedirectResponse("/einstellungen?ok=personen#personen", status_code=303)
 
     @app.post("/einstellungen/bring")
-    def settings_bring(liste: str = Form(""), abgleich: str = Form("")):
+    def settings_bring(liste: str = Form("")):
         try:
             service.set_bring_list(liste)
-            service.set_bring_sync(abgleich == "1")
         except KeyError as e:
             raise HTTPException(400, e.args[0]) from e
         return RedirectResponse("/einstellungen?ok=bring#bring", status_code=303)
@@ -438,24 +432,19 @@ def create_app(service: Tischlein | None = None, auto_sync: bool | None = None) 
         """Home Assistant reports its Bring lists here (rest_command, hourly)."""
         return {"listen": service.save_bring_lists(body.listen)}
 
-    @app.get("/api/bring/ziel")
-    def api_bring_target():
-        """Which Bring list Home Assistant should read for the sync ("" = its default)."""
-        return {"liste": service.bring_list(), "abgleich": service.bring_sync_on()}
-
-    @app.post("/api/bring/stand")
-    def api_bring_state(body: BringState):
-        """Home Assistant reports the Bring list (todo.get_items); ticks and new items come over."""
-        if not service.bring_sync_on():
-            return {"abgehakt": 0, "neu": 0}
-        return service.apply_bring_state(body.liste, body.eintraege)
+    @app.get("/api/einkauf/{which}/bring")
+    def api_shopping_bring_status(which: str):
+        """Handed over to Bring yet, and what changed on the list since (for the hint on the page)."""
+        return service.bring_status(week(which))
 
     @app.post("/api/einkauf/{which}/bring")
     def api_shopping_bring(request: Request, which: str):
+        """ "An Bring übergeben" / "Bring aktualisieren": only the difference to the last handover."""
         try:
-            return {"gesendet": service.send_to_bring(week(which), person_of(request))}
+            service.send_to_bring(week(which), person_of(request))
         except LookupError as e:
             raise HTTPException(409, str(e)) from e
+        return service.bring_status(week(which))
 
     @app.post("/api/einkauf/{which}/erledigte-entfernen")
     def api_shopping_remove_done(which: str):
